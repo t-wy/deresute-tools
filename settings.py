@@ -1,4 +1,5 @@
 from chihiro import ROOT_DIR
+import platform
 
 LOGGER_NAME = "chihiro"
 LOG_DIR = ROOT_DIR / "logs"
@@ -20,6 +21,9 @@ PROFILE_PATH = DATA_PATH / "profiles"
 
 STATIC_PATH = ROOT_DIR
 TOOL_EXE = STATIC_PATH / "tool.exe"
+if platform.system() == "Darwin": # Mac
+    TOOL_EXE = STATIC_PATH / "tool_mac"
+    
 TEMP_PATH = STATIC_PATH / "temppp"
 
 RHYTHM_ICONS_PATH = ROOT_DIR / "img"
