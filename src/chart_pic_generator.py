@@ -21,6 +21,12 @@ from static.skill import SKILL_BASE
 from static.song_difficulty import Difficulty
 from utils import storage
 
+_QFont = QFont
+def QFont():
+    qf = _QFont('Sans Serif')
+    qf.setStyleHint(_QFont.SansSerif)
+    return qf
+
 SEC_HEIGHT = 500
 X_MARGIN = 100
 Y_MARGIN = 70
