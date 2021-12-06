@@ -80,8 +80,10 @@ class ChartPicNote:
             note_file_prefix = "slide"
         elif self.note_type == NoteType.FLICK and self.right_flick:
             note_file_prefix = "flickr"
-        else:
+        elif self.note_type == NoteType.FLICK and not self.right_flick:
             note_file_prefix = "flickl"
+        else:
+            note_file_prefix = "damage"
         if self.grand:
             note_file_prefix = "g" + note_file_prefix
             self.note_pic = ChartPicNote.get_grand_note(note_file_prefix, self.span, False)
