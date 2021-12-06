@@ -23,6 +23,8 @@ STATIC_PATH = ROOT_DIR
 TOOL_EXE = STATIC_PATH / "tool.exe"
 if platform.system() == "Darwin": # Mac
     TOOL_EXE = STATIC_PATH / "tool_mac"
+elif platform.system() == "Linux": # Mac
+    TOOL_EXE = STATIC_PATH / "tool_linux"
     
 TEMP_PATH = STATIC_PATH / "temppp"
 
