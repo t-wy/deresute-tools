@@ -23,8 +23,11 @@ If you do not have Python installed, please visit [Python](https://www.python.or
 
 Download the Windows installer and follow the instructions to install.
 - (Please notice that the installer is using **.exe** extension downloaded from the link at the first column, not the .asc file (GPG signature from SIG) for integrity check at the last column)
+- (Check the "Add <ins>P</ins>ython 3.\_ to PATH", then you can skip the next part.)
 
 ### Add Python to System Path
+
+***(Skip this part if "Add <ins>P</ins>ython 3.\_ to PATH" option was checked when installing Python.)***
 
 Press \[Win\]+R, and type `systempropertiesadvanced` to open the System Properties setting dialog.
 
