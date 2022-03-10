@@ -6,3 +6,7 @@ PyQt5==5.15.4
 requests==2.23.0
 Whoosh==2.7.4
 Cython==3.0.0a9
+
+# For tool.py
+# pycryptodome==3.9.7
+# msgpack==1.0.0
