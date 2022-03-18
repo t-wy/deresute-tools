@@ -50,38 +50,87 @@ class Card:
             return None
         if custom_pots:
             assert len(custom_pots) == 5
-        card_data = db.masterdb.execute_and_fetchone(
-            """
-            SELECT * FROM {} WHERE id = ?
-            """.format("card_data"),
-            params=[card_id],
-            out_dict=True)
 
-        bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
-                   card_data['bonus_hp'], 0]
-
-        if custom_pots:
-            potentials = custom_pots
-        else:
-            potentials = \
-                db.cachedb.execute_and_fetchall("SELECT vo,vi,da,li,sk FROM potential_cache WHERE chara_id = ?",
-                                                params=[card_data['chara_id']])[0]
-
-        rarity = card_data['rarity'] if card_data['rarity'] % 2 == 1 else card_data['rarity'] - 1
-        attributes = ['vo', 'vi', 'da', 'li', 'sk']
-        for idx, key in enumerate(attributes):
-            if potentials[idx] == 0:
-                continue
-            bonuses[idx] += db.masterdb.execute_and_fetchone("""
-                    SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
-                """.format(rarity, key), [potentials[idx]])[0]
-
-        owned = db.cachedb.execute_and_fetchall("""
-                            SELECT number FROM owned_card WHERE card_id = ?
-                        """, [card_id])[0][0]
-        if owned == 0:
+        if str(card_id)[0] != "5": # Default card
+            card_data = db.masterdb.execute_and_fetchone(
+                """
+                SELECT * FROM {} WHERE id = ?
+                """.format("card_data"),
+                params=[card_id],
+                out_dict=True)
+    
+            bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
+                       card_data['bonus_hp'], 0]
+            
+            if custom_pots:
+                potentials = custom_pots
+            else:
+                potentials = \
+                    db.cachedb.execute_and_fetchall("SELECT vo,vi,da,li,sk FROM potential_cache WHERE chara_id = ?",
+                                                    params=[card_data['chara_id']])[0]
+    
+            rarity = card_data['rarity'] if card_data['rarity'] % 2 == 1 else card_data['rarity'] - 1
+            attributes = ['vo', 'vi', 'da', 'li', 'sk']
+            for idx, key in enumerate(attributes):
+                if potentials[idx] == 0:
+                    continue
+                bonuses[idx] += db.masterdb.execute_and_fetchone("""
+                        SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
+                    """.format(rarity, key), [potentials[idx]])[0]
+            
+            skill = Skill.from_id(card_data['skill_id'], bonuses[4])
+            
+            owned = db.cachedb.execute_and_fetchall("""
+                                SELECT number FROM owned_card WHERE card_id = ?
+                            """, [card_id])[0][0]
+            if owned == 0:
+                owned = 1
+        else: # Custom card
+            card_id = int(str(card_id)[1:])
+            custom_card_data = db.cachedb.execute_and_fetchone(
+                """
+                SELECT * FROM custom_card WHERE id = ?
+                """,
+                params=[card_id],
+                out_dict=True)
+            
+            card_data = {}
+            card_data['chara_id'] = db.masterdb.execute_and_fetchone("SELECT chara_id FROM card_data WHERE id = ?",
+                                                                     [custom_card_data['image_id']])[0]
+            card_data['vocal_max'] = custom_card_data['vocal']
+            card_data['visual_max'] = custom_card_data['visual']
+            card_data['dance_max'] = custom_card_data['dance']
+            card_data['hp_max'] = custom_card_data['life']
+            card_data['rarity'] = custom_card_data['rarity']
+            card_data['leader_skill_id'] = custom_card_data['leader_skill_id']
+            card_data['attribute'] = db.masterdb.execute_and_fetchone("SELECT attribute FROM card_data WHERE id = ?",
+                                                                     [custom_card_data['image_id']])[0]
+            bonuses = [0, 0, 0, 0, 0]
+            
+            if custom_pots:
+                potentials = custom_pots
+            else:
+                potentials = \
+                    db.cachedb.execute_and_fetchall("SELECT vo,vi,da,li,sk FROM potential_cache WHERE chara_id = ?",
+                                                    params=[card_data['chara_id']])[0]
+    
+            rarity = card_data['rarity'] if card_data['rarity'] % 2 == 1 else card_data['rarity'] - 1
+            attributes = ['vo', 'vi', 'da', 'li', 'sk']
+            for idx, key in enumerate(attributes):
+                if potentials[idx] == 0:
+                    continue
+                bonuses[idx] += db.masterdb.execute_and_fetchone("""
+                        SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
+                    """.format(rarity, key), [potentials[idx]])[0]
+                    
+            skill = Skill.from_id_custom(custom_card_data['skill_type'], custom_card_data['condition'],
+                                         custom_card_data['available_time_type'], custom_card_data['probability_type'],
+                                         [custom_card_data['value'], custom_card_data['value_2'], custom_card_data['value_3']],
+                                         bonuses[4])
+            
             owned = 1
 
+            card_id = int("5"+str(card_id).zfill(5))
         return cls(vo=card_data['vocal_max'] + bonuses[0],
                    vi=card_data['visual_max'] + bonuses[1],
                    da=card_data['dance_max'] + bonuses[2],
@@ -97,7 +146,7 @@ class Card:
                    li_pots=potentials[3],
                    sk_pots=potentials[4],
                    star=owned,
-                   sk=Skill.from_id(card_data['skill_id'], bonuses[4]),
+                   sk=skill,
                    le=Leader.from_id(card_data['leader_skill_id']),
                    color=Color(card_data['attribute'] - 1),
                    card_id=card_id,
@@ -123,25 +172,61 @@ class Card:
 
     def refresh_values(self):
         self.is_refreshed = True
-        card_data = db.masterdb.execute_and_fetchone(
-            """
-            SELECT * FROM {} WHERE id = ?
-            """.format("card_data"),
-            params=[self.card_id],
-            out_dict=True)
-
-        bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
-                   card_data['bonus_hp'], 0]
-
-        rarity = card_data['rarity'] if card_data['rarity'] % 2 == 1 else card_data['rarity'] - 1
-        attributes = ['vo', 'vi', 'da', 'li', 'sk']
-        potentials = [self.vo_pots, self.vi_pots, self.da_pots, self.li_pots, self.sk_pots]
-        for idx, key in enumerate(attributes):
-            if potentials[idx] == 0:
-                continue
-            bonuses[idx] += db.masterdb.execute_and_fetchone("""
-                            SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
-                        """.format(rarity, key), [potentials[idx]])[0]
+        if str(self.card_id)[0] != "5":
+            card_data = db.masterdb.execute_and_fetchone(
+                """
+                SELECT * FROM {} WHERE id = ?
+                """.format("card_data"),
+                params=[self.card_id],
+                out_dict=True)
+    
+            bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
+                       card_data['bonus_hp'], 0]
+    
+            rarity = card_data['rarity'] if card_data['rarity'] % 2 == 1 else card_data['rarity'] - 1
+            attributes = ['vo', 'vi', 'da', 'li', 'sk']
+            potentials = [self.vo_pots, self.vi_pots, self.da_pots, self.li_pots, self.sk_pots]
+            for idx, key in enumerate(attributes):
+                if potentials[idx] == 0:
+                    continue
+                bonuses[idx] += db.masterdb.execute_and_fetchone("""
+                                SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
+                            """.format(rarity, key), [potentials[idx]])[0]
+            
+        
+        else:
+            card_id = int(str(self.card_id)[1:])
+            custom_card_data = db.cachedb.execute_and_fetchone(
+                """
+                SELECT * FROM custom_card WHERE id = ?
+                """,
+                params=[card_id],
+                out_dict=True)
+            
+            card_data = {}
+            card_data['chara_id'] = db.masterdb.execute_and_fetchone("SELECT chara_id FROM card_data WHERE id = ?",
+                                                                     [custom_card_data['image_id']])[0]
+            card_data['vocal_max'] = custom_card_data['vocal']
+            card_data['visual_max'] = custom_card_data['visual']
+            card_data['dance_max'] = custom_card_data['dance']
+            card_data['hp_max'] = custom_card_data['life']
+            card_data['rarity'] = custom_card_data['rarity']
+            card_data['leader_skill_id'] = custom_card_data['leader_skill_id']
+            card_data['attribute'] = db.masterdb.execute_and_fetchone("SELECT attribute FROM card_data WHERE id = ?",
+                                                                     [custom_card_data['image_id']])[0]
+            
+            bonuses = [0, 0, 0, 0, 0]
+            
+            rarity = card_data['rarity'] if card_data['rarity'] % 2 == 1 else card_data['rarity'] - 1
+            attributes = ['vo', 'vi', 'da', 'li', 'sk']
+            potentials = [self.vo_pots, self.vi_pots, self.da_pots, self.li_pots, self.sk_pots]
+            for idx, key in enumerate(attributes):
+                if potentials[idx] == 0:
+                    continue
+                bonuses[idx] += db.masterdb.execute_and_fetchone("""
+                        SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
+                    """.format(rarity, key), [potentials[idx]])[0]
+            
         self.vo = self.base_vo + bonuses[0]
         self.vi = self.base_vi + bonuses[1]
         self.da = self.base_da + bonuses[2]
@@ -196,7 +281,7 @@ class Card:
     def __str__(self):
         short_name = db.cachedb.execute_and_fetchone("SELECT card_short_name FROM card_name_cache WHERE card_id = ?",
                                                      [self.card_id])
-        return short_name[0]
+        return short_name[0] if short_name is not None else "MyCard"
 
     def __eq__(self, other):
         if other is None or not isinstance(other, Card):

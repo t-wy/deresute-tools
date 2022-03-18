@@ -12,7 +12,7 @@ from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent, GetPerfectPlayFlagEvent, GetCustomPotsEvent, \
     GetAppealsEvent, GetSupportEvent, GetDoublelifeFlagEvent, GetAutoplayFlagEvent, GetAutoplayOffsetEvent, \
     GetSkillBoundaryEvent, GetTheoreticalMaxFlagEvent, GetEncoreAMRFlagEvent, GetEncoreMagicUnitFlagEvent, \
-    GetEncoreMagicMaxAggEvent, GetAllowGreatEvent
+    GetEncoreMagicMaxAggEvent, GetAllowGreatEvent, GetCcGreatEvent
 from settings import BACKUP_PATH
 from utils.storage import get_writer, get_reader
 
@@ -84,6 +84,19 @@ class CustomSettingsView:
         self.skill_boundary.setToolTip("Change the way skill detection works.")
         self.allow_great_checkbox = QtWidgets.QCheckBox("Allow GREATs in simulations", self.main)
         self.allow_great_checkbox.setToolTip("Forced for theoretical max, ignored for perfect simulations.")
+        self.concent_mode_layout = QtWidgets.QHBoxLayout()
+        self.concent_mode_checkbox = QtWidgets.QCheckBox("Concentration GREAT ", self.main)
+        self.concent_mode_checkbox.setToolTip(
+            "Randomly make tap note judgement GREAT while concentration is active.\n"
+            "You can set probability of generating GREATs.\n"
+            "0 will make all tap note PERFECT, and 100 will make only GREATs.")
+        self.concent_mode_text = QtWidgets.QLineEdit(self.main)
+        self.concent_mode_text.setValidator(QIntValidator(0, 100, None))
+        self.concent_mode_text.setFixedWidth(25)
+        self.concent_mode_label = QtWidgets.QLabel(" % ", self.main)
+        self.concent_mode_layout.addWidget(self.concent_mode_checkbox)
+        self.concent_mode_layout.addWidget(self.concent_mode_text)
+        self.concent_mode_layout.addWidget(self.concent_mode_label)
         self._setup_skill_boundaries()
 
     def _setup_positions_1(self):
@@ -119,7 +132,11 @@ class CustomSettingsView:
         self.tab2_layout.addWidget(self.mirror_checkbox, 0, 1, 1, 1)
         self.tab2_layout.addWidget(self.skill_boundary, 1, 1, 1, 1)
         self.tab2_layout.addWidget(self.allow_great_checkbox, 2, 1, 1, 1)
+        
+        self.tab2_layout.addLayout(self.concent_mode_layout, 0, 2, 1, 1)
+        
         self.tab2_layout.setColumnStretch(0, 1)
+        self.tab2_layout.setColumnStretch(2, 0)
 
     def _setup_valid_potential_values(self):
         for key, combobox in zip(
@@ -268,6 +285,14 @@ class CustomSettingsModel:
     @subscribe(GetAllowGreatEvent)
     def get_allow_great_flag(self, event=None):
         return self.view.allow_great_checkbox.isChecked()
+    
+    @subscribe(GetCcGreatEvent)
+    def get_cc_great_flag(self, event=None):
+        if not self.view.concent_mode_checkbox.isChecked() or self.view.concent_mode_text.text() == "":
+            p = 0
+        else:
+            p = int(self.view.concent_mode_text.text())
+        return p
 
     def hook_events(self):
         self.view.mirror_checkbox.toggled.connect(

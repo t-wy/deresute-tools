@@ -32,7 +32,7 @@ class ChartViewer(QMainWindow):
         self.parent = parent
         self.generator = None
         eventbus.eventbus.register(self)
-        self.setGeometry(200, 200, 1700, 800)
+        self.setGeometry(200, 200, 520, 800)
         self.setWindowTitle("Chart Viewer")
         self.show()
 

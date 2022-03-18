@@ -3,7 +3,8 @@ from db import db
 
 
 
-PROBABILITY_BASE = {1: ("Very Low", "vl"),
+PROBABILITY_BASE = {0: ("", ""),
+                    1: ("Very Low", "vl"),
                     2: ("Low", "lo"),
                     3: ("Medium", "med"),
                     4: ("High", "hi"),

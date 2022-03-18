@@ -1,6 +1,6 @@
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QAbstractItemView, QTableWidgetItem
+from PyQt5.QtWidgets import QAbstractItemView, QHeaderView, QTableWidgetItem
 
 import customlogger as logger
 from db import db
@@ -30,7 +30,11 @@ class PotentialView:
     def load_data(self, data):
         self.widget.setColumnCount(len(data[0]))
         self.widget.setRowCount(len(data))
-        self.widget.horizontalHeader().setSectionResizeMode(1)
+        self.widget.horizontalHeader().setSectionResizeMode(0, 1)
+        self.widget.setColumnWidth(1, 75)
+        self.widget.setColumnWidth(2, 75)
+        for i in range(3, len(data[0])): self.widget.horizontalHeader().setSectionResizeMode(i, 1)
+        
         keys = list(data[0].keys())
         keys[1] = ""
         self.widget.setHorizontalHeaderLabels(keys)

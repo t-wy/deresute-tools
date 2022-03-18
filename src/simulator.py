@@ -36,7 +36,7 @@ class BaseSimulationResult:
 class SimulationResult(BaseSimulationResult):
     def __init__(self, total_appeal, perfect_score, perfect_score_array, base, deltas, total_life, fans,
                  full_roll_chance,
-                 abuse_score, abuse_data: AbuseData):
+                 abuse_score, abuse_data: AbuseData, cc_fr_base, cc_great_num, cc_base):
         super().__init__()
         self.total_appeal = total_appeal
         self.perfect_score = perfect_score
@@ -48,6 +48,9 @@ class SimulationResult(BaseSimulationResult):
         self.full_roll_chance = full_roll_chance
         self.abuse_score = abuse_score
         self.abuse_data = abuse_data
+        self.cc_fr_base = cc_fr_base
+        self.cc_great_num = cc_great_num
+        self.cc_base = cc_base
 
 
 class AutoSimulationResult(BaseSimulationResult):
@@ -69,13 +72,15 @@ class Simulator:
     def __init__(self, live=None, special_offset=None, left_inclusive=False, right_inclusive=True,
                  force_encore_amr_cache_to_encore_unit=False,
                  force_encore_magic_to_encore_unit=False,
-                 allow_encore_magic_to_escape_max_agg=True):
+                 allow_encore_magic_to_escape_max_agg=True,
+                 cc_great=0):
         self.live = live
         self.left_inclusive = left_inclusive
         self.right_inclusive = right_inclusive
         self.force_encore_amr_cache_to_encore_unit = force_encore_amr_cache_to_encore_unit
         self.force_encore_magic_to_encore_unit = force_encore_magic_to_encore_unit
         self.allow_encore_magic_to_escape_max_agg = allow_encore_magic_to_escape_max_agg
+        self.cc_great = cc_great
         if special_offset is None:
             self.special_offset = 0
         else:
@@ -209,11 +214,28 @@ class Simulator:
                               special_option=special_option, special_value=special_value)
         grand = self.live.is_grand
 
+        cc_great_num = 0
+        if self.cc_great > 0:
+            cc_fr_results = self._simulate_internal(times=times, grand=grand, fail_simulate=False,
+                                              doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
+            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num = cc_fr_results
+            
+            cc_results = self._simulate_internal(times=times, grand=grand, fail_simulate=True,
+                                              doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
+            _, _, cc_random_simulation_results, _, _, _, _ = cc_results
+                        
+            cc_fr_array = np.array([_[0] for _ in cc_fr_random_simulation_results])
+            cc_fr_base = int(cc_fr_array.mean())
+            cc_array = np.array([_[0] for _ in cc_random_simulation_results])
+            cc_base = int(cc_array.mean())
+        else:
+            cc_fr_base, cc_base = 0, 0
+        
         results = self._simulate_internal(times=times, grand=grand, fail_simulate=not perfect_play,
-                                          doublelife=doublelife, perfect_only=perfect_only, abuse=abuse)
-
-        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data = results
-
+                                          doublelife=doublelife, perfect_only=perfect_only, abuse=abuse, cc_great=0)
+        
+        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data, _ = results
+        
         if perfect_play:
             base = perfect_score
             deltas = np.zeros(1)
@@ -250,11 +272,14 @@ class Simulator:
             full_roll_chance=full_roll_chance,
             fans=total_fans,
             abuse_score=int(abuse_score),
-            abuse_data=abuse_data
+            abuse_data=abuse_data,
+            cc_fr_base=cc_fr_base,
+            cc_great_num = cc_great_num,
+            cc_base=cc_base,
         )
 
     def _simulate_internal(self, grand, times, fail_simulate=False, doublelife=False, perfect_only=True, abuse=False,
-                           auto=False, time_offset=0):
+                           auto=False, time_offset=0, cc_great=0):
         impl = StateMachine(
             grand=grand,
             difficulty=self.live.difficulty,
@@ -268,7 +293,8 @@ class Simulator:
             weights=self.weight_range,
             force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
             force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
-            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg
+            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
+            cc_great=cc_great
         )
 
         if auto:
@@ -281,11 +307,25 @@ class Simulator:
         full_roll_chance = impl.get_full_roll_chance()
 
         scores = list()
-        if fail_simulate:
+        if cc_great == 0 and fail_simulate:
             for _ in range(times):
                 impl.reset_machine(perfect_play=False, perfect_only=perfect_only)
                 scores.append(impl.simulate_impl())
 
+        cc_great_total = 0
+        cc_great_num = 0
+        if cc_great > 0:
+            if not fail_simulate: #fr
+                for _ in range(times):
+                    impl.reset_machine(perfect_play=True, perfect_only=True)
+                    scores.append(impl.simulate_impl())
+                    cc_great_total += impl.get_cc_great_num()
+                cc_great_num = cc_great_total / times
+            else: #not fr
+                for _ in range(times):
+                    impl.reset_machine(perfect_play=False, perfect_only=True)
+                    scores.append(impl.simulate_impl())
+                    
         abuse_result_score = 0
         abuse_data: AbuseData = None
         if abuse:
@@ -293,7 +333,7 @@ class Simulator:
             abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
             logger.debug("Total abuse: {}".format(int(abuse_result_score)))
             logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
-        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data
+        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, cc_great_num
 
     def _simulate_auto(self,
                        appeals=None,

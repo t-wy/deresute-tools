@@ -169,6 +169,7 @@ class CardView:
 
     def refresh_spacing(self):
         self.widget.verticalHeader().setDefaultSectionSize(self.size + 10)
+        self.widget.horizontalHeader().setSectionResizeMode(1, 2)
         self.widget.setColumnWidth(1, self.size + 10)
 
 
@@ -218,8 +219,8 @@ class CardModel:
                     sd.condition as Interval,
                     pk.keywords as Prob,
                     CAST(cdc.vocal_max + cdc.bonus_vocal AS INTEGER) as Vocal,
-                    CAST(cdc.visual_max + cdc.bonus_visual AS INTEGER) as Visual,
                     CAST(cdc.dance_max + cdc.bonus_dance AS INTEGER) as Dance,
+                    CAST(cdc.visual_max + cdc.bonus_visual AS INTEGER) as Visual,
                     CAST(cdc.hp_max + cdc.bonus_hp AS INTEGER) as Life
             FROM card_data_cache as cdc
             INNER JOIN chara_cache cc on cdc.chara_id = cc.chara_id
