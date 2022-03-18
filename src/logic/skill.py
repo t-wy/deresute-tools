@@ -4,7 +4,7 @@ import pyximport
 from db import db
 from static.color import Color
 from static.note_type import NoteType
-from static.skill import SKILL_BASE
+from static.skill import SKILL_BASE, SKILL_SAMPLE
 
 pyximport.install(language_level=3)
 BOOST_TYPES = {20, 32, 33, 34, 38}
@@ -18,11 +18,11 @@ COMMON_TIMERS = [(7, 4.5, 'h'), (9, 6, 'h'), (11, 7.5, 'h'), (12, 7.5, 'm'),
 
 class Skill:
     def __init__(self, color=Color.CUTE, duration=0, probability=0, interval=999,
-                 values=None, v0=0, v1=0, v2=0, v3=0, offset=0,
+                 values=None, v0=0, v1=0, v2=0, v3=0, v4=0, offset=0,
                  boost=False, color_target=False, act=None, bonus_skill=2000, skill_type=None,
                  min_requirements=None, max_requirements=None, life_requirement=0):
-        if values is None and v0 == v1 == v2 == v3 == 0:
-            raise ValueError("Invalid skill values", values, v0, v1, v2, v3)
+        if values is None and v0 == v1 == v2 == v3 == v4 == 0:
+            raise ValueError("Invalid skill values", values, v0, v1, v2, v3, v4)
 
         if min_requirements is not None:
             assert len(min_requirements) == 3
@@ -40,8 +40,8 @@ class Skill:
         self.cached_probability = self.probability
         self.max_probability = probability
         self.interval = interval
-        self.v0, self.v1, self.v2, self.v3 = tuple(values)
-        self.values = [self.v0, self.v1, self.v2, self.v3]
+        self.v0, self.v1, self.v2, self.v3, self.v4 = tuple(values)
+        self.values = [self.v0, self.v1, self.v2, self.v3, self.v4]
         self.offset = offset
         self.boost = boost
         self.color_target = color_target
@@ -69,6 +69,10 @@ class Skill:
     @property
     def is_support(self):
         return self.skill_type in SUPPORT_TYPES
+
+    @property
+    def is_scorePG(self):
+        return self.skill_type == 2
 
     @property
     def is_guard(self):
@@ -136,7 +140,7 @@ class Skill:
             out_dict=True)
 
     @classmethod
-    def _fetch_boost_value_from_db(cls, skill_value):
+    def _fetch_boost_value_from_db(cls, skill_value, skill_type):
         values = db.masterdb.execute_and_fetchone(
             """
             SELECT  sbt1.boost_value_1 as v0, 
@@ -153,33 +157,86 @@ class Skill:
             params=[skill_value, skill_value],
             out_dict=True)
         values = [values["v{}".format(_)] for _ in range(4)]
+        values.insert(1, values[0])
         return values
 
     @classmethod
     def _handle_skill_type(cls, skill_type, skill_values):
         assert len(skill_values) == 3
-        values = [0, 0, 0, 0]
+        values = [0, 0, 0, 0, 0] #Score(Perfect), Score(Great), Combo, Heal, Support
         if skill_type in SUPPORT_TYPES:
-            values[3] = skill_type - 4
+            values[4] = skill_type - 4
+        elif skill_type == 2 or skill_type == 14: # SU, Overload
+            values[0], values[1] = skill_values[0], skill_values[0]
         elif skill_type == 4:  # CU
-            values[1] = skill_values[0]
+            values[2] = skill_values[0]
         elif skill_type == 31:  # Tuning
-            values[1] = skill_values[0]
-            values[3] = 2
+            values[2] = skill_values[0]
+            values[4] = 2
         elif skill_type == 24:  # All-round
+            values[2] = skill_values[0]
+            values[3] = skill_values[1]
+        elif skill_type == 17:  # Healer
+            values[3] = skill_values[0]
+        elif skill_type == 39:  # Alt
+            values[0] = skill_values[1]
+            values[1] = skill_values[1]
+            values[2] = skill_values[0]
+        elif skill_type == 42:  # Mutual
+            values[0] = skill_values[0]
             values[1] = skill_values[0]
             values[2] = skill_values[1]
-        elif skill_type == 17:  # Healer
-            values[2] = skill_values[0]
         else:
-            values = [skill_values[0], skill_values[1], skill_values[2], 0]
+            values = [skill_values[0], 0, skill_values[1], skill_values[2], 0]
         return values
 
     @classmethod
     def from_id(cls, skill_id, bonus_skill=2000):
         if skill_id == 0:
-            return cls(values=[0, 0, 0, 0])  # Default skill that has 0 duration
+            return cls(values=[0, 0, 0, 0, 0])  # Default skill that has 0 duration
         skill_data = cls._fetch_skill_data_from_db(skill_id)
+        
+        min_requirements, max_requirements = None, None
+        if skill_data['skill_trigger_type'] == 2:
+            min_requirements = np.array([0, 0, 0])
+            max_requirements = np.array([0, 0, 0])
+            max_requirements[skill_data['skill_trigger_value'] - 1] = 99
+        elif skill_data['skill_trigger_type'] == 3:
+            min_requirements = [1, 1, 1]
+
+        life_requirement = skill_data['skill_trigger_value'] if skill_data['skill_type'] == 14 else 0
+
+        is_boost = skill_data['skill_type'] in BOOST_TYPES
+        if is_boost:
+            values = cls._fetch_boost_value_from_db(skill_data['value'], skill_data['skill_type'])
+        else:
+            values = cls._handle_skill_type(skill_data['skill_type'],
+                                            (skill_data['value'], skill_data['value_2'], skill_data['value_3']))
+        return cls(
+            color=Color(skill_data['attribute'] - 1),  # CU=1 CO=2 PA=3,
+            duration=skill_data['available_time_max'] / 100,
+            probability=skill_data['probability_max'],
+            interval=skill_data['condition'],
+            values=values,
+            offset=0,
+            boost=is_boost,
+            color_target=skill_data['skill_type'] in COLOR_TARGETS,
+            act=ACT_TYPES[skill_data['skill_type']] if skill_data['skill_type'] in ACT_TYPES else None,
+            bonus_skill=bonus_skill,
+            skill_type=skill_data['skill_type'],
+            min_requirements=min_requirements,
+            max_requirements=max_requirements,
+            life_requirement=life_requirement
+        )
+    
+    @classmethod
+    def from_id_custom(cls, skill_type, interval, duration, probability, value_list, bonus_skill=2000):
+        if skill_type == 0:
+            return cls(values=[0, 0, 0, 0, 0])
+        skill_data = cls._fetch_skill_data_from_db(SKILL_SAMPLE[skill_type])
+        
+        skill_data['available_time_max'] = db.masterdb.execute_and_fetchone("SELECT available_time_max FROM available_time_type WHERE available_time_type = ?", [duration])[0]
+        skill_data['probability_max'] = db.masterdb.execute_and_fetchone("SELECT probability_max FROM probability_type WHERE probability_type = ?", [probability])[0]
 
         min_requirements, max_requirements = None, None
         if skill_data['skill_trigger_type'] == 2:
@@ -193,15 +250,15 @@ class Skill:
 
         is_boost = skill_data['skill_type'] in BOOST_TYPES
         if is_boost:
-            values = cls._fetch_boost_value_from_db(skill_data['value'])
+            values = cls._fetch_boost_value_from_db(value_list[0], skill_data['skill_type'])
         else:
             values = cls._handle_skill_type(skill_data['skill_type'],
-                                            (skill_data['value'], skill_data['value_2'], skill_data['value_3']))
+                                            (value_list[0], value_list[1], value_list[2]))
         return cls(
             color=Color(skill_data['attribute'] - 1),  # CU=1 CO=2 PA=3,
             duration=skill_data['available_time_max'] / 100,
             probability=skill_data['probability_max'],
-            interval=skill_data['condition'],
+            interval=interval,
             values=values,
             offset=0,
             boost=is_boost,

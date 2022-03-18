@@ -18,7 +18,7 @@ from gui.events.utils.wrappers import BaseSimulationResultWithUuid, YoinkResults
 from gui.events.value_accessor_events import GetAutoplayOffsetEvent, GetAutoplayFlagEvent, GetDoublelifeFlagEvent, \
     GetSupportEvent, GetAppealsEvent, GetCustomPotsEvent, GetPerfectPlayFlagEvent, GetMirrorFlagEvent, \
     GetCustomBonusEvent, GetGrooveSongColor, GetSkillBoundaryEvent, GetTheoreticalMaxFlagEvent, GetEncoreAMRFlagEvent, \
-    GetEncoreMagicUnitFlagEvent, GetEncoreMagicMaxAggEvent, GetAllowGreatEvent
+    GetEncoreMagicUnitFlagEvent, GetEncoreMagicMaxAggEvent, GetAllowGreatEvent, GetCcGreatEvent
 from gui.viewmodels.simulator.calculator import CalculatorModel, CalculatorView, CardsWithUnitUuidAndExtraData
 from gui.viewmodels.simulator.custom_bonus import CustomBonusView, CustomBonusModel
 from gui.viewmodels.simulator.custom_card import CustomCardView, CustomCardModel
@@ -72,7 +72,7 @@ class MainView:
         self._setup_custom_card()
         self._setup_unit_details()
         self.custom_card_and_support_widget.addTab(self.support_view.widget, "Support Team")
-        self.custom_card_and_support_widget.addTab(self.custom_card_view.widget, "Custom Card")
+        self.custom_card_and_support_widget.addTab(self.custom_card_view.widget, "Edit Card")
         self.custom_card_and_support_widget.addTab(self.unit_details_view.widget, "Unit Details")
         self.custom_appeal_and_support_layout.addWidget(self.custom_card_and_support_widget)
 
@@ -127,7 +127,7 @@ class MainView:
         self.yoink_button = QtWidgets.QPushButton("Yoink #1 Unit", self.widget)
         self.permute_button = QtWidgets.QPushButton("Permute Units", self.widget)
         self.times_text = QtWidgets.QLineEdit(self.widget)
-        self.times_text.setValidator(QIntValidator(0, 100, None))  # Only number allowed
+        self.times_text.setValidator(QIntValidator(0, 1000, None))  # Only number allowed
         self.times_text.setText("10")
         self.times_label = QtWidgets.QLabel("times", self.widget)
 
@@ -181,6 +181,7 @@ class MainView:
         force_encore_magic_to_encore_unit = eventbus.eventbus.post_and_get_first(GetEncoreMagicUnitFlagEvent())
         allow_encore_magic_to_escape_max_agg = eventbus.eventbus.post_and_get_first(GetEncoreMagicMaxAggEvent())
         allow_great = eventbus.eventbus.post_and_get_first(GetAllowGreatEvent())
+        cc_great = eventbus.eventbus.post_and_get_first(GetCcGreatEvent())
 
         self.model.simulate_internal(
             perfect_play=perfect_play,
@@ -195,6 +196,7 @@ class MainView:
             force_encore_magic_to_encore_unit=force_encore_magic_to_encore_unit,
             allow_encore_magic_to_escape_max_agg=allow_encore_magic_to_escape_max_agg,
             allow_great=allow_great,
+            cc_great=cc_great,
             row=row
         )
 
@@ -221,6 +223,7 @@ class MainModel(QObject):
                           force_encore_magic_to_encore_unit,
                           allow_encore_magic_to_escape_max_agg,
                           allow_great,
+                          cc_great,
                           row=None):
         """
         :type all_cards: List[CardsWithUnitUuidAndExtraData]
@@ -297,7 +300,8 @@ class MainModel(QObject):
                                 force_encore_amr_cache_to_encore_unit,
                                 force_encore_magic_to_encore_unit,
                                 allow_encore_magic_to_escape_max_agg,
-                                allow_great
+                                allow_great,
+                                cc_great
                                 ),
                 high_priority=True, asynchronous=True)
 
@@ -320,6 +324,7 @@ class MainModel(QObject):
                             force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
                             force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
                             allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                            cc_great=event.cc_great
                             )
             result = sim.simulate(appeals=event.appeals, extra_bonus=event.extra_bonus, support=event.support,
                                   special_option=event.special_option, special_value=event.special_value,
@@ -335,6 +340,7 @@ class MainModel(QObject):
                             force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
                             force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
                             allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                            cc_great=event.cc_great
                             )
             result = sim.simulate(perfect_play=event.perfect_play,
                                   times=event.times, appeals=event.appeals, extra_bonus=event.extra_bonus,

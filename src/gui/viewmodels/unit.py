@@ -26,7 +26,9 @@ class UnitCard(ImageWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
-            self.unit_widget.set_card(self.card_idx, None)
+            if str(type(self.unit_widget.unit_view)) == "<class 'gui.viewmodels.unit.UnitView'>":
+                self.unit_widget.set_card(self.card_idx, None)
+                self.unit_widget.unit_view.copy.copy_unit(self.unit_widget.unit_view)
         elif event.button() == Qt.LeftButton:
             self.unit_widget.toggle_custom_card(self.card_idx)
             event.ignore()
@@ -39,6 +41,7 @@ class UnitCard(ImageWidget):
         if mimetext.startswith(CARD):
             card_id = int(mimetext[len(CARD):])
             self.unit_widget.set_card(self.card_idx, card_id)
+            self.unit_widget.unit_view.copy.copy_unit(self.unit_widget.unit_view)
         else:
             self.unit_widget.handle_lost_mime(mimetext)
 
@@ -126,6 +129,7 @@ class UnitWidget(QWidget):
         card_ids = self.card_ids
         if unit_name != "":
             unit_storage.update_unit(unit_name=unit_name, cards=card_ids, grand=False)
+        self.unit_view.copy.copy_unit(self.unit_view)
 
     def delete_unit(self):
         unit_name = self.unitName.text().strip()
@@ -171,6 +175,7 @@ class DragableUnitList(QListWidget):
         self.unit_view = unit_view
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
+        self.unit_view_copy = None
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -204,9 +209,13 @@ class DragableUnitList(QListWidget):
         if mimetext.startswith(CALCULATOR_UNIT):
             logger.debug("Dragged {} into unit editor".format(mimetext[len(CALCULATOR_UNIT):]))
             self.unit_view.add_unit(mimetext[len(CALCULATOR_UNIT):])
+            if self.unit_view_copy != None:
+                self.unit_view_copy.add_unit(mimetext[len(CALCULATOR_UNIT):])
         elif mimetext.startswith(CALCULATOR_GRANDUNIT):
             logger.debug("Dragged {} into unit editor".format(mimetext[len(CALCULATOR_GRANDUNIT):]))
             self.unit_view.add_units(mimetext[len(CALCULATOR_UNIT):])
+            if self.unit_view_copy != None:
+                self.unit_view_copy.add_units(mimetext[len(CALCULATOR_UNIT):])
         e.ignore()
 
 
@@ -215,7 +224,12 @@ class UnitView:
         self.widget = DragableUnitList(main, self)
         self.widget.setVerticalScrollMode(1)  # Smooth scroll
         self.pics = None
+        self.copy = None
 
+    def set_copy(self, view_copy):
+        self.copy = view_copy
+        self.widget.unit_view_copy = self.copy
+    
     def set_model(self, model):
         self.model = model
 
@@ -224,6 +238,20 @@ class UnitView:
             unit_widget = self.add_unit(unit_cards)
             unit_widget.set_unit_name(unit_name)
 
+    def copy_unit(self, unit_view):
+        self.widget.clear()
+        unit_widgets = [unit_view.widget.itemWidget(unit_view.widget.item(x)) for x in range(unit_view.widget.count())]
+        for origin in unit_widgets:
+            unit_widget = SmallUnitWidget(self, self.widget)
+            unit_widget.set_unit_name(origin.unitName.text())
+            for idx in range(6):
+                unit_widget.set_card(idx, origin.cards_internal[idx])
+            unit_widget_item = QListWidgetItem(self.widget)
+            unit_widget.set_widget_item(unit_widget_item)
+            unit_widget_item.setSizeHint(unit_widget.sizeHint())
+            self.widget.addItem(unit_widget_item)
+            self.widget.setItemWidget(unit_widget_item, unit_widget)
+    
     def add_unit(self, card_ids):
         unit_widget = SmallUnitWidget(self, self.widget)
         unit_widget.set_unit_name("")
@@ -240,6 +268,7 @@ class UnitView:
         unit_widget_item.setSizeHint(unit_widget.sizeHint())
         self.widget.addItem(unit_widget_item)
         self.widget.setItemWidget(unit_widget_item, unit_widget)
+        
         return unit_widget
 
     def add_units(self, card_ids):
@@ -258,15 +287,30 @@ class UnitView:
         self.widget.setItemWidget(unit_widget_item, unit_widget)
 
     def delete_unit(self, unit_widget):
-        self.widget.takeItem(self.widget.row(unit_widget))
+        row = self.widget.row(unit_widget)
+        self.widget.takeItem(row)
+        self.copy.widget.takeItem(row)
+
+    def remove_deleted_custom_card(self, custom_card_id):
+        for row in range(self.widget.count()):
+            unit_item = self.widget.item(row)
+            unit_widget = self.widget.itemWidget(unit_item)
+            for idx, card in enumerate(unit_widget.cards_internal):
+                if card is not None and card.card_id == custom_card_id:
+                    unit_widget.set_card(idx, None)
+                    self.copy.copy_unit(self)
 
     def handle_lost_mime(self, mime_text):
         if mime_text.startswith(CALCULATOR_UNIT):
             logger.debug("Dragged {} into unit editor".format(mime_text[len(CALCULATOR_UNIT):]))
             self.add_unit(mime_text[len(CALCULATOR_UNIT):])
+            if self.copy != None:
+                self.copy.add_unit(mime_text[len(CALCULATOR_UNIT):])
         elif mime_text.startswith(CALCULATOR_GRANDUNIT):
             logger.debug("Dragged {} into unit editor".format(mime_text[len(CALCULATOR_GRANDUNIT):]))
             self.add_units(mime_text[len(CALCULATOR_UNIT):])
+            if self.copy != None:
+                self.copy.add_units(mime_text[len(CALCULATOR_UNIT):])
 
     def __del__(self):
         unit_storage.clean_all_units(grand=False)
@@ -277,10 +321,12 @@ class UnitView:
 
 class UnitModel:
 
-    def __init__(self, view):
-        self.view = view
+    def __init__(self, view1, view2):
+        self.view1 = view1
+        self.view2 = view2
         self.images = dict()
 
     def initialize_units(self):
         data = db.cachedb.execute_and_fetchall("SELECT unit_name, cards FROM personal_units WHERE grand = 0")
-        self.view.load_data(data)
+        self.view1.load_data(data)
+        self.view2.load_data(data)

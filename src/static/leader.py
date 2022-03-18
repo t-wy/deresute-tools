@@ -1,7 +1,8 @@
 import customlogger as logger
 from db import db
 
-SKILL_BASE = {1: "Cute Voice",
+SKILL_BASE = {0: "",
+              1: "Cute Voice",
               2: "Cute Step",
               3: "Cute Makeup",
               4: "Cute Brilliance",

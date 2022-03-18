@@ -31,7 +31,7 @@ from simulator import SimulationResult, AutoSimulationResult
 from utils.storage import get_writer, get_reader
 
 UNIVERSAL_HEADERS = ["Unit", "Appeals", "Life"]
-NORMAL_SIM_HEADERS = ["Perfect", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%", "Theo. Max", "Full Roll Chance (%)"]
+NORMAL_SIM_HEADERS = ["Perfect", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%", "Theo. Max", "Full Roll Chance (%)", "CC Full Roll", "CC GREAT", "CC Mean"]
 AUTOPLAY_SIM_HEADERS = ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time (s)",
                         "All Skills 100%?"]
 ALL_HEADERS = UNIVERSAL_HEADERS + NORMAL_SIM_HEADERS + AUTOPLAY_SIM_HEADERS
@@ -480,6 +480,15 @@ class CalculatorView:
             self.widget.cellWidget(r, 0).display_chart_name(diff_name, song_name)
         eventbus.eventbus.post(HookUnitToUnitDetailsEvent())
 
+    def remove_unit_with_deleted_custom_card(self, custom_card_id):
+        for row in range(self.widget.rowCount()-1, -1, -1):
+            remove = False
+            for idx, card in enumerate(self.widget.cellWidget(row, 0).cards_internal):
+                if card is not None and card.card_id == custom_card_id:
+                    remove = True
+                    break
+            if remove: self.widget.removeRow(row)
+    
     def backup(self):
         logger.info("{} backing up unit for next session...".format(type(self).__name__))
         try:
@@ -634,6 +643,10 @@ class CalculatorModel:
         if results.abuse_data is not None:
             self.view.fill_column(False, 10, row, int(results.abuse_score))
         self.view.fill_column(False, 11, row, float(int(results.full_roll_chance * 10000) / 100))
+        if results.cc_great_num > 0:
+            self.view.fill_column(False, 12, row, int(results.cc_fr_base))
+            self.view.fill_column(False, 13, row, results.cc_great_num)
+            self.view.fill_column(False, 14, row, int(results.cc_base))
 
     def _process_auto_results(self, results: AutoSimulationResult, row=None):
         # ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time", "All Skills 100%?"]

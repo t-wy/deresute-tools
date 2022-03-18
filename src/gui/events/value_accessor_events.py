@@ -81,3 +81,8 @@ class GetEncoreMagicMaxAggEvent:
 class GetAllowGreatEvent:
     def __init__(self):
         pass
+
+
+class GetCcGreatEvent:
+    def __init__(self):
+        pass
