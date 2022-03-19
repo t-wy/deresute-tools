@@ -93,8 +93,8 @@ class SongView:
 
     def load_data(self, data):
         DATA_COLS = ["LDID", "LiveID", "DifficultyInt", "ID", "Name", "Color", "Difficulty", "Level", "Duration (s)",
-                     "Note Count", "7h %", "9h %", "11h %", "12m %", "6m %", "9m %", "11m %", "13h %",
-                     "Tap", "Long", "Flick", "Slide", "Tap %", "Long %", "Flick %", "Slide %"]
+                     "Note Count", "Tap", "Long", "Flick", "Slide", "Tap %", "Long %", "Flick %", "Slide %",
+                     "7h %", "9h %", "11h %", "12m %", "6m %", "9m %", "11m %", "13h %"]
         self.widget.setColumnCount(len(DATA_COLS))
         self.widget.setRowCount(len(data))
         self.widget.setHorizontalHeaderLabels(DATA_COLS)
@@ -121,30 +121,32 @@ class SongView:
         if change:
             self.timers = not self.timers
         if self.timers:
-            for r_idx in range(10, 18):
+            for r_idx in range(18, 26):
                 self.widget.setColumnHidden(r_idx, False)
         else:
-            for r_idx in range(10, 18):
+            for r_idx in range(18, 26):
                 self.widget.setColumnHidden(r_idx, True)
 
     def toggle_percentage(self, change=True):
         if change:
             self.percentage = not self.percentage
         if not self.percentage:
-            for r_idx in range(22, 26):
+            for r_idx in range(14, 18):
                 self.widget.setColumnHidden(r_idx, True)
-            for r_idx in range(18, 22):
+            for r_idx in range(10, 14):
                 self.widget.setColumnHidden(r_idx, False)
         else:
-            for r_idx in range(22, 26):
+            for r_idx in range(14, 18):
                 self.widget.setColumnHidden(r_idx, False)
-            for r_idx in range(18, 22):
+            for r_idx in range(10, 14):
                 self.widget.setColumnHidden(r_idx, True)
 
     def toggle_auto_resize(self, on=False):
         if on:
             self.widget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-            self.widget.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Interactive)
+            size = self.widget.horizontalHeader().sectionSize(4)
+            self.widget.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
+            self.widget.horizontalHeader().resizeSection(4, size)
         else:
             self.widget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
 
@@ -168,6 +170,14 @@ class SongModel:
                             ldc.level as Level,
                             ldc.duration as Duration,
                             CAST(ldc.Tap + ldc.Long + ldc.Flick + ldc.Slide AS INTEGER) as Notes,
+                            ldc.Tap as Tap,
+                            ldc.Long as Long,
+                            ldc.Flick as Flick,
+                            ldc.Slide as Slide,
+                            0 as TapPct,
+                            0 as LongPct,
+                            0 as FlickPct,
+                            0 as SlidePct,
                             ldc.Timer_7h as Timer7h,
                             ldc.Timer_9h as Timer9h,
                             ldc.Timer_11h as Timer11h,
@@ -175,11 +185,7 @@ class SongModel:
                             ldc.Timer_6m as Timer6m,
                             ldc.Timer_9m as Timer9m, 
                             ldc.Timer_11m as Timer11m,
-                            ldc.Timer_13h as Timer13h,
-                            ldc.Tap as Tap,
-                            ldc.Long as Long,
-                            ldc.Flick as Flick,
-                            ldc.Slide as Slide
+                            ldc.Timer_13h as Timer13h
                     FROM live_detail_cache as ldc
                 """
         data = db.cachedb.execute_and_fetchall(query, out_dict=True)

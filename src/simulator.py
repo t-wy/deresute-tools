@@ -214,22 +214,27 @@ class Simulator:
                               special_option=special_option, special_value=special_value)
         grand = self.live.is_grand
 
-        cc_great_num = 0
         if self.cc_great > 0:
             cc_fr_results = self._simulate_internal(times=times, grand=grand, fail_simulate=False,
                                               doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
-            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num = cc_fr_results
+            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num_list = cc_fr_results
             
             cc_results = self._simulate_internal(times=times, grand=grand, fail_simulate=True,
                                               doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
             _, _, cc_random_simulation_results, _, _, _, _ = cc_results
                         
             cc_fr_array = np.array([_[0] for _ in cc_fr_random_simulation_results])
-            cc_fr_base = int(cc_fr_array.mean())
+            cc_fr_num_score_list = [(cc_great_num_list[_], cc_fr_array[_]) for _ in range(len(cc_great_num_list))]
+            cc_fr_num_score_list.sort()
+            if len(cc_fr_num_score_list) % 2 == 0:
+                cc_fr_num_score_list = cc_fr_num_score_list[:-1]
+            m = cc_fr_num_score_list[len(cc_fr_num_score_list)//2]
+            cc_great_num = m[0]
+            cc_fr_base = int(m[1])
             cc_array = np.array([_[0] for _ in cc_random_simulation_results])
-            cc_base = int(cc_array.mean())
+            cc_base = int(np.median(cc_array))
         else:
-            cc_fr_base, cc_base = 0, 0
+            cc_fr_base, cc_great_num, cc_base = 0, 0, 0
         
         results = self._simulate_internal(times=times, grand=grand, fail_simulate=not perfect_play,
                                           doublelife=doublelife, perfect_only=perfect_only, abuse=abuse, cc_great=0)
@@ -312,15 +317,13 @@ class Simulator:
                 impl.reset_machine(perfect_play=False, perfect_only=perfect_only)
                 scores.append(impl.simulate_impl())
 
-        cc_great_total = 0
-        cc_great_num = 0
+        cc_great_num = list()
         if cc_great > 0:
             if not fail_simulate: #fr
                 for _ in range(times):
                     impl.reset_machine(perfect_play=True, perfect_only=True)
                     scores.append(impl.simulate_impl())
-                    cc_great_total += impl.get_cc_great_num()
-                cc_great_num = cc_great_total / times
+                    cc_great_num.append(impl.get_cc_great_num())
             else: #not fr
                 for _ in range(times):
                     impl.reset_machine(perfect_play=False, perfect_only=True)

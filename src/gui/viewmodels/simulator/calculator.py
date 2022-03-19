@@ -644,9 +644,9 @@ class CalculatorModel:
             self.view.fill_column(False, 10, row, int(results.abuse_score))
         self.view.fill_column(False, 11, row, float(int(results.full_roll_chance * 10000) / 100))
         if results.cc_great_num > 0:
-            self.view.fill_column(False, 12, row, int(results.cc_fr_base))
+            self.view.fill_column(False, 12, row, results.cc_fr_base)
             self.view.fill_column(False, 13, row, results.cc_great_num)
-            self.view.fill_column(False, 14, row, int(results.cc_base))
+            self.view.fill_column(False, 14, row, results.cc_base)
 
     def _process_auto_results(self, results: AutoSimulationResult, row=None):
         # ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time", "All Skills 100%?"]
