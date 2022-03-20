@@ -483,7 +483,7 @@ class BaseChartPicGenerator(ABC):
     def save_image(self):
         path = CHART_PICS_PATH / "{}-{}.png".format(self.song_id, self.difficulty)
         storage.exists(path)
-        for n in range(len(self.label)): self.label[n].pixmap().save("{}_{}.png".format(str(path[:-4]), n))
+        for n in range(len(self.label)): self.label[n].pixmap().save("{}_{}.png".format(str(path)[:-4], n))
 
 
 class BasicChartPicGenerator(BaseChartPicGenerator):
