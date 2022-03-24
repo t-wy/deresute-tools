@@ -12,6 +12,7 @@ from gui.events.state_change_events import ShutdownTriggeredEvent, BackupFlagsEv
 from gui.events.utils import eventbus
 from gui.viewmodels.card import CardView, CardModel, IconLoaderView, IconLoaderModel
 from gui.viewmodels.custom_card import CustomView
+from gui.viewmodels.chart_viewer import ChartViewer
 from gui.viewmodels.potential import PotentialView, PotentialModel
 from gui.viewmodels.quicksearch import QuickSearchView, QuickSearchModel, SongQuickSearchView, SongQuickSearchModel
 from gui.viewmodels.simulator.wide_smart import MainView, MainModel
@@ -198,19 +199,12 @@ class UiMainWindow:
         self.simulation_songsearch_view = SongQuickSearchView(self.central_widget)
         self.simulation_songsearch_model = SongQuickSearchModel(self.simulation_songsearch_view, self.simulation_song_view)
         self.simulation_songsearch_view.set_model(self.simulation_songsearch_model)
-        hl = QHBoxLayout()
-        hl.addWidget(self.simulation_songsearch_view.widget)
-        chart_viewer_button = QPushButton("Popup Chart Viewer")
-        hl.addWidget(chart_viewer_button)
-        chart_viewer_button.pressed.connect(lambda: eventbus.eventbus.post(PopupChartViewerEvent(look_for_chart=True)))
-        self.simulation_song_layout.addLayout(hl)
+        self.simulation_song_layout.addWidget(self.simulation_songsearch_view.widget)
         self.simulation_bottom_layout.addLayout(self.simulation_song_layout, 7)
         self.simulation_layout.addLayout(self.simulation_bottom_layout, 1, 0, 1, 1)
         
-        self.simulation_chart_layout = QVBoxLayout()
-        self.simulation_chart = QScrollArea(self.main)
-        self.simulation_chart_layout.addWidget(self.simulation_chart)
-        self.simulation_layout.addLayout(self.simulation_chart_layout, 0, 1, 2, 1)
+        self.simulation_chart_viewer = ChartViewer(self.main)
+        self.simulation_layout.addWidget(self.simulation_chart_viewer.widget, 0, 1, 2, 1)
         
         self.simulator.addTab(self.simulation_widget, "Simulation")
         self.simulator_layout.addWidget(self.simulator)

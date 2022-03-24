@@ -34,7 +34,9 @@ LANE_DISTANCE_GRAND = 20
 SKILL_PAINT_WIDTH_GRAND = 18
 
 WINDOW_HEIGHT = 800
-MAX_WINDOW_WIDTH = 500
+WINDOW_WIDTH = 500
+
+SCROLL_WIDTH = 19
 
 NOTE_PICS = {
     filename: QImage(str(RHYTHM_ICONS_PATH / filename))
@@ -143,10 +145,10 @@ class BaseChartPicGenerator(ABC):
 
     unit = None
 
-    def __init__(self, song_id, difficulty, main_window, grand, reset_main=True, mirrored=False):
+    def __init__(self, song_id, difficulty, parent, grand, reset_main=True, mirrored=False):
         self.song_id = song_id
         self.difficulty = difficulty
-        self.main = main_window
+        self.viewer = parent
         self.grand = grand
         if grand:
             self.lane_count = 15
@@ -167,8 +169,6 @@ class BaseChartPicGenerator(ABC):
         self.generate_note_objects()
 
         self.initialize_ui()
-        if reset_main:
-            self.main.setGeometry(200, 200, self.x_max, self.y_max)
 
         self.p = list()        
         for _ in range(self.n_label):        
@@ -181,7 +181,7 @@ class BaseChartPicGenerator(ABC):
     def mirror_generator(self, mirrored):
         if self.mirrored == mirrored:
             return self
-        return BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self.main, reset_main=False,
+        return BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self.viewer, reset_main=False,
                                                    mirrored=mirrored)
 
     @classmethod
@@ -241,9 +241,9 @@ class BaseChartPicGenerator(ABC):
         # Scroll to bottom
         vbar = scroll.verticalScrollBar()
         vbar.setValue(vbar.maximum())
-        self.main.setCentralWidget(scroll)
-        self.y_max = WINDOW_HEIGHT
-        self.x_max = min(MAX_WINDOW_WIDTH, self.x_total + 20)
+        self.viewer.widget.layout.replaceWidget(self.viewer.chart_widget, scroll)
+        self.viewer.chart_widget = scroll
+        self.viewer.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
 
     def get_x(self, lane):
         return X_MARGIN + lane * self.LANE_DISTANCE

@@ -1,7 +1,8 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QMainWindow, QApplication
+from PyQt5.QtGui import QPixmap, QPainter
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget
 
-from chart_pic_generator import BaseChartPicGenerator
+from chart_pic_generator import BaseChartPicGenerator, WINDOW_WIDTH, SCROLL_WIDTH, MAX_LABEL_Y
 from gui.events.chart_viewer_events import SendMusicEvent, HookAbuseToChartViewerEvent, HookUnitToChartViewerEvent, \
     ToggleMirrorEvent, PopupChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
@@ -26,15 +27,31 @@ class ChartViewerListener:
             eventbus.eventbus.post(SendMusicEvent(score_id, diff_id))
 
 
-class ChartViewer(QMainWindow):
+class ChartViewer:
     def __init__(self, parent, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.parent = parent
         self.generator = None
+        
+        self.widget = QWidget(parent)
+        self.widget.layout = QVBoxLayout(self.widget)
+        self.info_widget = QWidget() #QStackedWidget
+        self.chart_widget = QScrollArea()
+        self.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
+        self.widget.layout.addWidget(self.info_widget)
+        self.widget.layout.addWidget(self.chart_widget)
+        
+        label = QLabel()
+        canvas = QPixmap(WINDOW_WIDTH, MAX_LABEL_Y)
+        label.setPixmap(canvas)
+        painter = QPainter(label.pixmap())
+        painter.fillRect(0, 0, canvas.width(), canvas.height(), Qt.black)
+        label.repaint()
+        self.chart_widget.setWidget(label)
+        vbar = self.chart_widget.verticalScrollBar()
+        vbar.setValue(vbar.maximum())
+        
         eventbus.eventbus.register(self)
-        self.setGeometry(200, 200, 520, 800)
-        self.setWindowTitle("Chart Viewer")
-        self.show()
 
     @subscribe(SendMusicEvent)
     def hook_music(self, event: SendMusicEvent):
@@ -60,16 +77,12 @@ class ChartViewer(QMainWindow):
             return
         self.generator = self.generator.mirror_generator(event.mirrored)
 
+    '''
     def keyPressEvent(self, event):
         key = event.key()
         if QApplication.keyboardModifiers() == Qt.ControlModifier and key == Qt.Key_S:
             self.generator.save_image()
-
-    def closeEvent(self, *args, **kwargs):
-        eventbus.eventbus.unregister(self)
-        self.generator = None
-        self.parent.chart_viewer = None
-        super().closeEvent(*args, **kwargs)
+    '''
 
 
 listener = ChartViewerListener()
