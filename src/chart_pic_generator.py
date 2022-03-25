@@ -53,8 +53,9 @@ CACHED_GRAND_NOTE_PICS = dict()
 
 
 class ChartPicNote:
-    def __init__(self, sec, note_type, lane, sync, qgroup, group_id, delta, early, late, right_flick=False,
+    def __init__(self, num, sec, note_type, lane, sync, qgroup, group_id, delta, early, late, right_flick=False,
                  grand=False, span=0, great=False):
+        self.num = num
         self.sec = sec
         self.lane = int(lane)
         self.sync = sync
@@ -169,6 +170,7 @@ class BaseChartPicGenerator(ABC):
         if self.notes is None:
             self.notes = fetch_chart(None, song_id, difficulty, event=True, skip_load_notes=False)[0]
         self.notes['finishPos'] -= 1
+        self.notes_offset = [0] * len(self.notes)
         self.mirrored = mirrored
         if mirrored:
             if not grand:
@@ -177,6 +179,8 @@ class BaseChartPicGenerator(ABC):
                 self.notes['finishPos'] = 15 - (self.notes['finishPos'] + self.notes['status'])
         self.notes_into_group()
         self.generate_note_objects()
+
+        self.skill_inactive_list = [[] for _ in range(15)]
 
         self.initialize_ui()
 
@@ -290,7 +294,7 @@ class BaseChartPicGenerator(ABC):
                     early = 0
                     late = 0
                     great = False
-                note_object = ChartPicNote(sec=row['sec'], note_type=row['note_type'], lane=row['finishPos'],
+                note_object = ChartPicNote(num=_+1, sec=row['sec'], note_type=row['note_type'], lane=row['finishPos'],
                                            sync=row['sync'], qgroup=n, group_id=row['groupId'],
                                            delta=delta, early=early, late=late, right_flick=right_flick,
                                            grand=self.grand, span=row['status'] - 1 if self.grand else 0,
@@ -349,6 +353,9 @@ class BaseChartPicGenerator(ABC):
                 if skill.skill_type is None:
                     skill_time += 1
                     continue
+                if skill_time - 1 in self.skill_inactive_list[card_idx]:
+                    skill_time += 1
+                    continue
                 skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
                 self.p[label].setPen(QPen())
                 self.p[label].setBrush(skill_brush)
@@ -398,10 +405,18 @@ class BaseChartPicGenerator(ABC):
     def draw_notes(self):
         pass
 
-    def _is_double_drawn_note(self, note: ChartPicNote):
+    def _is_double_drawn_note(self, note: ChartPicNote, direction = 0):
+        assert direction in [-1, 0, 1]
         for _ in range(self.n_label):
             if MAX_SECS_PER_LABEL * _ - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= note.sec <= MAX_SECS_PER_LABEL * _ + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT:
-                return True
+                if direction == 0:
+                    return True
+                elif direction == 1:
+                    if note.qgroup == _ + 1:
+                        return True
+                else:
+                    if note.qgroup == _:
+                        return True
         return False
 
     def draw_sync_lines(self):
@@ -490,6 +505,15 @@ class BaseChartPicGenerator(ABC):
         path = QPainterPath()
         path.addText(x, y + 40, font, "{} {}".format(note.early, note.late))
         self.p[label].drawPath(path)
+
+    def draw_offset(self):
+        for label_idx, label in enumerate(self.note_labels):
+            for note in label:
+                if self.notes_offset[note.num-1] == 0:
+                    continue
+                x = self.get_x(note.lane + note.span / 2) - note.note_pic_smol.width() // 2
+                y = self.get_y(note.sec + self.notes_offset[note.num-1] / 1000, label_idx)
+                self.p[label_idx].drawImage(QPoint(x, y), note.note_pic_smol)
 
     def save_image(self):
         path = CHART_PICS_PATH / "{}-{}.png".format(self.song_id, self.difficulty)
