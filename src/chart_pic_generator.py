@@ -20,23 +20,29 @@ from static.skill import SKILL_BASE
 from static.song_difficulty import Difficulty
 from utils import storage
 
-SEC_HEIGHT = 500
 X_MARGIN = 110
+LANE_DISTANCE = 70
+SKILL_PAINT_WIDTH = 60
+SEC_OFFSET_X = 105
+SEC_OFFSET_Y = 17
+SEC_FONT = 36
+
+X_MARGIN_GRAND = 75
+LANE_DISTANCE_GRAND = 25
+SKILL_PAINT_WIDTH_GRAND = 22
+SEC_OFFSET_X_GRAND = 86
+SEC_OFFSET_Y_GRAND = 15
+SEC_FONT_GRAND = 32
+
+SEC_HEIGHT = 500
 Y_MARGIN = 70
-RIGHT_MARGIN = 0
 MAX_LABEL_Y = 32000
 MAX_SECS_PER_LABEL = MAX_LABEL_Y // SEC_HEIGHT
 
-LANE_DISTANCE = 70
-SKILL_PAINT_WIDTH = 60
-
-LANE_DISTANCE_GRAND = 20
-SKILL_PAINT_WIDTH_GRAND = 18
-
-WINDOW_HEIGHT = 800
 WINDOW_WIDTH = 500
-
 SCROLL_WIDTH = 19
+
+ICON_HEIGHT = 45
 
 NOTE_PICS = {
     filename: QImage(str(RHYTHM_ICONS_PATH / filename))
@@ -140,8 +146,12 @@ class DraggableQScrollArea(QScrollArea):
 
 
 class BaseChartPicGenerator(ABC):
+    X_MARGIN = X_MARGIN
     LANE_DISTANCE = LANE_DISTANCE
     SKILL_PAINT_WIDTH = SKILL_PAINT_WIDTH
+    SEC_OFFSET_X = SEC_OFFSET_X
+    SEC_OFFSET_Y = SEC_OFFSET_Y
+    SEC_FONT = SEC_FONT
 
     unit = None
 
@@ -215,7 +225,7 @@ class BaseChartPicGenerator(ABC):
 
     def initialize_ui(self):
         self.y_total = self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN
-        self.x_total = (2 * X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE) + RIGHT_MARGIN
+        self.x_total = (2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE)
         
         self.chart_label = QWidget()
         self.chart_label_layout = QVBoxLayout(self.chart_label)
@@ -246,11 +256,12 @@ class BaseChartPicGenerator(ABC):
         self.viewer.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
 
     def get_x(self, lane):
-        return X_MARGIN + lane * self.LANE_DISTANCE
+        return self.X_MARGIN + lane * self.LANE_DISTANCE
 
     def get_y(self, sec, label):
-        y = (label + 1) * MAX_LABEL_Y - Y_MARGIN - sec * SEC_HEIGHT
-        if label == self.y_total // MAX_LABEL_Y: y -= MAX_LABEL_Y - self.y_total % MAX_LABEL_Y
+        y = (label + 1) * MAX_LABEL_Y - Y_MARGIN - sec * SEC_HEIGHT + label
+        if label == self.y_total // MAX_LABEL_Y:
+            y -= MAX_LABEL_Y - self.y_total % MAX_LABEL_Y
         return y
     
     # Lanes start from 0
@@ -262,8 +273,8 @@ class BaseChartPicGenerator(ABC):
         self.note_labels = list()
         for n in range(self.n_label):
             group = list()
-            df_slice = self.notes[(n * MAX_SECS_PER_LABEL - Y_MARGIN / SEC_HEIGHT <= self.notes['sec']) &
-                                  (self.notes['sec'] <= (n + 1) * MAX_SECS_PER_LABEL + Y_MARGIN / SEC_HEIGHT)]
+            df_slice = self.notes[(n * MAX_SECS_PER_LABEL - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= self.notes['sec']) &
+                                  (self.notes['sec'] <= (n + 1) * MAX_SECS_PER_LABEL + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT)]
             for _, row in df_slice.iterrows():
                 right_flick = row['note_type'] == NoteType.FLICK and (row['status'] == 2 and not self.grand) or (
                         row['type'] == 7 and self.grand)
@@ -358,7 +369,7 @@ class BaseChartPicGenerator(ABC):
 
     def draw_grid_and_secs(self):
         font = QFont()
-        font.setPixelSize(36)
+        font.setPixelSize(self.SEC_FONT)
         for p in self.p: p.setFont(font)
 
         vertical_grid_pen = QPen(QColor(80, 80, 80))
@@ -380,7 +391,7 @@ class BaseChartPicGenerator(ABC):
                     self.p[label].setPen(horizontal_grid_light_pen)
                 y = self.get_y(sec + MAX_LABEL_Y * label // SEC_HEIGHT, label)
                 self.p[label].drawLine(self.get_x(0), y, self.get_x(self.lane_count - 1), y)
-                self.p[label].drawText(QRect(self.get_x(0) - 105, y - 17, 70, 50), Qt.AlignRight,
+                self.p[label].drawText(QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 50), Qt.AlignRight,
                                 str(sec + MAX_LABEL_Y * label // SEC_HEIGHT))
 
     @abstractmethod
@@ -389,7 +400,7 @@ class BaseChartPicGenerator(ABC):
 
     def _is_double_drawn_note(self, note: ChartPicNote):
         for _ in range(self.n_label):
-            if MAX_SECS_PER_LABEL * _ - Y_MARGIN / SEC_HEIGHT <= note.sec <= MAX_SECS_PER_LABEL * _ + Y_MARGIN / SEC_HEIGHT:
+            if MAX_SECS_PER_LABEL * _ - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= note.sec <= MAX_SECS_PER_LABEL * _ + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT:
                 return True
         return False
 
@@ -505,8 +516,12 @@ class BasicChartPicGenerator(BaseChartPicGenerator):
                 self.p[label_idx].drawImage(QPoint(x, y), note.note_pic)
 
 class GrandChartPicGenerator(BaseChartPicGenerator):
+    X_MARGIN = X_MARGIN_GRAND
     LANE_DISTANCE = LANE_DISTANCE_GRAND
     SKILL_PAINT_WIDTH = SKILL_PAINT_WIDTH_GRAND
+    SEC_OFFSET_X = SEC_OFFSET_X_GRAND
+    SEC_OFFSET_Y = SEC_OFFSET_Y_GRAND
+    SEC_FONT = SEC_FONT_GRAND
 
     def _draw_group_line(self, note1, note2, label):
         group_line_pen = QPen(QColor(0, 0, 0, 0))
