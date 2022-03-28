@@ -43,7 +43,7 @@ def classify_note_vectorized(row):
     return np.choose(row.type - 3, [
         np.choose(row.status == 0, [NoteType.FLICK, np.choose(
             row.type - 1, [NoteType.TAP, NoteType.LONG, NoteType.SLIDE], mode="clip")]),
-        NoteType.TAP, NoteType.SLIDE, NoteType.FLICK, NoteType.FLICK], mode="clip")
+        NoteType.TAP, NoteType.SLIDE, NoteType.FLICK, NoteType.FLICK, NoteType.DAMAGE], mode="clip")
 
 
 def get_score_color(score_id):
