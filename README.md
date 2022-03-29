@@ -2,21 +2,38 @@
 
 For the compiled releases optimized for Windows 10, please refer to the [main branch](https://github.com/deresute-tools/deresute-tools).
 
-## Setup
+## Table of Contents
+- [Setup](#setup-)
+  - [Download the source code from the Download ZIP button.](#download-the-source-code-from-the-download-zip-button-)
+  - [Install Python](#install-python-)
+    - [Extra Note for Windows 7](#extra-note-for-windows-7-)
+  - [Add Python to System Path](#add-python-to-system-path-)
+    - [For Windows 10 (showing a listbox dialog)](#for-windows-10-showing-a-listbox-dialog-)
+    - [For Windows 7 or before (showing a textbox dialog)](#for-windows-7-or-before-showing-a-textbox-dialog-)
+  - [Verify if Python can be run from command](#verify-if-python-can-be-run-from-command-)
+  - [Verify if pip can be run from command](#verify-if-pip-can-be-run-from-command-)
+  - [Install the required packages](#install-the-required-packages-)
+  - [Start deresute-tools](#start-deresute-tools-)
+- [Troubleshooting](#troubleshooting-)
+  - [Qt5 error message / GUI issues](#qt5-error-message-is-shown--the-interface-looks-like-windows-xp--icons-thumbnails-are-not-shown-)
+  - [Mistakenly overwritten the PATH environment variable](#if-you-have-mistakenly-overwritten-the-path-environment-variable-value-instead-of-appending-the-new-path-at-the-end-)
+  - [sqlite3.OperationalError: table ... has no column named ...](#receiving-sqlite3operationalerror-table--has-no-column-named--)
+
+## Setup [^](#table-of-contents)
 
 _For those who are not able to use the release directly, or wish to modify the tool._
 
-### Download the source code from the Download ZIP button.
+### Download the source code from the Download ZIP button. [^](#table-of-contents)
 
 (If you know about version control using git / Github Desktop / etc., you can clone the repository instead.)
 
-### Install Python
+### Install Python [^](#table-of-contents)
 
 The compiled release comes with the Python interpreter and the required libraries, which you need to install manually if you are using the source code.
 
 If you do not have Python installed, please visit [Python](https://www.python.org/downloads/) to find the suitable version.
 
-#### Extra Note for Windows 7: 
+#### Extra Note for Windows 7: [^](#table-of-contents)
 - For last release version of Python 3 supported, please refer to:
   - [Python 3.8.10](https://www.python.org/downloads/release/python-3810/)
   - [Python 3.7.9](https://www.python.org/downloads/release/python-379/)
@@ -25,7 +42,7 @@ Download the Windows installer and follow the instructions to install.
 - (Please notice that the installer is using **.exe** extension downloaded from the link at the first column, not the .asc file (GPG signature from SIG) for integrity check at the last column)
 - (Check the "Add <ins>P</ins>ython 3.\_ to PATH", then you can skip the next part.)
 
-### Add Python to System Path
+### Add Python to System Path [^](#table-of-contents)
 
 ***(Skip this part if "Add <ins>P</ins>ython 3.\_ to PATH" option was checked when installing Python.)***
 
@@ -35,13 +52,13 @@ Choose the Advanced Tag, and then click the Environment Variables button at the 
 
 Find the "Path" variable in the System variables list, then click Edit.
 
-#### For Windows 10 (showing a listbox dialog):
+#### For Windows 10 (showing a listbox dialog) [^](#table-of-contents)
 
 Click New, then input `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 - (Please change it to the actual installation path of Python, where `User` refer to the user name, and `Python37` refer to the installed Python version)
 - Better add `C:\Users\User\AppData\Local\Programs\Python\Python37\Scripts` also.
 
-#### For Windows 7 or before (showing a textbox dialog):
+#### For Windows 7 or before (showing a textbox dialog) [^](#table-of-contents)
 
 **Please follow carefully to avoid overwriting the old environment variable entries**
 
@@ -56,7 +73,7 @@ Type `echo %PATH%` after `>`, then press \[Enter\], the content of the Path vari
 
 - Check if Python's path is listed there. (Supposed to be at the end if it is just added at the end.)
 
-### Verify if Python can be run from command
+### Verify if Python can be run from command [^](#table-of-contents)
 
 Type `python` in the Command Prompt, then press \[Enter\] to see if `Python` is launched.
 
@@ -64,7 +81,7 @@ Type `python` in the Command Prompt, then press \[Enter\] to see if `Python` is 
 
 Type `exit()` after `>>> ` to leave the Python shell.
 
-### Verify if pip can be run from command
+### Verify if pip can be run from command [^](#table-of-contents)
 
 Type `pip` in the Command Prompt, then press \[Enter\] to see if `pip` is launched.
 
@@ -74,7 +91,7 @@ If `pip` is not installed, you may need to install it via `python -m ensurepip -
 
 - If it is not working, check [the official documentation](https://pip.pypa.io/en/stable/installation/) for further guidance or troubleshooting.
 
-### Install the required packages
+### Install the required packages [^](#table-of-contents)
 
 *If you have other packages installed and may lead to conflicts, you may consider running the following steps via the (virtualenv)[https://docs.python.org/3/library/venv.html].*
 
@@ -82,7 +99,7 @@ Type `cd C:\...\...` in the command prompt, where `C:\...\...` is where the down
 
 Type `python -m pip install -r requirements.txt`, then press \[Enter\], the pip will install the packages stated in `requirements.txt`. Please be patient.
 
-### Start deresute-tools
+### Start deresute-tools [^](#table-of-contents)
 
 *Make sure that you are still in `C:\...\...` for the command prompt, make sure that `chihiro.py` is there.*
 
@@ -100,11 +117,11 @@ python chihiro.py
 
 Later you can double click this file to start the tool without typing in the command prompt.
 
-## Troubleshooting
+## Troubleshooting [^](#table-of-contents)
 
 Here some issues encountered by others when trying to start the tool are listed.
 
-### Qt5 error message is shown / The interface looks like Windows XP / Icons (Thumbnails) are not shown
+### Qt5 error message is shown / The interface looks like Windows XP / Icons (Thumbnails) are not shown [^](#table-of-contents)
 
 For the first case, the line before the tool is terminated should be something like the following:
 
@@ -127,7 +144,7 @@ From the environment variables dialog, press New to create a new entry.
 
 Try to start the tool again.
 
-### If you have mistakenly overwritten the PATH environment variable value instead of appending the new path at the end
+### If you have mistakenly overwritten the PATH environment variable value instead of appending the new path at the end [^](#table-of-contents)
 
 *(Make sure that you have not yet restarted the computer, otherwise this no longer helps)*
 
@@ -144,3 +161,9 @@ If this **Path** entry is corrupted, you may need to check the below paths inste
 - `HKLM\SYSTEM\ControlSet002\Control\Session Manager\Environment`
 
 - `...`
+
+### Receiving "sqlite3.OperationalError: table ... has no column named ..." [^](#table-of-contents)
+
+There may be a breaking change in the database.
+
+You may try to remove `chihiro.db` under `data/db` before retrying to see if the problem is resolved.
