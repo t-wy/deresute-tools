@@ -1,10 +1,11 @@
+import math
 import os
 import sys
 from abc import abstractmethod, ABC
 from collections import defaultdict
 
 from PyQt5.QtCore import Qt, QPoint, QRectF, QRect
-from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont, QBrush, QPainterPath, qRgba, QPolygonF
+from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont, QBrush, QPainterPath, qRgba, QPolygon, QPolygonF
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QScrollArea, QVBoxLayout, QWidget
 
 from exceptions import InvalidUnit
@@ -142,8 +143,8 @@ class DraggableQScrollArea(QScrollArea):
         delta = event.pos() - self.drag_start_position
         if delta.manhattanLength() < QApplication.startDragDistance():
             return
-        self.verticalScrollBar().setValue(self.original_y - delta.y() * 1.5)
-        self.horizontalScrollBar().setValue(self.original_x - delta.x() * 1.5)
+        self.verticalScrollBar().setValue(self.original_y - delta.y())
+        self.horizontalScrollBar().setValue(self.original_x - delta.x())
 
 
 class BaseChartPicGenerator(ABC):
@@ -181,6 +182,7 @@ class BaseChartPicGenerator(ABC):
         self.generate_note_objects()
 
         self.skill_inactive_list = [[] for _ in range(15)]
+        self.skills = []
 
         self.initialize_ui()
 
@@ -250,12 +252,17 @@ class BaseChartPicGenerator(ABC):
             
         for _ in range(self.n_label): self.chart_label_layout.addWidget(self.label[self.n_label - 1 - _])
 
+        self.pixmap_cache = [None] * self.n_label
         scroll = DraggableQScrollArea()
         scroll.setWidget(self.chart_label)
+        scroll.note_clickable_areas = []
+        scroll.skill_clickable_areas = []
+        scroll.mousePressEvent = self.mouse_pressed
         # Scroll to bottom
         vbar = scroll.verticalScrollBar()
         vbar.setValue(vbar.maximum())
         self.viewer.widget.layout.replaceWidget(self.viewer.chart_widget, scroll)
+        self.viewer.chart_widget.deleteLater()
         self.viewer.chart_widget = scroll
         self.viewer.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
 
@@ -267,6 +274,14 @@ class BaseChartPicGenerator(ABC):
         if label == self.y_total // MAX_LABEL_Y:
             y -= MAX_LABEL_Y - self.y_total % MAX_LABEL_Y
         return y
+    
+    def get_note_from_index(self, idx):
+        notes = sum(self.note_labels , [])
+        double_drawn_num = 0
+        for i in range(idx):
+            if self._is_double_drawn_note(notes[i], 1):
+                double_drawn_num += 1
+        return notes[idx + double_drawn_num]
     
     # Lanes start from 0
     def generate_note_objects(self, abuse_data: AbuseData = None):
@@ -308,7 +323,7 @@ class BaseChartPicGenerator(ABC):
         self.draw_group_lines()
         self.draw_notes()
 
-    def hook_cards(self, all_cards, redraw=True):
+    def hook_cards(self, all_cards):
         try:
             if len(all_cards) == 15:
                 unit = GrandUnit.from_list(all_cards)
@@ -321,14 +336,11 @@ class BaseChartPicGenerator(ABC):
             unit = unit.ua
         if unit == self.unit:
             return
-        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
         self.unit = unit
-        self.paint_skill()
-        self.draw()
-        if redraw:
-            for l in self.label: l.repaint()
 
     def paint_skill(self):
+        self.skills = []
+        self.viewer.chart_widget.skill_clickable_areas = []
         for card_idx, card in enumerate(self.unit.all_cards()):
             skill = card.sk
             interval = skill.interval
@@ -336,6 +348,8 @@ class BaseChartPicGenerator(ABC):
             skill_times = int((self.last_sec_float - 3) // interval)
             skill_time = 1
             label = 0
+            self.skills.append({'type' : skill.skill_type, 'time' : []})
+            self.viewer.chart_widget.skill_clickable_areas.append([])
             while label < self.n_label:
                 left = skill_time * interval
                 right = skill_time * interval + duration
@@ -372,6 +386,16 @@ class BaseChartPicGenerator(ABC):
                                 y,
                                 self.SKILL_PAINT_WIDTH,
                                 duration * SEC_HEIGHT)
+                
+                self.skills[card_idx]['time'].append((left, right))
+                
+                y_scroll = self.y_total - (Y_MARGIN + right * SEC_HEIGHT)
+                polygon = QPolygonF()
+                polygon.append(QPoint(x - self.SKILL_PAINT_WIDTH // 2, y_scroll))
+                polygon.append(QPoint(x - self.SKILL_PAINT_WIDTH // 2, y_scroll + duration * SEC_HEIGHT))
+                polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll + duration * SEC_HEIGHT))
+                polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll))
+                self.viewer.chart_widget.skill_clickable_areas[card_idx].append(polygon)
                 skill_time += 1
 
     def draw_grid_and_secs(self):
@@ -457,13 +481,9 @@ class BaseChartPicGenerator(ABC):
                     self._draw_group_line(l, r, group_idx)
 
     def hook_abuse(self, all_cards, abuse_data):
-        self.hook_cards(all_cards, False)
+        self.hook_cards(all_cards)
 
         self.generate_note_objects(abuse_data)
-        for group_idx, qt_group in enumerate(self.note_labels):
-            for note in qt_group:
-                self.draw_abuse(note, group_idx)
-        for l in self.label: l.repaint()
 
     def draw_abuse(self, note: ChartPicNote, label):
         if note.delta == 0:
@@ -520,6 +540,110 @@ class BaseChartPicGenerator(ABC):
         storage.exists(path)
         for n in range(len(self.label)): self.label[n].pixmap().save("{}_{}.png".format(str(path)[:-4], n))
 
+    def draw_default_chart(self):
+        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.draw()
+        for l in self.label: l.repaint()
+    
+    def draw_perfect_chart(self):
+        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.paint_skill()
+        self.draw()
+        for l in self.label: l.repaint()
+    
+    def draw_abuse_chart(self):
+        for group_idx, qt_group in enumerate(self.note_labels):
+            for note in qt_group:
+                self.draw_abuse(note, group_idx)
+        for l in self.label: l.repaint()
+    
+    def mouse_pressed(self, event):
+        scroll = self.viewer.chart_widget
+        super(DraggableQScrollArea, scroll).mousePressEvent(event)
+        if event.button() == Qt.LeftButton:
+            scroll.drag_start_position = event.pos()
+            scroll.original_y = scroll.verticalScrollBar().value()
+            scroll.original_x = scroll.horizontalScrollBar().value()
+            
+        pos = event.pos() + QPoint(scroll.original_x, scroll.original_y)
+        for idx, area in enumerate(scroll.note_clickable_areas):
+            if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                note = self.get_note_from_index(idx)
+                self.draw_selected_note(idx)
+                self.viewer.show_detail_note_info(str(note.num), "{:.3f}".format(note.sec), str(note.note_type)[9:])
+                return
+        
+        if self.viewer.chart_mode != 0:
+            for card_idx, card in enumerate(scroll.skill_clickable_areas):
+                for idx, area in enumerate(card):
+                    if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                        skill_type = self.skills[card_idx]['type']
+                        skill_type_text = SKILL_BASE[skill_type]['name']
+                        skill_time = self.skills[card_idx]['time'][idx]
+                        skill_time_text = "{:.1f} ~ {:.1f}".format(skill_time[0], skill_time[1])
+                        self.draw_selected_skill(card_idx, idx)
+                        self.viewer.show_detail_skill_info(skill_type_text, skill_time_text, "")
+                        return
+        self.draw_nothing_selected()
+        self.viewer.show_detail_nothing()
+
+    def draw_nothing_selected(self):
+        for label_idx, label in enumerate(self.note_labels):
+            if self.pixmap_cache[label_idx] is not None:
+                self.p[label_idx].drawImage(QPoint(0, 0), self.pixmap_cache[label_idx].toImage())
+                self.pixmap_cache[label_idx] = None
+        for l in self.label: l.repaint()
+    
+    def draw_selected_note(self, idx):
+        self.draw_nothing_selected()
+        num = self.get_note_from_index(idx).num
+        for label_idx, label in enumerate(self.note_labels):
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
+            
+            for note in label:
+                if note.num == num:
+                    self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+                    w = note.note_pic.width() + 4
+                    h = note.note_pic.height() + 4
+                    x = self.get_x(note.lane + note.span / 2)
+                    y = self.get_y(note.sec, label_idx)
+                    self.p[label_idx].drawRoundedRect(x - w // 2, y - h // 2, w, h, 2, 2)
+        for l in self.label: l.repaint()
+
+    def draw_selected_skill(self, card_idx, idx):
+        self.draw_nothing_selected()
+        for label_idx, label in enumerate(self.note_labels):
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
+            
+            left = self.skills[card_idx]['time'][idx][0]
+            right = self.skills[card_idx]['time'][idx][1]
+            duration = right - left
+            if left > ((label_idx + 1) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT + 3:
+                continue
+            if right < ((label_idx) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT - 3:
+                continue
+            self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+            draw_card_idx = card_idx
+            if self.grand:
+                if card_idx < 5:
+                    draw_card_idx += 5
+                elif 5 <= card_idx < 10:
+                    draw_card_idx -= 5
+            x = self.get_x(draw_card_idx)
+            y = self.get_y(right, label_idx)
+            w = self.SKILL_PAINT_WIDTH + 2
+            h = duration * SEC_HEIGHT
+            self.p[label_idx].drawRoundedRect(x - w // 2, y - 1, w, h, 2, 2)
+        for l in self.label: l.repaint()
+
 
 class BasicChartPicGenerator(BaseChartPicGenerator):
     def _draw_group_line(self, note1, note2, label):
@@ -535,9 +659,40 @@ class BasicChartPicGenerator(BaseChartPicGenerator):
     def draw_notes(self):
         for label_idx, label in enumerate(self.note_labels):
             for note in label:
-                x = self.get_x(note.lane) - note.note_pic.width() // 2
-                y = self.get_y(note.sec, label_idx) - note.note_pic.height() // 2
-                self.p[label_idx].drawImage(QPoint(x, y), note.note_pic)
+                w = note.note_pic.width()
+                h = note.note_pic.height()
+                x = self.get_x(note.lane)
+                y = self.get_y(note.sec, label_idx)
+                self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
+                
+                polygon = QPolygonF()
+                y_scroll = self.y_total - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                if note.note_type == NoteType.FLICK:
+                    if note.right_flick:
+                        for theta in range(60, 301, 30):
+                            px = x - w // 10 + h // 2 * math.cos(math.pi * (theta / 180))
+                            py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                            polygon.append(QPoint(px, py))
+                        vertex = QPoint(x + w // 2, y_scroll)
+                        polygon.append(QPoint(px + (vertex.x() - px) // 2, vertex.y() + (py - vertex.y()) // 2 + h // 12))
+                        polygon.append(vertex)
+                        polygon.append(QPoint(px + (vertex.x() - px) // 2, vertex.y() - (py - vertex.y()) // 2 - h // 12))
+                    else:
+                        for theta in range(240, 481, 30):
+                            px = x + w // 10 + h // 2 * math.cos(math.pi * (theta / 180))
+                            py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                            polygon.append(QPoint(px, py))
+                        vertex = QPoint(x - w // 2, y_scroll)
+                        polygon.append(QPoint(vertex.x() + (px - vertex.x()) // 2, vertex.y() - (vertex.y() - py) // 2 - h // 12))
+                        polygon.append(vertex)
+                        polygon.append(QPoint(vertex.x() + (px - vertex.x()) // 2, vertex.y() + (vertex.y() - py) // 2 + h // 12))
+                else:
+                    for theta in range(0, 360, 30):
+                        px = x + w // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                self.viewer.chart_widget.note_clickable_areas.append(polygon)
+
 
 class GrandChartPicGenerator(BaseChartPicGenerator):
     X_MARGIN = X_MARGIN_GRAND
@@ -569,9 +724,52 @@ class GrandChartPicGenerator(BaseChartPicGenerator):
     def draw_notes(self):
         for label_idx, label in enumerate(self.note_labels):
             for note in label:
-                x = self.get_x(note.lane + note.span / 2) - note.note_pic.width() // 2
-                y = self.get_y(note.sec, label_idx) - note.note_pic.height() // 2
-                self.p[label_idx].drawImage(QPoint(x, y), note.note_pic)
+                w = note.note_pic.width()
+                h = note.note_pic.height()
+                x = self.get_x(note.lane + note.span / 2)
+                y = self.get_y(note.sec, label_idx)
+                self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
+            
+                polygon = QPolygonF()
+                y_scroll = self.y_total - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                if note.note_type == NoteType.FLICK:
+                    if note.right_flick:
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 23, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll + h // 2))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 21, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 11, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane) - 21, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll - h // 2))
+                    else:
+                        polygon.append(QPoint(self.get_x(note.lane) - 23, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll + h // 2))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 21, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 11, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 21, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll - h // 2))
+                elif note.note_type == NoteType.TAP:
+                    for theta in range(90, 271, 30):
+                        px = self.get_x(note.lane) + 1 + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                    for theta in range(270, 451, 30):
+                        px = self.get_x(note.lane + note.span) - 1   + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                elif note.note_type == NoteType.SLIDE:
+                    for theta in range(90, 271, 30):
+                        px = self.get_x(note.lane) - 2 + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                    for theta in range(270, 451, 30):
+                        px = self.get_x(note.lane + note.span) + 2 + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                self.viewer.chart_widget.note_clickable_areas.append(polygon)
 
 
 if __name__ == '__main__':
