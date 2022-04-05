@@ -9,7 +9,7 @@ import customlogger as logger
 from exceptions import InvalidUnit
 from gui.events.calculator_view_events import GetAllCardsEvent, SimulationEvent, DisplaySimulationResultEvent, \
     AddEmptyUnitEvent, YoinkUnitEvent, PushCardEvent, ContextAwarePushCardEvent, TurnOffRunningLabelFromUuidEvent
-from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent
+from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent, HookSimResultToChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
 from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent
 from gui.events.utils import eventbus
@@ -308,6 +308,7 @@ class MainModel(QObject):
     @pyqtSlot(BaseSimulationResultWithUuid)
     def process_results(self, payload: BaseSimulationResultWithUuid):
         eventbus.eventbus.post(DisplaySimulationResultEvent(payload))
+        eventbus.eventbus.post(HookSimResultToChartViewerEvent(payload.results.perfect_detail), asynchronous=False)
         if payload.abuse_load:
             if not isinstance(payload.results, SimulationResult):
                 return

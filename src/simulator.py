@@ -36,7 +36,8 @@ class BaseSimulationResult:
 class SimulationResult(BaseSimulationResult):
     def __init__(self, total_appeal, perfect_score, perfect_score_array, base, deltas, total_life, fans,
                  full_roll_chance,
-                 abuse_score, abuse_data: AbuseData, cc_fr_base, cc_great_num, cc_base):
+                 abuse_score, abuse_data: AbuseData, cc_fr_base, cc_great_num, cc_base,
+                 perfect_detail = None):
         super().__init__()
         self.total_appeal = total_appeal
         self.perfect_score = perfect_score
@@ -51,6 +52,7 @@ class SimulationResult(BaseSimulationResult):
         self.cc_fr_base = cc_fr_base
         self.cc_great_num = cc_great_num
         self.cc_base = cc_base
+        self.perfect_detail = perfect_detail
 
 
 class AutoSimulationResult(BaseSimulationResult):
@@ -66,6 +68,16 @@ class AutoSimulationResult(BaseSimulationResult):
         self.lowest_life = lowest_life
         self.lowest_life_time = lowest_life_time
         self.all_100 = all_100
+
+
+class LiveDetail():
+    def __init__(self, note_offset, skill_inactive, life, score_bonus_skill, combo_bonus_skill, note_score_list):
+        self.note_offset = note_offset
+        self.skill_inactive = skill_inactive
+        self.life = life
+        self.score_bonus_skill = score_bonus_skill
+        self.combo_bonus_skill = combo_bonus_skill
+        self.note_score_list = note_score_list
 
 
 class Simulator:
@@ -217,11 +229,11 @@ class Simulator:
         if self.cc_great > 0:
             cc_fr_results = self._simulate_internal(times=times, grand=grand, fail_simulate=False,
                                               doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
-            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num_list = cc_fr_results
+            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num_list, _ = cc_fr_results
             
             cc_results = self._simulate_internal(times=times, grand=grand, fail_simulate=True,
                                               doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
-            _, _, cc_random_simulation_results, _, _, _, _ = cc_results
+            _, _, cc_random_simulation_results, _, _, _, _, _ = cc_results
                         
             cc_fr_array = np.array([_[0] for _ in cc_fr_random_simulation_results])
             cc_fr_num_score_list = [(cc_great_num_list[_], cc_fr_array[_]) for _ in range(len(cc_great_num_list))]
@@ -239,7 +251,7 @@ class Simulator:
         results = self._simulate_internal(times=times, grand=grand, fail_simulate=not perfect_play,
                                           doublelife=doublelife, perfect_only=perfect_only, abuse=abuse, cc_great=0)
         
-        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data, _ = results
+        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data, _, perfect_detail = results
         
         if perfect_play:
             base = perfect_score
@@ -279,8 +291,15 @@ class Simulator:
             abuse_score=int(abuse_score),
             abuse_data=abuse_data,
             cc_fr_base=cc_fr_base,
-            cc_great_num = cc_great_num,
+            cc_great_num=cc_great_num,
             cc_base=cc_base,
+            perfect_detail=LiveDetail(perfect_detail['note_offset'],
+                                      perfect_detail['skill_inactive'],
+                                      perfect_detail['life'],
+                                      perfect_detail['score_bonus_skill'],
+                                      perfect_detail['combo_bonus_skill'],
+                                      perfect_detail['score_list']
+                                      )
         )
 
     def _simulate_internal(self, grand, times, fail_simulate=False, doublelife=False, perfect_only=True, abuse=False,
@@ -307,7 +326,7 @@ class Simulator:
             return impl.simulate_impl_auto()
 
         impl.reset_machine(perfect_play=True, perfect_only=True)
-        perfect_score, perfect_score_array = impl.simulate_impl()
+        perfect_score, perfect_score_array, perfect_detail = impl.simulate_impl()
         logger.debug("Perfect scores: " + " ".join(map(str, impl.get_note_scores())))
         full_roll_chance = impl.get_full_roll_chance()
 
@@ -315,19 +334,19 @@ class Simulator:
         if cc_great == 0 and fail_simulate:
             for _ in range(times):
                 impl.reset_machine(perfect_play=False, perfect_only=perfect_only)
-                scores.append(impl.simulate_impl())
+                scores.append(impl.simulate_impl()[0:2])
 
         cc_great_num = list()
         if cc_great > 0:
             if not fail_simulate: #fr
                 for _ in range(times):
                     impl.reset_machine(perfect_play=True, perfect_only=True)
-                    scores.append(impl.simulate_impl())
+                    scores.append(impl.simulate_impl()[0:2])
                     cc_great_num.append(impl.get_cc_great_num())
             else: #not fr
                 for _ in range(times):
                     impl.reset_machine(perfect_play=False, perfect_only=True)
-                    scores.append(impl.simulate_impl())
+                    scores.append(impl.simulate_impl()[0:2])
                     
         abuse_result_score = 0
         abuse_data: AbuseData = None
@@ -336,7 +355,7 @@ class Simulator:
             abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
             logger.debug("Total abuse: {}".format(int(abuse_result_score)))
             logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
-        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, cc_great_num
+        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, cc_great_num, perfect_detail
 
     def _simulate_auto(self,
                        appeals=None,

@@ -304,11 +304,13 @@ class StateMachine:
         # Positive = activation, negative = deactivation.
         # E.g. 4 means the skill in slot 4 (counting from 1) activation, -4 means its deactivation
         self.skill_indices = list()
+        self.skill_inactive_list = list()
 
         # Transient values of a state
         self.skill_queue = dict()  # What skills are currently active
         self.life = self.live.get_start_life(doublelife=self.doublelife)
         self.max_life = self.live.get_start_life(doublelife=True)
+        self.life_list = list()
 
         self.combo = 0
         self.combos = list()
@@ -321,6 +323,13 @@ class StateMachine:
         self.np_score_bonuses = None
         self.np_score_great_bonuses = None
         self.np_combo_bonuses = None
+        
+        self.score_bonus_skills = list()
+        self.score_bonus_boost_skills = list()
+        self.score_great_bonus_skills = list()
+        self.score_great_bonus_boost_skills = list()
+        self.combo_bonus_skills = list()
+        self.combo_bonus_boost_skills = list()
 
         # Encore stuff
         self.last_activated_skill = list()
@@ -330,11 +339,16 @@ class StateMachine:
         self.has_skill_change = True
         self.cache_max_boosts = None
         self.cache_sum_boosts = None
+        self.cache_max_boosts_pointer = None
+        self.cache_sum_boosts_pointer = None
         self.cache_life_bonus = 0
         self.cache_support_bonus = 0
         self.cache_score_bonus = 0
         self.cache_combo_bonus = 0
         self.cache_score_great_bonus = 0
+        self.cache_score_bonus_skill = list()
+        self.cache_score_great_bonus_skill = list()
+        self.cache_combo_bonus_skill = list()
         self.cache_magics = dict()
         self.cache_non_magics = dict()
         self.cache_ls = dict()
@@ -490,6 +504,7 @@ class StateMachine:
         skill_times = list()
         skill_indices = list()
         for unit_idx, unit in enumerate(self.live.unit.all_units):
+            for _ in range(5): self.skill_inactive_list.append([])
             iterating_order = list()
             _cache_cached_classes = list()
             _cache_magic = list()
@@ -506,13 +521,15 @@ class StateMachine:
                 skill = copy.copy(card.skill)
                 idx = unit_idx * 5 + card_idx
                 self.reference_skills[idx + 1] = skill
-                if self.probabilities[idx] == 0:
-                    continue
                 times = int((self.notes_data.iloc[-1].sec - 3) // skill.interval)
                 skill_range = list(range(skill.offset + 1, times + 1, self.unit_offset))
+                if self.probabilities[idx] == 0:
+                    self.skill_inactive_list[idx] = skill_range
+                    continue
                 for act_idx in skill_range:
                     if self.probabilities[idx] < 1 and self.fail_simulate:
                         if random() > self.probabilities[idx]:
+                            self.skill_inactive_list[idx].append(act_idx)
                             continue
                     act = act_idx * skill.interval
                     deact = act_idx * skill.interval + skill.duration
@@ -530,6 +547,7 @@ class StateMachine:
     def simulate_impl(self, skip_activation_initialization=False) -> Tuple[int, object]:
         if not skip_activation_initialization:
             self.initialize_activation_arrays()
+        note_time_deltas = self.note_time_deltas.copy()
         while True:
             # Terminal condition: No more skills and no more notes
             if len(self.skill_times) == 0 and len(self.note_time_stack) == 0:
@@ -583,12 +601,19 @@ class StateMachine:
 
         if not self.fail_simulate and not self.abuse:
             self.cache_perfect_score_array = self.note_scores.copy()
+        
+        detail = {'note_offset' : note_time_deltas,
+                  'skill_inactive' : self.skill_inactive_list,
+                  'life' : self.life_list,
+                  'score_bonus_skill' : self.score_bonus_skills,
+                  'combo_bonus_skill' : self.combo_bonus_skills,
+                  'score_list' : self.note_scores.tolist()}
 
         if self.abuse:
             assert self.cache_perfect_score_array is not None
             return self._handle_abuse_results()
         else:
-            return int(self.note_scores.sum()), self.note_scores.tolist()
+            return int(self.note_scores.sum()), self.note_scores.tolist(), detail
 
     def simulate_impl_auto(self):
         self.initialize_activation_arrays()
@@ -841,6 +866,7 @@ class StateMachine:
             self._handle_note_abuse()
         else:
             self._handle_note_no_abuse()
+        self.life_list.append(self.life)
 
     def _handle_note_no_abuse(self):
         note_time = self.note_time_stack.pop(0)
@@ -855,8 +881,11 @@ class StateMachine:
         else:
             self.judgements.append(Judgement.PERFECT)
         self.score_bonuses.append(score_bonus)
+        self.score_bonus_skills.append(self.cache_score_bonus_skill)
         self.score_great_bonuses.append(score_great_bonus)
+        self.score_great_bonus_skills.append(self.cache_score_great_bonus_skill)
         self.combo_bonuses.append(combo_bonus)
+        self.combo_bonus_skills.append(self.cache_combo_bonus_skill)
         self.has_skill_change = False
 
     def _handle_note_abuse(self):
@@ -1110,7 +1139,8 @@ class StateMachine:
     def _evaluate_bonuses_phase_boost(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]]):
         if not self.has_skill_change:
             return self.cache_max_boosts, self.cache_sum_boosts
-
+        
+        boost_cache = list()
         magic_boosts = [
             # Score(Perfect), Score(Great) Combo, Life, Support
             [1000, 1000, 1000, 1000, 0],  # Cute
@@ -1121,6 +1151,7 @@ class StateMachine:
             for skill in skills:
                 if not skill.boost:
                     continue
+                boost_cache.append(skill)
                 for target in skill.targets:
                     for _ in range(5):
                         magic_boosts[target][_] = max(magic_boosts[target][_], skill.values[_])
@@ -1130,10 +1161,20 @@ class StateMachine:
             [1000, 1000, 1000, 1000, 0],
             [1000, 1000, 1000, 1000, 0]
         ]
+        max_boosts_pointer = [
+            [[], [], [], [], []],
+            [[], [], [], [], []],
+            [[], [], [], [], []]
+        ]
         sum_boosts = [
             [1000, 1000, 1000, 1000, 0],
             [1000, 1000, 1000, 1000, 0],
             [1000, 1000, 1000, 1000, 0]
+        ]
+        sum_boosts_pointer =[
+            [[], [], [], [], []],
+            [[], [], [], [], []],
+            [[], [], [], [], []]
         ]
 
         for non_magic_idx, skills in non_magics.items():
@@ -1143,17 +1184,30 @@ class StateMachine:
             for skill in skills:
                 if not skill.boost:
                     continue
+                boost_cache.append(skill)
                 for target in skill.targets:
                     for _ in range(5):
                         if _ < 4 and skill.values[_] == 0:
                             continue
+                        if skill.values[_] > max_boosts[target][_]:
+                            max_boosts_pointer[target][_] = [(non_magic_idx - 1, skill.skill_type, skill.values[_])]
                         max_boosts[target][_] = max(max_boosts[target][_], skill.values[_])
                         if _ == 4:
+                            if skill.values[_] != 0:
+                                sum_boosts_pointer[target][_].append((non_magic_idx - 1, skill.skill_type, skill.values[_]))
                             sum_boosts[target][_] = sum_boosts[target][_] + skill.values[_]
                         else:
+                            if skill.values[_] != 1000:
+                                sum_boosts_pointer[target][_].append((non_magic_idx - 1, skill.skill_type, skill.values[_]))
                             sum_boosts[target][_] = sum_boosts[target][_] + skill.values[_] - 1000
         for i in range(3):
             for j in range(5):
+                if len(magics) > 0:
+                    magic_idx = list(magics.keys())[0]
+                    if (j < 4 and magic_boosts[i][j] != 1000) or (j == 4 and magic_boosts[i][j] != 0):
+                        if magic_boosts[i][j] >= max_boosts[i][j]:
+                            max_boosts_pointer[i][j] = [(magic_idx - 1, 41, magic_boosts[i][j])]
+                        sum_boosts_pointer[i][j].append((magic_idx - 1, 41, magic_boosts[i][j]))
                 max_boosts[i][j] = max(max_boosts[i][j], magic_boosts[i][j])
                 sum_boosts[i][j] = sum_boosts[i][j] + magic_boosts[i][j]
                 if j < 4:
@@ -1165,6 +1219,8 @@ class StateMachine:
                 sum_boosts[i][j] /= 1000
         self.cache_max_boosts = max_boosts
         self.cache_sum_boosts = sum_boosts
+        self.cache_max_boosts_pointer = max_boosts_pointer
+        self.cache_sum_boosts_pointer = sum_boosts_pointer
         return max_boosts, sum_boosts
 
     def _evaluate_bonuses_phase_life_support(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
@@ -1245,13 +1301,24 @@ class StateMachine:
         temp_score_results = dict()
         temp_score_great_results = dict()
         temp_combo_results = dict()
+        temp_score_skills = dict()
+        temp_score_great_skills = dict()
+        temp_combo_skills = dict()
+        temp_score_boosts = dict()
+        temp_score_great_boosts = dict()
+        temp_combo_boosts = dict()
         for magic_idx, skills in magics.items():
             magic_idx = magic_idx - 1
             temp_score_results[magic_idx] = None
             temp_score_great_results[magic_idx] = None
             temp_combo_results[magic_idx] = None
+            temp_score_skills[magic_idx] = None
+            temp_score_great_skills[magic_idx] = None
+            temp_combo_skills[magic_idx] = None
             unit_idx = magic_idx // 5
             boost_dict = sum_boosts if self.live.unit.all_units[unit_idx].resonance else max_boosts
+            boost_pointer_dict = self.cache_sum_boosts_pointer if self.live.unit.all_units[unit_idx].resonance \
+                else self.cache_max_boosts_pointer
             
             for skill in skills:
                 if skill.boost:
@@ -1261,16 +1328,22 @@ class StateMachine:
                     continue
                 if temp_score_results[magic_idx] is None:
                     temp_score_results[magic_idx] = ceil(skill.v0 * boost_dict[color][0])
+                    temp_score_skills[magic_idx] = self.live.unit.get_card(magic_idx).skill
+                    temp_score_boosts[magic_idx] = boost_pointer_dict[color][0]
                 else:
                     temp_score_results[magic_idx] = max(temp_score_results[magic_idx],
                                                         ceil(skill.v0 * boost_dict[color][0]))
                 if temp_score_great_results[magic_idx] is None:
                     temp_score_great_results[magic_idx] = ceil(skill.v1 * boost_dict[color][1])
+                    temp_score_great_skills[magic_idx] = self.live.unit.get_card(magic_idx).skill
+                    temp_score_great_boosts[magic_idx] = boost_pointer_dict[color][1]
                 else:
                     temp_score_great_results[magic_idx] = max(temp_score_great_results[magic_idx],
                                                         ceil(skill.v1 * boost_dict[color][1]))
                 if temp_combo_results[magic_idx] is None:
                     temp_combo_results[magic_idx] = ceil(skill.v2 * boost_dict[color][2])
+                    temp_combo_skills[magic_idx] = self.live.unit.get_card(magic_idx).skill
+                    temp_combo_boosts[magic_idx] = boost_pointer_dict[color][2]
                 else:
                     temp_combo_results[magic_idx] = max(temp_combo_results[magic_idx],
                                                         ceil(skill.v2 * boost_dict[color][2]))
@@ -1291,23 +1364,42 @@ class StateMachine:
                 color = int(self.live.unit.get_card(non_magic_idx).color.value)
                 unit_idx = non_magic_idx // 5
                 boost_dict = sum_boosts if self.live.unit.all_units[unit_idx].resonance else max_boosts
+                boost_pointer_dict = self.cache_sum_boosts_pointer if self.live.unit.all_units[unit_idx].resonance \
+                    else self.cache_max_boosts_pointer
+                
                 if skill.v0 == 0 and skill.v1 == 0 and skill.v2 == 0:
                     continue
                 if skill.v0 > 0:
                     temp_score_results[non_magic_idx] = ceil(skill.v0 * boost_dict[color][0])
+                    temp_score_skills[non_magic_idx] = skill
+                    temp_score_boosts[non_magic_idx] = boost_pointer_dict[color][0]
                 elif skill.v0 < 0:
                     temp_score_results[non_magic_idx] = skill.v0
+                    temp_score_skills[non_magic_idx] = skill
+                    temp_score_boosts[non_magic_idx] = boost_pointer_dict[color][0]
                 if skill.v1 > 0:
                     temp_score_great_results[non_magic_idx] = ceil(skill.v1 * boost_dict[color][1])
+                    temp_score_great_skills[non_magic_idx] = skill
+                    temp_score_great_boosts[non_magic_idx] = boost_pointer_dict[color][1]
                 elif skill.v1 < 0:
                     temp_score_great_results[non_magic_idx] = skill.v1
+                    temp_score_great_skills[non_magic_idx] = skill
+                    temp_score_great_boosts[non_magic_idx] = boost_pointer_dict[color][1]
                 if skill.v2 > 0:
                     temp_combo_results[non_magic_idx] = ceil(skill.v2 * boost_dict[color][2])
+                    temp_combo_skills[non_magic_idx] = skill
+                    temp_combo_boosts[non_magic_idx] = boost_pointer_dict[color][2]
                 elif skill.v2 < 0:
                     temp_combo_results[non_magic_idx] = skill.v2
+                    temp_combo_skills[non_magic_idx] = skill
+                    temp_combo_boosts[non_magic_idx] = boost_pointer_dict[color][2]
+        
         unit_score_bonuses = list()
         unit_score_great_bonuses = list()
         unit_combo_bonuses = list()
+        unit_score_skills = list()
+        unit_score_great_skills = list()
+        unit_combo_skills = list()
         for unit_idx in range(len(self.live.unit.all_units)):
             agg_func = sum if self.live.unit.all_units[unit_idx].resonance else max
 
@@ -1317,25 +1409,47 @@ class StateMachine:
             unified_magic_score = None
             unified_magic_score_great = None
             unified_magic_combo = None
+            unified_magic_score_skill = None
+            unified_magic_score_great_skill = None
+            unified_magic_combo_skill = None
             unified_non_magic_score = None
             unified_non_magic_score_great = None
             unified_non_magic_combo = None
+            unified_non_magic_score_skill = list()
+            unified_non_magic_score_great_skill = list()
+            unified_non_magic_combo_skill = list()
             if len(unit_magics) >= 1:
                 for magic_idx in unit_magics:
                     if magic_idx in temp_score_results:
                         if unified_magic_score is None:
+                            unified_magic_score_skill = (magic_idx, temp_score_skills[magic_idx].skill_type,
+                                                         temp_score_results[magic_idx], temp_score_boosts[magic_idx])
                             unified_magic_score = temp_score_results[magic_idx]
                         else:
+                            if unified_magic_score < temp_score_results[magic_idx]:
+                                unified_magic_score_skill = (magic_idx, temp_score_skills[magic_idx].skill_type,
+                                                             temp_score_results[magic_idx], temp_score_boosts[magic_idx])
                             unified_magic_score = max((unified_magic_score, temp_score_results[magic_idx]))
+                            
                     if magic_idx in temp_score_great_results:
                         if unified_magic_score_great is None:
+                            unified_magic_score_great_skill = (magic_idx, temp_score_great_skills[magic_idx].skill_type,
+                                                               temp_score_great_results[magic_idx], temp_score_great_boosts[magic_idx])
                             unified_magic_score_great = temp_score_great_results[magic_idx]
                         else:
+                            if unified_magic_score_great < temp_score_great_results[magic_idx]:
+                                unified_magic_score_great_skill = (magic_idx, temp_score_great_skills[magic_idx].skill_type,
+                                                                   temp_score_great_results[magic_idx], temp_score_great_boosts[magic_idx])
                             unified_magic_score_great = max((unified_magic_score_great, temp_score_great_results[magic_idx]))
                     if magic_idx in temp_combo_results:
                         if unified_magic_combo is None:
+                            unified_magic_combo_skill = (magic_idx, temp_combo_skills[magic_idx].skill_type,
+                                                         temp_combo_results[magic_idx], temp_combo_boosts[magic_idx])
                             unified_magic_combo = temp_combo_results[magic_idx]
                         else:
+                            if unified_magic_combo < temp_combo_results[magic_idx]:
+                                unified_magic_combo_skill = (magic_idx, temp_combo_skills[magic_idx].skill_type,
+                                                             temp_combo_results[magic_idx], temp_combo_boosts[magic_idx])
                             unified_magic_combo = max((unified_magic_combo, temp_combo_results[magic_idx]))
             if unified_magic_score is None:
                 unified_magic_score = 0
@@ -1346,18 +1460,45 @@ class StateMachine:
             for non_magic in unit_non_magics:
                 if non_magic in temp_score_results:
                     if unified_non_magic_score is None:
+                        unified_non_magic_score_skill.append((non_magic, temp_score_skills[non_magic].skill_type,
+                                                              temp_score_results[non_magic], temp_score_boosts[non_magic]))
                         unified_non_magic_score = temp_score_results[non_magic]
                     else:
+                        if self.live.unit.all_units[unit_idx].resonance:
+                            unified_non_magic_score_skill.append((non_magic, temp_score_skills[non_magic].skill_type,
+                                                                  temp_score_results[non_magic], temp_score_boosts[non_magic]))
+                        else:
+                            if unified_non_magic_score < temp_score_results[non_magic]:
+                                unified_non_magic_score_skill[0] = (non_magic, temp_score_skills[non_magic].skill_type,
+                                                                    temp_score_results[non_magic], temp_score_boosts[non_magic])
                         unified_non_magic_score = agg_func((unified_non_magic_score, temp_score_results[non_magic]))
                 if non_magic in temp_score_great_results:
                     if unified_non_magic_score_great is None:
+                        unified_non_magic_score_great_skill.append((non_magic, temp_score_great_skills[non_magic].skill_type,
+                                                                    temp_score_great_results[non_magic], temp_score_great_boosts[non_magic]))
                         unified_non_magic_score_great = temp_score_great_results[non_magic]
                     else:
+                        if self.live.unit.all_units[unit_idx].resonance:
+                            unified_non_magic_score_great_skill.append((non_magic, temp_score_great_skills[non_magic].skill_type,
+                                                                        temp_score_great_results[non_magic], temp_score_great_boosts[non_magic]))
+                        else:
+                            if unified_non_magic_score_great < temp_score_great_results[non_magic]:
+                                unified_non_magic_score_great_skill[0] = (non_magic, temp_score_great_skills[non_magic].skill_type,
+                                                                          temp_score_great_results[non_magic], temp_score_great_boosts[non_magic])
                         unified_non_magic_score_great = agg_func((unified_non_magic_score_great, temp_score_great_results[non_magic]))
                 if non_magic in temp_combo_results:
                     if unified_non_magic_combo is None:
+                        unified_non_magic_combo_skill.append((non_magic, temp_combo_skills[non_magic].skill_type,
+                                                              temp_combo_results[non_magic], temp_combo_boosts[non_magic]))
                         unified_non_magic_combo = temp_combo_results[non_magic]
                     else:
+                        if self.live.unit.all_units[unit_idx].resonance:
+                            unified_non_magic_combo_skill.append((non_magic, temp_combo_skills[non_magic].skill_type,
+                                                                  temp_combo_results[non_magic], temp_combo_boosts[non_magic]))
+                        else:
+                            if unified_non_magic_combo < temp_combo_results[non_magic]:
+                                unified_non_magic_combo_skill[0] = (non_magic, temp_combo_skills[non_magic].skill_type,
+                                                                    temp_combo_results[non_magic], temp_combo_boosts[non_magic])
                         unified_non_magic_combo = agg_func((unified_non_magic_combo, temp_combo_results[non_magic]))
             if unified_non_magic_score is None:
                 unified_non_magic_score = 0
@@ -1368,15 +1509,56 @@ class StateMachine:
             unit_score_bonuses.append(agg_func((unified_magic_score, unified_non_magic_score)))
             unit_score_great_bonuses.append(agg_func((unified_magic_score_great, unified_non_magic_score_great)))
             unit_combo_bonuses.append(agg_func((unified_magic_combo, unified_non_magic_combo)))
+            if self.live.unit.all_units[unit_idx].resonance:
+                unified_non_magic_score_skill.append(unified_magic_score_skill)
+                unit_score_skills.append(unified_non_magic_score_skill)
+                unified_non_magic_score_great_skill.append(unified_magic_score_great_skill)
+                unit_score_great_skills.append(unified_non_magic_score_great_skill)
+                unified_non_magic_combo_skill.append(unified_magic_combo_skill)
+                unit_combo_skills.append(unified_non_magic_combo_skill)
+            else:
+                if unified_magic_score > unified_non_magic_score:
+                    unit_score_skills.append(unified_magic_score_skill)
+                else:
+                    unit_score_skills.append(unified_non_magic_score_skill)
+                if unified_magic_score_great > unified_non_magic_score_great:
+                    unit_score_great_skills.append(unified_magic_score_great_skill)
+                else:
+                    unit_score_great_skills.append(unified_non_magic_score_great_skill)
+                if unified_magic_combo > unified_non_magic_combo:
+                    unit_combo_skills.append(unified_magic_combo_skill)
+                else:
+                    unit_combo_skills.append(unified_non_magic_combo_skill)
         min_score_bonus = min(unit_score_bonuses)
+        min_score_bonus_index = unit_score_bonuses.index(min_score_bonus)
         max_score_bonus = max(unit_score_bonuses)
+        max_score_bonus_index = unit_score_bonuses.index(max_score_bonus)
         min_score_great_bonus = min(unit_score_great_bonuses)
+        min_score_great_bonus_index = unit_score_great_bonuses.index(min_score_great_bonus)
         max_score_great_bonus = max(unit_score_great_bonuses)
+        max_score_great_bonus_index = unit_score_great_bonuses.index(max_score_great_bonus)
         min_combo_bonus = min(unit_combo_bonuses)
+        min_combo_bonus_index = unit_combo_bonuses.index(min_combo_bonus)
         max_combo_bonus = max(unit_combo_bonuses)
-        self.cache_score_bonus = max_score_bonus if max_score_bonus > 0 else min_score_bonus
-        self.cache_score_great_bonus = max_score_great_bonus if max_score_great_bonus > 0 else min_score_great_bonus
-        self.cache_combo_bonus = max_combo_bonus if max_combo_bonus > 0 else min_combo_bonus
+        max_combo_bonus_index = unit_combo_bonuses.index(max_combo_bonus)
+        if max_score_bonus > 0:
+            self.cache_score_bonus = max_score_bonus
+            self.cache_score_bonus_skill = [_ for _ in unit_score_skills[max_score_bonus_index] if _]
+        else:
+            self.cache_score_bonus = min_score_bonus
+            self.cache_score_bonus_skill = [_ for _ in unit_score_skills[min_score_bonus_index] if _]
+        if max_score_great_bonus > 0:
+            self.cache_score_great_bonus = max_score_great_bonus
+            self.cache_score_great_bonus_skill = [_ for _ in unit_score_great_skills[max_score_great_bonus_index] if _]
+        else:
+            self.cache_score_great_bonus = min_score_great_bonus
+            self.cache_score_great_bonus_skill = [_ for _ in unit_score_great_skills[min_score_great_bonus_index] if _]
+        if max_combo_bonus > 0:
+            self.cache_combo_bonus = max_combo_bonus
+            self.cache_combo_bonus_skill = [_ for _ in unit_combo_skills[max_combo_bonus_index] if _]
+        else:
+            self.cache_combo_bonus = min_combo_bonus
+            self.cache_combo_bonus_skill = [_ for _ in unit_combo_skills[min_combo_bonus_index] if _]
         return self.cache_score_bonus, self.cache_score_great_bonus, self.cache_combo_bonus
 
     def _expand_magic(self):
