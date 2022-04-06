@@ -3,7 +3,7 @@ import math
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QPainter
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget, QLineEdit, QHBoxLayout, \
-    QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem
+    QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QApplication, QPushButton
 
 from chart_pic_generator import BaseChartPicGenerator, WINDOW_WIDTH, SCROLL_WIDTH, MAX_LABEL_Y
 from db import db
@@ -206,14 +206,10 @@ class ChartViewer:
         self.info_widget.skill_type_line.setText(skill_type)
         self.info_widget.skill_time_line.setText(time)
         self.info_widget.skill_prob_line.setText(prob)
-    
-    '''
-    def keyPressEvent(self, event):
-        key = event.key()
-        if QApplication.keyboardModifiers() == Qt.ControlModifier and key == Qt.Key_S:
-            self.generator.save_image()
-    '''
-    
+
+    def save_chart(self):
+        self.generator.save_image()
+
     def get_song_info_from_id(self, song_id, diff):
         data = db.cachedb.execute_and_fetchone("""
                     SELECT  name,
@@ -273,6 +269,9 @@ class ChartViewer:
         self.info_widget.level_layout.addWidget(self.info_widget.level_label)
         self.info_widget.level_layout.addWidget(self.info_widget.level_line)
         
+        self.info_widget.save = QPushButton("Save")
+        self.info_widget.save.clicked.connect(lambda: self.save_chart())
+        
         self.info_widget.total_notes_layout = QVBoxLayout()
         self.info_widget.total_notes_label = QLabel("Notes")
         self.info_widget.total_notes_label.setAlignment(Qt.AlignCenter)
@@ -287,6 +286,7 @@ class ChartViewer:
         self.info_widget.song_info_layout.addLayout(self.info_widget.difficulty_layout, 2)
         self.info_widget.song_info_layout.addLayout(self.info_widget.level_layout, 2)
         self.info_widget.song_info_layout.addLayout(self.info_widget.total_notes_layout, 2)
+        self.info_widget.song_info_layout.addWidget(self.info_widget.save, 2)
         self.info_widget.layout.addLayout(self.info_widget.song_info_layout)
     
     def _setup_chart_mode(self):
@@ -422,8 +422,10 @@ class ChartViewer:
         
         self.info_widget.note_score_skill = QTreeWidget()
         self.info_widget.note_score_skill.header().setVisible(False)
+        self.info_widget.note_score_skill.setFixedHeight(70)
         self.info_widget.note_combo_skill = QTreeWidget()
         self.info_widget.note_combo_skill.header().setVisible(False)
+        self.info_widget.note_combo_skill.setFixedHeight(70)
         
         self.info_widget.note_skills_layout = QHBoxLayout()
         self.info_widget.note_skills_layout.addWidget(self.info_widget.note_score_skill)

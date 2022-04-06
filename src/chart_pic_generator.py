@@ -45,6 +45,9 @@ SCROLL_WIDTH = 19
 
 ICON_HEIGHT = 45
 
+IMAGE_HEIGHT = 5000
+IMAGE_Y_MARGIN = 70
+
 NOTE_PICS = {
     filename: QImage(str(RHYTHM_ICONS_PATH / filename))
     for filename in os.listdir(str(RHYTHM_ICONS_PATH))
@@ -536,9 +539,40 @@ class BaseChartPicGenerator(ABC):
                 self.p[label_idx].drawImage(QPoint(x, y), note.note_pic_smol)
 
     def save_image(self):
-        path = CHART_PICS_PATH / "{}-{}.png".format(self.song_id, self.difficulty)
+        path = CHART_PICS_PATH / "{}-{}.png".format(self.song_id, str(self.difficulty)[11:])
+        uniq = 1
+        while os.path.exists(path):
+          path = CHART_PICS_PATH / "{}-{}({}).png".format(self.song_id, str(self.difficulty)[11:], uniq)
+          uniq += 1
         storage.exists(path)
-        for n in range(len(self.label)): self.label[n].pixmap().save("{}_{}.png".format(str(path)[:-4], n))
+        group_num = self.y_total // (IMAGE_HEIGHT - IMAGE_Y_MARGIN) + 1
+        self.saved_image = QImage(WINDOW_WIDTH * group_num, IMAGE_HEIGHT, QImage.Format_ARGB32)
+        self.saved_image.fill(qRgba(0, 0, 0, 255))
+        painter = QPainter(self.saved_image)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceAtop)
+        group = 0
+        y_current = 0
+        while y_current < self.y_total:
+            for n in range(self.n_label):
+                if n * MAX_LABEL_Y <= y_current and y_current + IMAGE_HEIGHT < (n+1) * MAX_LABEL_Y:
+                    if y_current + IMAGE_HEIGHT > self.y_total + Y_MARGIN: #Final part of the chart
+                        h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
+                        painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
+                    else:
+                        y = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y) - IMAGE_HEIGHT
+                        painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, IMAGE_HEIGHT))
+                    break
+                else:
+                    if n * MAX_LABEL_Y <= y_current + IMAGE_HEIGHT <= (n+1) * MAX_LABEL_Y:
+                        y = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y) - IMAGE_HEIGHT
+                        h = self.label[n].pixmap().height() - y
+                        painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, h))
+                    if n * MAX_LABEL_Y <= y_current < (n+1) * MAX_LABEL_Y:
+                        h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
+                        painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
+            y_current += IMAGE_HEIGHT - IMAGE_Y_MARGIN     
+            group += 1
+        self.saved_image.save(str(path))
 
     def draw_default_chart(self):
         for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
