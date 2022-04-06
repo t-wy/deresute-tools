@@ -172,7 +172,7 @@ You may try to remove `chihiro.db` under `data/db` before retrying to see if the
 
 You may be running 32-bit Python which numpy shows some problems on that.
 
-You can use 64-bit Python, or revert the changes in `src\network\chart_cache_updater` done by Smanmos manually:
+You can use 64-bit Python, or revert the changes in `src\network\chart_cache_updater.py` done by Smanmos manually (Notice that without vectorization the code may run slower):
 
 ```
 - from logic.live import classify_note_vectorized
