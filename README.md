@@ -18,6 +18,7 @@ For the compiled releases optimized for Windows 10, please refer to the [main br
   - [Qt5 error message / GUI issues](#qt5-error-message-is-shown--the-interface-looks-like-windows-xp--icons-thumbnails-are-not-shown-)
   - [Mistakenly overwritten the PATH environment variable](#if-you-have-mistakenly-overwritten-the-path-environment-variable-value-instead-of-appending-the-new-path-at-the-end-)
   - [sqlite3.OperationalError: table ... has no column named ...](#receiving-sqlite3operationalerror-table--has-no-column-named--)
+  - [TypeError: cast from dtype('int64') to dtype('int32')](#typeerror-cannot-cast-scalar-from-dtypeint64-to-dtypeint32-according-to-the-rule-safe-)
 
 ## Setup [^](#table-of-contents)
 
@@ -168,7 +169,7 @@ There may be a breaking change in the database.
 
 You may try to remove `chihiro.db` under `data/db` before retrying to see if the problem is resolved.
 
-### TypeError: Cannot cast scalar from dtype('int64') to dtype('int32') according to the rule 'safe'
+### TypeError: Cannot cast scalar from dtype('int64') to dtype('int32') according to the rule 'safe' [^](#table-of-contents)
 
 You may be running 32-bit Python which numpy shows some problems on that.
 
