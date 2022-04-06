@@ -167,3 +167,18 @@ If this **Path** entry is corrupted, you may need to check the below paths inste
 There may be a breaking change in the database.
 
 You may try to remove `chihiro.db` under `data/db` before retrying to see if the problem is resolved.
+
+### TypeError: Cannot cast scalar from dtype('int64') to dtype('int32') according to the rule 'safe'
+
+You may be running 32-bit Python which numpy shows some problems on that.
+
+You can use 64-bit Python, or revert the changes in `src\network\chart_cache_updater` done by Smanmos manually:
+
+```
+- from logic.live import classify_note_vectorized
++ from logic.live import classify_note
+- notes_data['note_type'] = classify_note_vectorized(notes_data)
++ notes_data['note_type'] = notes_data.apply(classify_note, axis=1)
+```
+
+
