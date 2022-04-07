@@ -21,10 +21,17 @@ from static.skill import SKILL_BASE
 from static.song_difficulty import Difficulty
 from utils import storage
 
+_QFont = QFont
+def QFont():
+    qf = _QFont('Sans Serif')
+    qf.setStyleHint(_QFont.SansSerif)
+    return qf
+
 SEC_HEIGHT = 500
 X_MARGIN = 100
 Y_MARGIN = 70
 RIGHT_MARGIN = 0
+LEFT_MARGIN = 50
 MAX_Y = 5000
 MAX_SECS_PER_GROUP = (MAX_Y - Y_MARGIN * 2) // SEC_HEIGHT
 
@@ -74,8 +81,10 @@ class ChartPicNote:
             note_file_prefix = "slide"
         elif self.note_type == NoteType.FLICK and self.right_flick:
             note_file_prefix = "flickr"
-        else:
+        elif self.note_type == NoteType.FLICK and not self.right_flick:
             note_file_prefix = "flickl"
+        else:
+            note_file_prefix = "damage"
         if self.grand:
             note_file_prefix = "g" + note_file_prefix
             self.note_pic = ChartPicNote.get_grand_note(note_file_prefix, self.span, False)
@@ -213,7 +222,7 @@ class BaseChartPicGenerator(ABC):
 
     def initialize_ui(self):
         self.y_total = MAX_SECS_PER_GROUP * SEC_HEIGHT + 2 * Y_MARGIN
-        self.x_total = (2 * X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE) * self.n_groups + RIGHT_MARGIN
+        self.x_total = LEFT_MARGIN + (2 * X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE) * self.n_groups + RIGHT_MARGIN
 
         self.label = QLabel()
         self.label.setAlignment(Qt.AlignBottom)
@@ -232,7 +241,7 @@ class BaseChartPicGenerator(ABC):
         self.x_max = min(MAX_WINDOW_WIDTH, self.x_total + 20)
 
     def get_x(self, lane, group):
-        return X_MARGIN + lane * self.LANE_DISTANCE + (
+        return LEFT_MARGIN + X_MARGIN + lane * self.LANE_DISTANCE + (
                 2 * X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE) * group
 
     def get_y(self, sec, group=None, offset_group=0):
@@ -369,8 +378,9 @@ class BaseChartPicGenerator(ABC):
                     self.p.setPen(horizontal_grid_light_pen)
                 y = self.get_y(sec, group=0)
                 self.p.drawLine(self.get_x(0, group), y, self.get_x(self.lane_count - 1, group), y)
-                self.p.drawText(QRect(self.get_x(0, group) - 111, y - 25, 70, 50), Qt.AlignRight,
-                                str(sec + MAX_SECS_PER_GROUP * group))
+                tm = sec + MAX_SECS_PER_GROUP * group
+                self.p.drawText(QRect(self.get_x(0, group) - 111, y - 25, 70, 100), Qt.AlignRight,
+                                "{}:{:0>2}\n{}".format(tm // 60, tm % 60, self.notes[self.notes['sec'] <= tm].shape[0]))
 
     @abstractmethod
     def draw_notes(self):
