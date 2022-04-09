@@ -185,6 +185,7 @@ class BaseChartPicGenerator(ABC):
         self.generate_note_objects()
 
         self.skill_inactive_list = [[] for _ in range(15)]
+        self.selected_skill = (-1, -1)
         self.skills = []
 
         self.initialize_ui()
@@ -370,10 +371,12 @@ class BaseChartPicGenerator(ABC):
                 if skill.skill_type is None:
                     skill_time += 1
                     continue
-                if skill_time - 1 in self.skill_inactive_list[card_idx]:
-                    skill_time += 1
-                    continue
-                skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
+                if not self.grand and skill_time - 1 in self.skill_inactive_list[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                elif self.grand and (skill_time - 1) // 3 in self.skill_inactive_list[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                else:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
                 self.p[label].setPen(QPen())
                 self.p[label].setBrush(skill_brush)
                 # Need to convert grand lane
@@ -390,6 +393,10 @@ class BaseChartPicGenerator(ABC):
                                 self.SKILL_PAINT_WIDTH,
                                 duration * SEC_HEIGHT)
                 
+                skill_time += 1
+                
+                if (left, right) in self.skills[card_idx]['time']:
+                    continue
                 self.skills[card_idx]['time'].append((left, right))
                 
                 y_scroll = self.y_total - (Y_MARGIN + right * SEC_HEIGHT)
@@ -399,7 +406,6 @@ class BaseChartPicGenerator(ABC):
                 polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll + duration * SEC_HEIGHT))
                 polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll))
                 self.viewer.chart_widget.skill_clickable_areas[card_idx].append(polygon)
-                skill_time += 1
 
     def draw_grid_and_secs(self):
         font = QFont()
@@ -578,18 +584,21 @@ class BaseChartPicGenerator(ABC):
         for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
         self.draw()
         for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
     
     def draw_perfect_chart(self):
         for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
         self.paint_skill()
         self.draw()
         for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
     
     def draw_abuse_chart(self):
         for group_idx, qt_group in enumerate(self.note_labels):
             for note in qt_group:
                 self.draw_abuse(note, group_idx)
         for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
     
     def mouse_pressed(self, event):
         scroll = self.viewer.chart_widget
@@ -611,6 +620,7 @@ class BaseChartPicGenerator(ABC):
             for card_idx, card in enumerate(scroll.skill_clickable_areas):
                 for idx, area in enumerate(card):
                     if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                        self.selected_skill = (card_idx, idx)
                         skill_type = self.skills[card_idx]['type']
                         skill_type_text = SKILL_BASE[skill_type]['name']
                         skill_time = self.skills[card_idx]['time'][idx]

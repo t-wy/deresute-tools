@@ -8,7 +8,8 @@ from PyQt5.QtWidgets import QSizePolicy, QTabWidget
 import customlogger as logger
 from exceptions import InvalidUnit
 from gui.events.calculator_view_events import GetAllCardsEvent, SimulationEvent, DisplaySimulationResultEvent, \
-    AddEmptyUnitEvent, YoinkUnitEvent, PushCardEvent, ContextAwarePushCardEvent, TurnOffRunningLabelFromUuidEvent
+    AddEmptyUnitEvent, YoinkUnitEvent, PushCardEvent, ContextAwarePushCardEvent, TurnOffRunningLabelFromUuidEvent, \
+    CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
 from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent, HookSimResultToChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
 from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent
@@ -318,6 +319,7 @@ class MainModel(QObject):
 
     @subscribe(SimulationEvent)
     def handle_simulation_request(self, event: SimulationEvent):
+        eventbus.eventbus.post(CacheSimulationEvent(event))
         event.live.set_unit(event.unit)
         if event.autoplay:
             logger.info("Simulation mode: Autoplay - {} - {}".format(event.short_uuid, event.unit))
@@ -352,6 +354,25 @@ class MainModel(QObject):
                                   output=event.theoretical_simulation)
         self.process_simulation_results_signal.emit(
             BaseSimulationResultWithUuid(event.uuid, event.unit.all_cards(), result, event.abuse_load))
+
+    @subscribe(CustomSimulationEvent)
+    def handle_custom_simulation(self, custom_event: CustomSimulationEvent):
+        event = custom_event.simulation_event
+        event.live.set_unit(event.unit)
+        
+        sim = Simulator(event.live, left_inclusive=event.left_inclusive, right_inclusive=event.right_inclusive,
+                        force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
+                        force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
+                        allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                        cc_great=0
+                        )
+        result = sim.simulate(perfect_play=True, times=1, appeals=event.appeals, support=event.support,
+                              extra_bonus=event.extra_bonus, special_option=event.special_option,
+                              special_value=event.special_value, doublelife=event.doublelife,
+                              abuse=False, perfect_only=False, output=False,
+                              inactive_skill=custom_event.skill_inactive_list)
+        
+        eventbus.eventbus.post(CustomSimulationResultEvent(result))
 
     def handle_yoink_button(self):
         _, _, live_detail_id, song_name, diff_name = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())

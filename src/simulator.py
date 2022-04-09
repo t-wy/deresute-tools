@@ -153,13 +153,21 @@ class Simulator:
     def simulate(self, times=100, appeals=None, extra_bonus=None, support=None, perfect_play=False,
                  chara_bonus_set=None, chara_bonus_value=0, special_option=None, special_value=None,
                  doublelife=False, perfect_only=True, abuse=False, output=False, auto=False, mirror=False,
-                 time_offset=0):
+                 time_offset=0, inactive_skill=None):
         start = time.time()
         logger.debug("Unit: {}".format(self.live.unit))
         logger.debug("Song: {} - {} - Lv {}".format(self.live.music_name, self.live.difficulty, self.live.level))
         if perfect_play or auto:
             times = 1
             logger.debug("Only need 1 simulation for perfect play or auto.")
+        
+        if inactive_skill is not None:
+            res = self._simulate_custom(appeals=appeals, extra_bonus=extra_bonus, support=support,
+                                         chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
+                                         special_option=special_option, special_value=special_value,
+                                         doublelife=doublelife, inactive_skill=inactive_skill)
+            return res
+        
         if not auto:
             res = self._simulate(times, appeals=appeals, extra_bonus=extra_bonus, support=support,
                                  perfect_play=perfect_play,
@@ -356,6 +364,51 @@ class Simulator:
             logger.debug("Total abuse: {}".format(int(abuse_result_score)))
             logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
         return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, cc_great_num, perfect_detail
+
+    def _simulate_custom(self,
+                  appeals=None,
+                  extra_bonus=None,
+                  support=None,
+                  chara_bonus_set=None,
+                  chara_bonus_value=0,
+                  special_option=None,
+                  special_value=None,
+                  doublelife=False,
+                  inactive_skill=[]
+                  ):
+        self._setup_simulator(appeals=appeals, support=support, extra_bonus=extra_bonus,
+                              chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
+                              special_option=special_option, special_value=special_value)
+        grand = self.live.is_grand
+        
+        impl = StateMachine(
+            grand=grand,
+            difficulty=self.live.difficulty,
+            doublelife=doublelife,
+            live=self.live,
+            notes_data=self.notes_data,
+            left_inclusive=self.left_inclusive,
+            right_inclusive=self.right_inclusive,
+            base_score=self.base_score,
+            helen_base_score=self.helen_base_score,
+            weights=self.weight_range,
+            force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
+            force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
+            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
+            cc_great=0,
+            custom_inactive_skill=inactive_skill
+        )
+        impl.reset_machine(perfect_play=True, perfect_only=True)
+        score, _, detail = impl.simulate_impl()
+        
+        score_detail = LiveDetail(detail['note_offset'],
+                                detail['skill_inactive'],
+                                detail['life'],
+                                detail['score_bonus_skill'],
+                                detail['combo_bonus_skill'],
+                                detail['score_list']
+                                )
+        return (score, score_detail)
 
     def _simulate_auto(self,
                        appeals=None,

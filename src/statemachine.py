@@ -73,17 +73,17 @@ class UnitCacheBonus:
         if skill.act is not None:
             self.tap = max(self.tap, skill.values[0])
             if skill.act is NoteType.LONG:
-                self.longg = max(self.longg, skill.values[1])
+                self.longg = max(self.longg, skill.values[2])
                 self.flick = max(self.flick, skill.values[0])
                 self.slide = max(self.slide, skill.values[0])
             elif skill.act is NoteType.FLICK:
                 self.longg = max(self.longg, skill.values[0])
-                self.flick = max(self.flick, skill.values[1])
+                self.flick = max(self.flick, skill.values[2])
                 self.slide = max(self.slide, skill.values[0])
             elif skill.act is NoteType.SLIDE:
                 self.longg = max(self.longg, skill.values[0])
                 self.flick = max(self.flick, skill.values[0])
-                self.slide = max(self.slide, skill.values[1])
+                self.slide = max(self.slide, skill.values[2])
             return
         if skill.v0 is not None and skill.v0 > 100:
             self.tap = max(self.tap, skill.v0)
@@ -223,7 +223,7 @@ class StateMachine:
                  force_encore_amr_cache_to_encore_unit=False,
                  force_encore_magic_to_encore_unit=False,
                  allow_encore_magic_to_escape_max_agg=False,
-                 cc_great=0):
+                 cc_great=0, custom_inactive_skill=None):
         self.left_inclusive = left_inclusive
         self.right_inclusive = right_inclusive
         self.force_encore_amr_cache_to_encore_unit = force_encore_amr_cache_to_encore_unit
@@ -241,6 +241,8 @@ class StateMachine:
 
         self.unit_offset = 3 if grand else 1
         self.weights = weights
+
+        self.custom_inactive_skill = custom_inactive_skill
 
         self._note_type_stack = self.notes_data.note_type.to_list()
         self._note_idx_stack = self.notes_data.index.to_list()
@@ -529,6 +531,14 @@ class StateMachine:
                 for act_idx in skill_range:
                     if self.probabilities[idx] < 1 and self.fail_simulate:
                         if random() > self.probabilities[idx]:
+                            self.skill_inactive_list[idx].append(act_idx)
+                            continue
+                    if self.unit_offset == 3:
+                        if self.custom_inactive_skill is not None and (act_idx - 1) // 3 in self.custom_inactive_skill[idx]:
+                            self.skill_inactive_list[idx].append(act_idx)
+                            continue
+                    else:
+                        if self.custom_inactive_skill is not None and act_idx - 1 in self.custom_inactive_skill[idx]:
                             self.skill_inactive_list[idx].append(act_idx)
                             continue
                     act = act_idx * skill.interval
@@ -1063,7 +1073,7 @@ class StateMachine:
             for skill in skills:
                 if skill.act is not None:
                     if skill.act in special_note_types:
-                        skill.v0 = skill.values[1]
+                        skill.v0 = skill.values[2]
                         skill.v1 = 0
                         skill.v2 = 0
                     else:
@@ -1376,7 +1386,7 @@ class StateMachine:
                 elif skill.v0 < 0:
                     temp_score_results[non_magic_idx] = skill.v0
                     temp_score_skills[non_magic_idx] = skill
-                    temp_score_boosts[non_magic_idx] = boost_pointer_dict[color][0]
+                    temp_score_boosts[non_magic_idx] = None
                 if skill.v1 > 0:
                     temp_score_great_results[non_magic_idx] = ceil(skill.v1 * boost_dict[color][1])
                     temp_score_great_skills[non_magic_idx] = skill
@@ -1384,7 +1394,7 @@ class StateMachine:
                 elif skill.v1 < 0:
                     temp_score_great_results[non_magic_idx] = skill.v1
                     temp_score_great_skills[non_magic_idx] = skill
-                    temp_score_great_boosts[non_magic_idx] = boost_pointer_dict[color][1]
+                    temp_score_great_boosts[non_magic_idx] = None
                 if skill.v2 > 0:
                     temp_combo_results[non_magic_idx] = ceil(skill.v2 * boost_dict[color][2])
                     temp_combo_skills[non_magic_idx] = skill
@@ -1392,7 +1402,7 @@ class StateMachine:
                 elif skill.v2 < 0:
                     temp_combo_results[non_magic_idx] = skill.v2
                     temp_combo_skills[non_magic_idx] = skill
-                    temp_combo_boosts[non_magic_idx] = boost_pointer_dict[color][2]
+                    temp_combo_boosts[non_magic_idx] = None
         
         unit_score_bonuses = list()
         unit_score_great_bonuses = list()
@@ -1518,15 +1528,18 @@ class StateMachine:
                 unit_combo_skills.append(unified_non_magic_combo_skill)
             else:
                 if unified_magic_score > unified_non_magic_score:
-                    unit_score_skills.append(unified_magic_score_skill)
+                    unit_score_skills.append(unified_magic_score_skill \
+                                             if unified_magic_score_skill is not None else [])
                 else:
                     unit_score_skills.append(unified_non_magic_score_skill)
                 if unified_magic_score_great > unified_non_magic_score_great:
-                    unit_score_great_skills.append(unified_magic_score_great_skill)
+                    unit_score_great_skills.append(unified_magic_score_great_skill \
+                                                   if unified_magic_score_great_skill is not None else [])
                 else:
                     unit_score_great_skills.append(unified_non_magic_score_great_skill)
                 if unified_magic_combo > unified_non_magic_combo:
-                    unit_combo_skills.append(unified_magic_combo_skill)
+                    unit_combo_skills.append(unified_magic_combo_skill \
+                                             if unified_magic_combo_skill is not None else [])
                 else:
                     unit_combo_skills.append(unified_non_magic_combo_skill)
         min_score_bonus = min(unit_score_bonuses)

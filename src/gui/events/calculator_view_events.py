@@ -96,3 +96,19 @@ class TurnOffRunningLabelFromUuidEvent:
 class ToggleUnitLockingOptionsVisibilityEvent:
     def __init__(self):
         pass
+
+
+class CacheSimulationEvent:
+    def __init__(self, event):
+        self.event = event
+        
+
+class CustomSimulationEvent:
+    def __init__(self, simulation_event, skill_inactive_list):
+        self.simulation_event = simulation_event
+        self.skill_inactive_list = skill_inactive_list
+
+
+class CustomSimulationResultEvent:
+    def __init__(self, result):
+        self.result = result

@@ -3,10 +3,11 @@ import math
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QPainter
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget, QLineEdit, QHBoxLayout, \
-    QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QApplication, QPushButton
+    QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QCheckBox, QPushButton, QSpinBox
 
 from chart_pic_generator import BaseChartPicGenerator, WINDOW_WIDTH, SCROLL_WIDTH, MAX_LABEL_Y
 from db import db
+from gui.events.calculator_view_events import CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
 from gui.events.chart_viewer_events import SendMusicEvent, HookAbuseToChartViewerEvent, HookUnitToChartViewerEvent, \
     ToggleMirrorEvent, HookSimResultToChartViewerEvent
 from gui.events.utils import eventbus
@@ -68,6 +69,7 @@ class ChartViewer:
         self.info_widget.mode_default_button.setChecked(True)
         self.info_widget.mode_perfect_button.setCheckable(False)
         self.info_widget.mode_abuse_button.setCheckable(False)
+        self.info_widget.mode_custom_button.setCheckable(False)
     
     #TODO: Handle unit and chart desync from using 'lock chart'
     
@@ -77,6 +79,10 @@ class ChartViewer:
             return
         self.generator.hook_abuse(event.cards, event.abuse_df)
         self.info_widget.mode_abuse_button.setCheckable(True)
+    
+    @subscribe(CacheSimulationEvent)
+    def cache_simulation_event(self, event: CacheSimulationEvent):
+        self.cache_simulation = event.event
     
     @subscribe(HookSimResultToChartViewerEvent)
     def hook_simulation_result(self, event: HookSimResultToChartViewerEvent):
@@ -92,12 +98,12 @@ class ChartViewer:
         for note in self.perfect_detail.score_bonus_skill:
             note.sort(key = lambda _: _[0])
             for skill in note:
-                if len(skill[3]) > 0:
+                if skill[3] is not None and len(skill[3]) > 0:
                     skill[3].sort(key = lambda _: _[0])
         for note in self.perfect_detail.combo_bonus_skill:
             note.sort(key = lambda _: _[0])
             for skill in note:
-                if len(skill[3]) > 0:
+                if skill[3] is not None and len(skill[3]) > 0:
                     skill[3].sort(key = lambda _: _[0])
         self.perfect_detail.score_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
                                                 for note in self.perfect_detail.score_bonus_skill]
@@ -110,6 +116,7 @@ class ChartViewer:
             return
         self.generator.hook_cards(event.cards)
         self.info_widget.mode_perfect_button.setCheckable(True)
+        self.info_widget.mode_custom_button.setCheckable(True)
 
     @subscribe(ToggleMirrorEvent)
     def toggle_mirror(self, event: ToggleMirrorEvent):
@@ -130,6 +137,14 @@ class ChartViewer:
             elif mode == 2:
                 self.generator.draw_perfect_chart()
                 self.generator.draw_abuse_chart()
+            elif mode == 3:
+                self.generator.draw_perfect_chart()
+                self.set_stacked_widget_index(self.info_widget.custom_widget, 1)
+            
+            if mode != 3:
+                self.set_stacked_widget_index(self.info_widget.custom_widget, 0)
+                self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
+                
             self.show_detail_nothing()
             self.generator.pixmap_cache = [None] * self.generator.n_label
 
@@ -149,6 +164,9 @@ class ChartViewer:
 
     def show_detail_nothing(self):
         self.set_stacked_widget_index(self.info_widget.detail_widget, 0)
+        
+        if self.chart_mode == 3:
+            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
     
     def show_detail_note_info(self, num, time, note_type):
         idx = int(num) - 1
@@ -157,7 +175,7 @@ class ChartViewer:
         self.info_widget.note_second_line.setText(time)
         self.info_widget.note_type_line.setText(note_type)
         
-        if self.chart_mode == 1 and self.perfect_detail != None:
+        if self.chart_mode in (1, 3) and self.perfect_detail != None:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 1)
             
             self.info_widget.note_life_line.setText(str(self.perfect_detail.life[idx]))
@@ -200,6 +218,9 @@ class ChartViewer:
                                                                 "{}{}%".format("+" if boost[2] >= 0 else "", str(round((boost[2] - 1000) / 10)))))
         else:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
+        
+        if self.chart_mode == 3:
+            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 1)
     
     def show_detail_skill_info(self, skill_type, time, prob):
         self.set_stacked_widget_index(self.info_widget.detail_widget, 2)
@@ -207,6 +228,15 @@ class ChartViewer:
         self.info_widget.skill_time_line.setText(time)
         self.info_widget.skill_prob_line.setText(prob)
 
+        if self.chart_mode == 3:
+            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 2)
+            idx = self.generator.selected_skill[0]
+            num = self.generator.selected_skill[1]
+            if num in self.generator.skill_inactive_list[idx]:
+                self.info_widget.custom_skill_active_line.setText("Not Activated")
+            else:
+                self.info_widget.custom_skill_active_line.setText("Activated")
+    
     def save_chart(self):
         self.generator.save_image()
 
@@ -220,6 +250,49 @@ class ChartViewer:
         diff_text = db.cachedb.execute_and_fetchone("SELECT text FROM difficulty_text WHERE id = ?", [diff])
         return data[0], diff_text[0], data[1], data[2]
 
+    def change_skill_activation(self):
+        idx = self.generator.selected_skill[0]
+        num = self.generator.selected_skill[1]
+        if num in self.generator.skill_inactive_list[idx]:
+            self.generator.skill_inactive_list[idx].remove(num)
+            self.info_widget.custom_skill_active_line.setText("Activated")
+        else:
+            self.generator.skill_inactive_list[idx].append(num)
+            self.info_widget.custom_skill_active_line.setText("Not Activated")
+        self.generator.draw_perfect_chart() #TODO : Optimize by redrawing partially
+        self.generator.draw_selected_skill(idx, num)
+    
+    def update_custom_chart(self):
+        self.generator.draw_perfect_chart()
+    
+    def simulate_custom(self):
+        eventbus.eventbus.post(CustomSimulationEvent(self.cache_simulation, self.generator.skill_inactive_list))
+    
+    @subscribe(CustomSimulationResultEvent)
+    def display_custom_simulation_result(self, event: CustomSimulationResultEvent):
+        self.info_widget.custom_total_line.setText(str(event.result[0]))
+        
+        self.perfect_detail = event.result[1]
+        self.perfect_detail.life = [int(_) for _ in self.perfect_detail.life]
+        self.perfect_detail.note_score_list = [int(_) for _ in self.perfect_detail.note_score_list]
+        total_score = 0
+        self.perfect_detail.cumulative_score_list = [total_score := total_score + score
+                                                     for score in self.perfect_detail.note_score_list]
+        for note in self.perfect_detail.score_bonus_skill:
+            note.sort(key = lambda _: _[0])
+            for skill in note:
+                if skill[3] is not None and len(skill[3]) > 0:
+                    skill[3].sort(key = lambda _: _[0])
+        for note in self.perfect_detail.combo_bonus_skill:
+            note.sort(key = lambda _: _[0])
+            for skill in note:
+                if skill[3] is not None and len(skill[3]) > 0:
+                    skill[3].sort(key = lambda _: _[0])
+        self.perfect_detail.score_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
+                                                for note in self.perfect_detail.score_bonus_skill]
+        self.perfect_detail.combo_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
+                                                for note in self.perfect_detail.combo_bonus_skill]
+        
     def setup_info_widget(self):
         self.info_widget.layout = QVBoxLayout(self.info_widget)
         
@@ -236,11 +309,21 @@ class ChartViewer:
         
         self._setup_skill_info()
         
-        self._resize_stacked_widget(self.info_widget.detail_widget, 0)
-        self._resize_stacked_widget(self.info_widget.note_score_info_widget, 0)
+        self.info_widget.custom_widget = QStackedWidget()
+        self.info_widget.custom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.info_widget.custom_widget.addWidget(QWidget())
         
+        self._setup_custom()
+        
+        self.info_widget.layout.addWidget(self.info_widget.custom_widget)
         self.info_widget.layout.addWidget(self.info_widget.detail_widget)
-    
+        self.info_widget.layout.setSpacing(0)
+        
+        self._resize_stacked_widget(self.info_widget.detail_widget, 0)
+        self._resize_stacked_widget(self.info_widget.custom_widget, 0)
+        self._resize_stacked_widget(self.info_widget.note_score_info_widget, 0)
+        self._resize_stacked_widget(self.info_widget.custom_detail_widget, 0)
+        
     def _setup_song_info(self):
         self.info_widget.title_layout = QVBoxLayout()
         self.info_widget.title_label = QLabel("Title")
@@ -282,6 +365,7 @@ class ChartViewer:
         self.info_widget.total_notes_layout.addWidget(self.info_widget.total_notes_line)
         
         self.info_widget.song_info_layout = QHBoxLayout()
+        self.info_widget.song_info_layout.setSpacing(6)
         self.info_widget.song_info_layout.addLayout(self.info_widget.title_layout, 9)
         self.info_widget.song_info_layout.addLayout(self.info_widget.difficulty_layout, 2)
         self.info_widget.song_info_layout.addLayout(self.info_widget.level_layout, 2)
@@ -309,12 +393,19 @@ class ChartViewer:
         self.info_widget.mode_abuse_button.toggled.connect(self.set_chart_mode)
         self.info_widget.mode_button_group.addButton(self.info_widget.mode_abuse_button, 2)
         
+        self.info_widget.mode_custom_button = QRadioButton('Custom')
+        self.info_widget.mode_custom_button.setCheckable(False)
+        self.info_widget.mode_custom_button.toggled.connect(self.set_chart_mode)
+        self.info_widget.mode_button_group.addButton(self.info_widget.mode_custom_button, 3)
+        
         self.info_widget.mode_button_layout = QHBoxLayout()
+        self.info_widget.mode_button_layout.setSpacing(6)
         self.info_widget.mode_button_layout.addStretch(1)
         self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_label, 2)
         self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_default_button, 2)
         self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_perfect_button, 2)
         self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_abuse_button, 2)
+        self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_custom_button, 2)
         self.info_widget.layout.addLayout(self.info_widget.mode_button_layout)
     
     def _setup_note_info(self):
@@ -347,17 +438,17 @@ class ChartViewer:
         
         self.info_widget.note_widget = QWidget()
         self.info_widget.note_layout = QVBoxLayout(self.info_widget.note_widget)
+        margin = self.info_widget.note_layout.contentsMargins()
+        self.info_widget.note_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.note_layout.setSpacing(0)
         self.info_widget.note_info_layout = QHBoxLayout()
+        self.info_widget.note_info_layout.setSpacing(6)
         self.info_widget.note_info_layout.addLayout(self.info_widget.note_number_layout)
         self.info_widget.note_info_layout.addLayout(self.info_widget.note_second_layout)
         self.info_widget.note_info_layout.addLayout(self.info_widget.note_type_layout)
         self.info_widget.note_layout.addLayout(self.info_widget.note_info_layout)
         
-    
     def _setup_note_score_info(self):
-        self.info_widget.note_score_info_widget = QStackedWidget()
-        self.info_widget.note_score_info_widget.addWidget(QWidget())
-        
         self.info_widget.note_life_layout = QVBoxLayout()
         self.info_widget.note_life_label = QLabel("Life")
         self.info_widget.note_life_label.setAlignment(Qt.AlignCenter)
@@ -377,7 +468,7 @@ class ChartViewer:
         self.info_widget.note_combo_layout.addWidget(self.info_widget.note_combo_line)
         
         self.info_widget.note_score_bonus_layout = QVBoxLayout()
-        self.info_widget.note_score_bonus_label = QLabel("Score Bonus")
+        self.info_widget.note_score_bonus_label = QLabel("Score bonus")
         self.info_widget.note_score_bonus_label.setAlignment(Qt.AlignCenter)
         self.info_widget.note_score_bonus_line = QLineEdit()
         self.info_widget.note_score_bonus_line.setReadOnly(True)
@@ -386,7 +477,7 @@ class ChartViewer:
         self.info_widget.note_score_bonus_layout.addWidget(self.info_widget.note_score_bonus_line)
         
         self.info_widget.note_combo_bonus_layout = QVBoxLayout()
-        self.info_widget.note_combo_bonus_label = QLabel("Combo Bonus")
+        self.info_widget.note_combo_bonus_label = QLabel("Combo bonus")
         self.info_widget.note_combo_bonus_label.setAlignment(Qt.AlignCenter)
         self.info_widget.note_combo_bonus_line = QLineEdit()
         self.info_widget.note_combo_bonus_line.setReadOnly(True)
@@ -433,9 +524,13 @@ class ChartViewer:
         
         self.info_widget.note_score_widget = QWidget()
         self.info_widget.note_score_layout = QVBoxLayout(self.info_widget.note_score_widget)
+        margin = self.info_widget.note_score_layout.contentsMargins()
+        self.info_widget.note_score_layout.setContentsMargins(0, margin.top(), 0, 0)
         self.info_widget.note_score_layout.addLayout(self.info_widget.note_score_general_layout)
         self.info_widget.note_score_layout.addLayout(self.info_widget.note_skills_layout)
         
+        self.info_widget.note_score_info_widget = QStackedWidget()
+        self.info_widget.note_score_info_widget.addWidget(QWidget())
         self.info_widget.note_score_info_widget.addWidget(self.info_widget.note_score_widget)
         self.info_widget.note_score_info_widget.setCurrentIndex(0)
         
@@ -472,9 +567,88 @@ class ChartViewer:
         
         self.info_widget.skill_widget = QWidget()
         self.info_widget.skill_layout = QVBoxLayout(self.info_widget.skill_widget)
+        margin = self.info_widget.skill_layout.contentsMargins()
+        self.info_widget.skill_layout.setContentsMargins(0, margin.top(), 0, 0)
         self.info_widget.skill_info_layout = QHBoxLayout()
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_type_layout)
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_time_layout)
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_prob_layout)
         self.info_widget.skill_layout.addLayout(self.info_widget.skill_info_layout)
         self.info_widget.detail_widget.addWidget(self.info_widget.skill_widget)
+
+    def _setup_custom(self):
+        self.info_widget.custom_total_layout = QVBoxLayout()
+        self.info_widget.custom_total_label = QLabel("Total Score")
+        self.info_widget.custom_total_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_total_line = QLineEdit()
+        self.info_widget.custom_total_line.setReadOnly(True)
+        self.info_widget.custom_total_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_total_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.info_widget.custom_total_layout.addWidget(self.info_widget.custom_total_label)
+        self.info_widget.custom_total_layout.addWidget(self.info_widget.custom_total_line)
+        
+        self.info_widget.custom_button_layout = QVBoxLayout()
+        self.info_widget.custom_update_button = QPushButton("Update")
+        self.info_widget.custom_update_button.clicked.connect(lambda: self.simulate_custom())
+        self.info_widget.custom_reset_button = QPushButton("Reset All")
+        self.info_widget.custom_button_layout.addWidget(self.info_widget.custom_update_button)
+        self.info_widget.custom_button_layout.addWidget(self.info_widget.custom_reset_button)
+        
+        self.info_widget.custom_general_layout = QHBoxLayout()
+        self.info_widget.custom_general_layout.setSpacing(6)
+        self.info_widget.custom_general_layout.addLayout(self.info_widget.custom_total_layout)
+        self.info_widget.custom_general_layout.addLayout(self.info_widget.custom_button_layout)
+        
+        self.info_widget.custom_note_widget = QWidget()
+        self.info_widget.custom_note_layout = QHBoxLayout(self.info_widget.custom_note_widget)
+        margin = self.info_widget.custom_note_layout.contentsMargins()
+        self.info_widget.custom_note_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.custom_note_layout.setSpacing(6)
+        self.info_widget.custom_note_offset_label = QLabel("Offset")
+        self.info_widget.custom_note_offset_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_offset_spinbox = QSpinBox()
+        self.info_widget.custom_note_offset_spinbox.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_offset_spinbox.setSingleStep(10)
+        self.info_widget.custom_note_offset_spinbox.setRange(-2500, 2500)
+        self.info_widget.custom_note_miss_checkbox = QCheckBox("Miss")
+        self.info_widget.custom_note_miss_checkbox.setStyleSheet("margin-left: 10%; margin-right: 10%;")
+        self.info_widget.custom_note_judgement_line = QLineEdit()
+        self.info_widget.custom_note_judgement_line.setReadOnly(True)
+        self.info_widget.custom_note_judgement_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_judgement_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.info_widget.custom_note_reset_button = QPushButton("Reset")
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_offset_label)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_offset_spinbox)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_miss_checkbox)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_judgement_line)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_reset_button)
+        
+        self.info_widget.custom_skill_widget = QWidget()
+        self.info_widget.custom_skill_layout = QHBoxLayout(self.info_widget.custom_skill_widget)
+        margin = self.info_widget.custom_skill_layout.contentsMargins()
+        self.info_widget.custom_skill_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.custom_skill_layout.setSpacing(6)
+        self.info_widget.custom_skill_active_line = QLineEdit()
+        self.info_widget.custom_skill_active_line.setReadOnly(True)
+        self.info_widget.custom_skill_active_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_skill_active_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.info_widget.custom_skill_active_button = QPushButton("Change Activation")
+        self.info_widget.custom_skill_active_button.clicked.connect(lambda: self.change_skill_activation())
+        self.info_widget.custom_skill_layout.addWidget(self.info_widget.custom_skill_active_line)
+        self.info_widget.custom_skill_layout.addWidget(self.info_widget.custom_skill_active_button)
+        
+        self.info_widget.custom_detail_widget = QStackedWidget()
+        self.info_widget.custom_detail_widget.addWidget(QWidget())
+        self.info_widget.custom_detail_widget.addWidget(self.info_widget.custom_note_widget)
+        self.info_widget.custom_detail_widget.addWidget(self.info_widget.custom_skill_widget)
+        
+        self.info_widget.custom_setting_widget = QWidget()
+        self.info_widget.custom_setting_layout = QVBoxLayout(self.info_widget.custom_setting_widget)
+        margin = self.info_widget.custom_setting_layout.contentsMargins()
+        self.info_widget.custom_setting_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.custom_setting_layout.setSpacing(0)
+        self.info_widget.custom_setting_layout.addLayout(self.info_widget.custom_general_layout)
+        self.info_widget.custom_setting_layout.addWidget(self.info_widget.custom_detail_widget)
+        
+        self.info_widget.custom_widget.addWidget(self.info_widget.custom_setting_widget)
+        self.info_widget.custom_widget.setCurrentIndex(0)

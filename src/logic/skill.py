@@ -166,6 +166,9 @@ class Skill:
         values = [0, 0, 0, 0, 0] #Score(Perfect), Score(Great), Combo, Heal, Support
         if skill_type in SUPPORT_TYPES:
             values[4] = skill_type - 4
+        elif skill_type in ACT_TYPES: # Act : Score(Other notes), Score(Special notes), Combo, Heal, Support
+            values[0] = skill_values[0]
+            values[1] = skill_values[1]
         elif skill_type == 2 or skill_type == 14: # SU, Overload
             values[0], values[1] = skill_values[0], skill_values[0]
         elif skill_type == 4:  # CU
