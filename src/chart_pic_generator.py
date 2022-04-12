@@ -37,7 +37,7 @@ SEC_FONT_GRAND = 32
 
 SEC_HEIGHT = 500
 Y_MARGIN = 70
-MAX_LABEL_Y = 32000
+MAX_LABEL_Y = 5000
 MAX_SECS_PER_LABEL = MAX_LABEL_Y // SEC_HEIGHT
 
 WINDOW_WIDTH = 500
@@ -269,6 +269,7 @@ class BaseChartPicGenerator(ABC):
         self.viewer.chart_widget.deleteLater()
         self.viewer.chart_widget = scroll
         self.viewer.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
+        self.viewer.chart_widget.skill_clickable_areas = []
 
     def get_x(self, lane):
         return self.X_MARGIN + lane * self.LANE_DISTANCE
@@ -321,11 +322,17 @@ class BaseChartPicGenerator(ABC):
                 group.append(note_object)
             self.note_labels.append(group)
 
-    def draw(self):
-        self.draw_grid_and_secs()
-        self.draw_sync_lines()
-        self.draw_group_lines()
-        self.draw_notes()
+    def draw(self, *draw_label):
+        if len(draw_label) > 0:
+            self.draw_grid_and_secs(draw_label[0])
+            self.draw_sync_lines(draw_label[0])
+            self.draw_group_lines(draw_label[0])
+            self.draw_notes(draw_label[0])
+        else:
+            self.draw_grid_and_secs()
+            self.draw_sync_lines()
+            self.draw_group_lines()
+            self.draw_notes()
 
     def hook_cards(self, all_cards):
         try:
@@ -342,9 +349,7 @@ class BaseChartPicGenerator(ABC):
             return
         self.unit = unit
 
-    def paint_skill(self):
-        self.skills = []
-        self.viewer.chart_widget.skill_clickable_areas = []
+    def paint_skill(self, *draw_label):
         for card_idx, card in enumerate(self.unit.all_cards()):
             skill = card.sk
             interval = skill.interval
@@ -377,23 +382,26 @@ class BaseChartPicGenerator(ABC):
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
                 else:
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
+                skill_time += 1
+                if len(draw_label) > 0 and label not in draw_label[0]:
+                    continue
                 self.p[label].setPen(QPen())
                 self.p[label].setBrush(skill_brush)
                 # Need to convert grand lane
+                card_idx_converter = [2, 1, 3, 0, 4]
                 draw_card_idx = card_idx
                 if self.grand:
                     if card_idx < 5:
                         draw_card_idx += 5
                     elif 5 <= card_idx < 10:
                         draw_card_idx -= 5
+                draw_card_idx = 5 * (draw_card_idx // 5) + card_idx_converter[draw_card_idx % 5]
                 x = self.get_x(draw_card_idx)
                 y = self.get_y(right, label)
                 self.p[label].drawRect(x - self.SKILL_PAINT_WIDTH // 2,
                                 y,
                                 self.SKILL_PAINT_WIDTH,
                                 duration * SEC_HEIGHT)
-                
-                skill_time += 1
                 
                 if (left, right) in self.skills[card_idx]['time']:
                     continue
@@ -407,23 +415,29 @@ class BaseChartPicGenerator(ABC):
                 polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll))
                 self.viewer.chart_widget.skill_clickable_areas[card_idx].append(polygon)
 
-    def draw_grid_and_secs(self):
+    def draw_grid_and_secs(self, *draw_label):
+        draw_p = self.p
+        if len(draw_label) > 0:
+            draw_p = [self.p[i] for i in draw_label[0]]
+        
         font = QFont()
         font.setPixelSize(self.SEC_FONT)
-        for p in self.p: p.setFont(font)
+        for p in draw_p: p.setFont(font)
 
         vertical_grid_pen = QPen(QColor(80, 80, 80))
         vertical_grid_pen.setWidth(5)
-        for p in self.p: p.setPen(vertical_grid_pen)
+        for p in draw_p: p.setPen(vertical_grid_pen)
         for lane in range(self.lane_count):
             x = self.get_x(lane)
-            for p in self.p: p.drawLine(x, 0, x, MAX_LABEL_Y)
+            for p in draw_p: p.drawLine(x, 0, x, MAX_LABEL_Y)
             
         horizontal_grid_bold_pen = QPen(QColor(120, 120, 120))
         horizontal_grid_bold_pen.setWidth(5)
         horizontal_grid_light_pen = QPen(QColor(80, 80, 80))
         horizontal_grid_light_pen.setWidth(3)
         for label in range(self.n_label):
+            if len(draw_label) > 0 and label not in draw_label[0]:
+                continue
             for sec in range(MAX_LABEL_Y // SEC_HEIGHT + 1):
                 if (sec + MAX_LABEL_Y * label // SEC_HEIGHT) % 5 == 0:
                     self.p[label].setPen(horizontal_grid_bold_pen)
@@ -435,7 +449,7 @@ class BaseChartPicGenerator(ABC):
                                 str(sec + MAX_LABEL_Y * label // SEC_HEIGHT))
 
     @abstractmethod
-    def draw_notes(self):
+    def draw_notes(self, *draw_label):
         pass
 
     def _is_double_drawn_note(self, note: ChartPicNote, direction = 0):
@@ -452,11 +466,18 @@ class BaseChartPicGenerator(ABC):
                         return True
         return False
 
-    def draw_sync_lines(self):
+    def draw_sync_lines(self, *draw_label):
+        draw_p = self.p
+        if len(draw_label) > 0:
+            draw_p = [self.p[i] for i in draw_label[0]]
+        
         sync_line_pen = QPen(QColor(250, 250, 240))
         sync_line_pen.setWidth(3)
-        for p in self.p : p.setPen(sync_line_pen)
+        for p in draw_p : p.setPen(sync_line_pen)
         for label_idx, qt_label in enumerate(self.note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
+            
             sync_pairs = defaultdict(lambda: list())
             for note in qt_label:
                 if note.sync == 0:
@@ -476,8 +497,10 @@ class BaseChartPicGenerator(ABC):
     def _draw_group_line(self, note1, note2, group):
         pass
 
-    def draw_group_lines(self):
+    def draw_group_lines(self, *draw_label):
         for group_idx, qt_group in enumerate(self.note_labels):
+            if len(draw_label) > 0 and group_idx not in draw_label[0]:
+                continue
             group_ids = set()
             for note in qt_group:
                 if note.group_id == 0:
@@ -660,13 +683,8 @@ class BaseChartPicGenerator(ABC):
 
     def draw_selected_skill(self, card_idx, idx):
         self.draw_nothing_selected()
+        draw_label = []
         for label_idx, label in enumerate(self.note_labels):
-            pen = QPen(QColor(255, 128, 0, 255))
-            pen.setWidth(2)
-            self.p[label_idx].setPen(pen)
-            group_line_brush = QBrush(QColor(0, 0, 0, 0))
-            self.p[label_idx].setBrush(group_line_brush)
-            
             left = self.skills[card_idx]['time'][idx][0]
             right = self.skills[card_idx]['time'][idx][1]
             duration = right - left
@@ -675,17 +693,33 @@ class BaseChartPicGenerator(ABC):
             if right < ((label_idx) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT - 3:
                 continue
             self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+            draw_label.append(label_idx)
+        
+        for p_idx in draw_label: self.p[p_idx].fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.paint_skill(draw_label)
+        
+        for label_idx in draw_label:
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
+            
+            card_idx_converter = [2, 1, 3, 0, 4]
             draw_card_idx = card_idx
             if self.grand:
                 if card_idx < 5:
                     draw_card_idx += 5
                 elif 5 <= card_idx < 10:
                     draw_card_idx -= 5
+            draw_card_idx = 5 * (draw_card_idx // 5) + card_idx_converter[draw_card_idx % 5]
             x = self.get_x(draw_card_idx)
             y = self.get_y(right, label_idx)
             w = self.SKILL_PAINT_WIDTH + 2
             h = duration * SEC_HEIGHT
             self.p[label_idx].drawRoundedRect(x - w // 2, y - 1, w, h, 2, 2)
+        
+        self.draw(draw_label)
         for l in self.label: l.repaint()
 
 
@@ -700,8 +734,10 @@ class BasicChartPicGenerator(BaseChartPicGenerator):
         y2 = self.get_y(note2['sec'], label)
         self.p[label].drawLine(x1, y1, x2, y2)
 
-    def draw_notes(self):
+    def draw_notes(self, *draw_label):
         for label_idx, label in enumerate(self.note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
             for note in label:
                 w = note.note_pic.width()
                 h = note.note_pic.height()
@@ -765,8 +801,10 @@ class GrandChartPicGenerator(BaseChartPicGenerator):
         polygon.append(QPoint(x2l, y2))
         self.p[label].drawConvexPolygon(polygon)
 
-    def draw_notes(self):
+    def draw_notes(self, *draw_label):
         for label_idx, label in enumerate(self.note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
             for note in label:
                 w = note.note_pic.width()
                 h = note.note_pic.height()

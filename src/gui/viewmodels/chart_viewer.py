@@ -179,7 +179,7 @@ class ChartViewer:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 1)
             
             self.info_widget.note_life_line.setText(str(self.perfect_detail.life[idx]))
-            self.info_widget.note_combo_line.setText(num)
+            self.info_widget.note_combo_line.setText("{} (   )".format(num))
             self.info_widget.note_score_bonus_line.setText(str(self.perfect_detail.score_bonus_list[idx]))
             self.info_widget.note_combo_bonus_line.setText(str(self.perfect_detail.combo_bonus_list[idx]))
             self.info_widget.note_note_score_line.setText(str(self.perfect_detail.note_score_list[idx]))
