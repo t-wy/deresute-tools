@@ -13,6 +13,7 @@ from gui.events.chart_viewer_events import SendMusicEvent, HookAbuseToChartViewe
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent
+from static.judgement import Judgement
 from static.skill import SKILL_BASE
 
 class ChartViewer:
@@ -27,6 +28,8 @@ class ChartViewer:
         self.mirror = False
         
         self.perfect_detail = None
+        
+        self.custom_offset_cache = {}
         
         self.widget = QWidget(parent)
         self.widget.layout = QVBoxLayout(self.widget)
@@ -109,6 +112,7 @@ class ChartViewer:
                                                 for note in self.perfect_detail.score_bonus_skill]
         self.perfect_detail.combo_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
                                                 for note in self.perfect_detail.combo_bonus_skill]
+        self.info_widget.mode_custom_button.setCheckable(True)
         
     @subscribe(HookUnitToChartViewerEvent)
     def hook_unit(self, event: HookUnitToChartViewerEvent):
@@ -116,7 +120,6 @@ class ChartViewer:
             return
         self.generator.hook_cards(event.cards)
         self.info_widget.mode_perfect_button.setCheckable(True)
-        self.info_widget.mode_custom_button.setCheckable(True)
 
     @subscribe(ToggleMirrorEvent)
     def toggle_mirror(self, event: ToggleMirrorEvent):
@@ -140,6 +143,7 @@ class ChartViewer:
             elif mode == 3:
                 self.generator.draw_perfect_chart()
                 self.set_stacked_widget_index(self.info_widget.custom_widget, 1)
+                self.simulate_custom()
             
             if mode != 3:
                 self.set_stacked_widget_index(self.info_widget.custom_widget, 0)
@@ -177,15 +181,54 @@ class ChartViewer:
         
         if self.chart_mode in (1, 3) and self.perfect_detail != None:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 1)
+            self._show_detail_note_score_info(idx)
+        else:
+            self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
+        
+        if self.chart_mode == 3:
+            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 1)
+            if self.generator.selected_note in self.generator.note_offset_dict:
+                offset = self.generator.note_offset_dict[self.generator.selected_note]
+            else:
+                offset = 0
+            self.info_widget.custom_note_offset_spinbox.setValue(offset)
             
-            self.info_widget.note_life_line.setText(str(self.perfect_detail.life[idx]))
-            self.info_widget.note_combo_line.setText("{} (   )".format(num))
-            self.info_widget.note_score_bonus_line.setText(str(self.perfect_detail.score_bonus_list[idx]))
-            self.info_widget.note_combo_bonus_line.setText(str(self.perfect_detail.combo_bonus_list[idx]))
-            self.info_widget.note_note_score_line.setText(str(self.perfect_detail.note_score_list[idx]))
-            self.info_widget.note_current_score_line.setText(str(self.perfect_detail.cumulative_score_list[idx]))
+            if self.generator.selected_note in self.generator.note_miss_list:
+                self.info_widget.custom_note_miss_checkbox.setChecked(True)
+            else:
+                self.info_widget.custom_note_miss_checkbox.setChecked(False)
+                
+            if self.generator.selected_note in self.custom_offset_cache:
+                if offset == self.custom_offset_cache[self.generator.selected_note]:
+                    self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
+                else:
+                    self.info_widget.custom_note_judgement_line.setText("-")
+            else:
+                if offset == 0:
+                    self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
+                else:
+                    self.info_widget.custom_note_judgement_line.setText("-")
             
-            self.info_widget.note_score_skill.clear()
+    
+    def _show_detail_note_score_info(self, idx):
+        #TODO : idx does not represent actual note order if you change note offset
+        '''
+        Miss
+        Reset/Reset All
+        Draw
+        Skills
+        Detail
+        Info
+        '''
+        self.info_widget.note_life_line.setText(str(self.perfect_detail.life[idx]))
+        self.info_widget.note_combo_line.setText("{} ({})".format(self.perfect_detail.combo[idx], self.perfect_detail.weight[idx]))
+        self.info_widget.note_score_bonus_line.setText(str(self.perfect_detail.score_bonus_list[idx]))
+        self.info_widget.note_combo_bonus_line.setText(str(self.perfect_detail.combo_bonus_list[idx]))
+        self.info_widget.note_note_score_line.setText(str(self.perfect_detail.note_score_list[idx]))
+        self.info_widget.note_current_score_line.setText(str(self.perfect_detail.cumulative_score_list[idx]))
+        
+        self.info_widget.note_score_skill.clear()
+        if self.perfect_detail.judgement[idx] == Judgement.PERFECT:
             for skill in self.perfect_detail.score_bonus_skill[idx]:
                 item_skill = QTreeWidgetItem(self.info_widget.note_score_skill)
                 item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
@@ -200,27 +243,37 @@ class ChartViewer:
                     item_boost = QTreeWidgetItem(item_skill)
                     item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
                                                                 "{}{}%".format("+" if boost[2] >= 0 else "", str(round((boost[2] - 1000) / 10)))))
-            
-            self.info_widget.note_combo_skill.clear()
-            for skill in self.perfect_detail.combo_bonus_skill[idx]:
-                item_skill = QTreeWidgetItem(self.info_widget.note_combo_skill)
+        elif self.perfect_detail.judgement[idx] == Judgement.GREAT:
+            for skill in self.perfect_detail.score_great_bonus_skill[idx]:
+                item_skill = QTreeWidgetItem(self.info_widget.note_score_skill)
                 item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
                                                          "{}{}%".format("+" if skill[2] >= 0 else "", str(skill[2]))))
                 if skill[2] <= 0:
                     continue
                 item_skill_child = QTreeWidgetItem(item_skill)
-                total_boost = (sum([_[2] for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
+                total_boost = (sum([_[2]  for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
                 item_skill_child.setText(0, "{} : {}".format(SKILL_BASE[skill[1]]["name"],
                                                              "{}{}%".format("+" if skill[2] >= 0 else "", str(math.floor(skill[2] / total_boost)))))
                 for boost in skill[3]:
                     item_boost = QTreeWidgetItem(item_skill)
                     item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
                                                                 "{}{}%".format("+" if boost[2] >= 0 else "", str(round((boost[2] - 1000) / 10)))))
-        else:
-            self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
         
-        if self.chart_mode == 3:
-            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 1)
+        self.info_widget.note_combo_skill.clear()
+        for skill in self.perfect_detail.combo_bonus_skill[idx]:
+            item_skill = QTreeWidgetItem(self.info_widget.note_combo_skill)
+            item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
+                                                     "{}{}%".format("+" if skill[2] >= 0 else "", str(skill[2]))))
+            if skill[2] <= 0:
+                continue
+            item_skill_child = QTreeWidgetItem(item_skill)
+            total_boost = (sum([_[2] for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
+            item_skill_child.setText(0, "{} : {}".format(SKILL_BASE[skill[1]]["name"],
+                                                         "{}{}%".format("+" if skill[2] >= 0 else "", str(math.floor(skill[2] / total_boost)))))
+            for boost in skill[3]:
+                item_boost = QTreeWidgetItem(item_skill)
+                item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
+                                                            "{}{}%".format("+" if boost[2] >= 0 else "", str(round((boost[2] - 1000) / 10)))))
     
     def show_detail_skill_info(self, skill_type, time, prob):
         self.set_stacked_widget_index(self.info_widget.detail_widget, 2)
@@ -262,11 +315,30 @@ class ChartViewer:
         self.generator.draw_perfect_chart() #TODO : Optimize by redrawing partially
         self.generator.draw_selected_skill(idx, num)
     
+    def change_note_offset(self):
+        value = self.info_widget.custom_note_offset_spinbox.value()
+        self.generator.note_offset_dict[self.generator.selected_note] = value
+        if value == 0:
+            del self.generator.note_offset_dict[self.generator.selected_note]
+        self.info_widget.custom_note_judgement_line.setText("-")
+    
+    def change_note_miss(self):
+        if self.info_widget.custom_note_miss_checkbox.isChecked():
+            if self.generator.selected_note not in self.generator.note_miss_list:
+                self.generator.note_miss_list.append(self.generator.selected_note)
+            if self.info_widget.custom_note_offset_spinbox.value() <= 0:
+                self.info_widget.custom_note_offset_spinbox.setValue(135)
+        else:
+            if self.generator.selected_note in self.generator.note_miss_list:
+                self.generator.note_miss_list.remove(self.generator.selected_note)
+    
     def update_custom_chart(self):
         self.generator.draw_perfect_chart()
     
     def simulate_custom(self):
-        eventbus.eventbus.post(CustomSimulationEvent(self.cache_simulation, self.generator.skill_inactive_list))
+        self.custom_offset_cache = self.generator.note_offset_dict.copy()
+        eventbus.eventbus.post(CustomSimulationEvent(self.cache_simulation, self.generator.skill_inactive_list,
+                                                     self.generator.note_offset_dict, self.generator.note_miss_list))
     
     @subscribe(CustomSimulationResultEvent)
     def display_custom_simulation_result(self, event: CustomSimulationResultEvent):
@@ -292,6 +364,10 @@ class ChartViewer:
                                                 for note in self.perfect_detail.score_bonus_skill]
         self.perfect_detail.combo_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
                                                 for note in self.perfect_detail.combo_bonus_skill]
+        
+        idx = self.generator.selected_note
+        self._show_detail_note_score_info(idx)
+        self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
         
     def setup_info_widget(self):
         self.info_widget.layout = QVBoxLayout(self.info_widget)
@@ -609,9 +685,11 @@ class ChartViewer:
         self.info_widget.custom_note_offset_spinbox = QSpinBox()
         self.info_widget.custom_note_offset_spinbox.setAlignment(Qt.AlignCenter)
         self.info_widget.custom_note_offset_spinbox.setSingleStep(10)
-        self.info_widget.custom_note_offset_spinbox.setRange(-2500, 2500)
+        self.info_widget.custom_note_offset_spinbox.setRange(-2000, 4500)
+        self.info_widget.custom_note_offset_spinbox.valueChanged.connect(lambda: self.change_note_offset())
         self.info_widget.custom_note_miss_checkbox = QCheckBox("Miss")
         self.info_widget.custom_note_miss_checkbox.setStyleSheet("margin-left: 10%; margin-right: 10%;")
+        self.info_widget.custom_note_miss_checkbox.stateChanged.connect(lambda: self.change_note_miss())
         self.info_widget.custom_note_judgement_line = QLineEdit()
         self.info_widget.custom_note_judgement_line.setReadOnly(True)
         self.info_widget.custom_note_judgement_line.setAlignment(Qt.AlignCenter)

@@ -14,7 +14,8 @@ from static.color import Color
 from static.judgement import Judgement
 from static.note_type import NoteType
 from static.skill import get_sparkle_bonus
-from static.song_difficulty import PERFECT_TAP_RANGE, GREAT_TAP_RANGE, Difficulty, FLICK_DRAIN, NONFLICK_DRAIN
+from static.song_difficulty import PERFECT_TAP_RANGE, GREAT_TAP_RANGE, NICE_TAP_RANGE, BAD_TAP_RANGE, \
+    Difficulty, FLICK_DRAIN, NONFLICK_DRAIN
 
 
 class AbuseData:
@@ -223,7 +224,8 @@ class StateMachine:
                  force_encore_amr_cache_to_encore_unit=False,
                  force_encore_magic_to_encore_unit=False,
                  allow_encore_magic_to_escape_max_agg=False,
-                 cc_great=0, custom_inactive_skill=None):
+                 cc_great=0, custom_inactive_skill=None,
+                 custom_note_offset=None, custom_note_miss=None):
         self.left_inclusive = left_inclusive
         self.right_inclusive = right_inclusive
         self.force_encore_amr_cache_to_encore_unit = force_encore_amr_cache_to_encore_unit
@@ -242,7 +244,13 @@ class StateMachine:
         self.unit_offset = 3 if grand else 1
         self.weights = weights
 
+        self.custom = False        
         self.custom_inactive_skill = custom_inactive_skill
+        self.custom_note_offset = custom_note_offset
+        self.custom_note_miss = custom_note_miss
+        self.custom_note_miss_default_offset = 135
+        if custom_inactive_skill is not None or custom_note_offset is not None or custom_note_miss is not None:
+            self.custom = True
 
         self._note_type_stack = self.notes_data.note_type.to_list()
         self._note_idx_stack = self.notes_data.index.to_list()
@@ -367,6 +375,8 @@ class StateMachine:
 
         # Metrics
         self.full_roll_chance = 1
+        
+        self.combos = [0] * len(self.notes_data)
 
         # Auto stuff
         if self.auto:
@@ -378,7 +388,6 @@ class StateMachine:
             self.delayed = [False] * len(self.notes_data)
             self.being_held = dict()
             self.judgements = [Judgement.PERFECT for _ in range(len(self.notes_data))]
-            self.combos = [0] * len(self.notes_data)
             self.score_bonuses = [0] * len(self.notes_data)
             self.score_great_bonuses = [0] * len(self.notes_data)
             self.combo_bonuses = [0] * len(self.notes_data)
@@ -386,7 +395,7 @@ class StateMachine:
             self.lowest_life_time = -1
 
         # Initializing note data
-        if abuse or perfect_play:
+        if (abuse or perfect_play) and self.custom_note_offset is None:
             self.note_time_stack = self.notes_data.sec.map(lambda x: int(x * 1E6)).to_list()
             self.note_time_deltas = [0] * len(self.note_time_stack)
             self.note_type_stack = self._note_type_stack.copy()
@@ -396,10 +405,14 @@ class StateMachine:
                 self.initialize_activation_arrays()
                 self._helper_fill_abuse_dummies()
         else:
-            random_range = PERFECT_TAP_RANGE[self.difficulty] / 2E6 \
-                if perfect_only else GREAT_TAP_RANGE[self.difficulty] / 2E6
-
-            temp = self.notes_data.sec + np.random.random(len(self.notes_data)) * 2 * random_range - random_range
+            if self.custom:
+                temp = self.notes_data.sec.copy()
+                for idx in self.custom_note_offset:
+                    temp[idx] += self.custom_note_offset[idx] / 1000
+            else:
+                random_range = PERFECT_TAP_RANGE[self.difficulty] / 2E6 \
+                    if perfect_only else GREAT_TAP_RANGE[self.difficulty] / 2E6
+                temp = self.notes_data.sec + np.random.random(len(self.notes_data)) * 2 * random_range - random_range
             temp[self.notes_data["checkpoints"]] = np.maximum(
                 temp[self.notes_data["checkpoints"]],
                 self.notes_data.loc[self.notes_data["checkpoints"], "sec"])
@@ -582,11 +595,15 @@ class StateMachine:
         self.np_score_great_bonuses = 1 + np.array(self.score_great_bonuses) / 100
         self.np_combo_bonuses = 1 + np.array(self.combo_bonuses) / 100
 
-        if self.abuse or (self.fail_simulate and not self.perfect_only) or self.cc_great > 0:
+        if self.abuse or (self.fail_simulate and not self.perfect_only) or self.cc_great > 0 or self.custom:
             judgement_multipliers = np.array([
                 1.0 if x is Judgement.PERFECT
                 else
                 0.7 if x is Judgement.GREAT
+                else
+                0.4 if x is Judgement.NICE
+                else
+                0.1 if x is Judgement.BAD
                 else 0
                 for x in self.judgements])
             final_bonus = judgement_multipliers
@@ -603,6 +620,10 @@ class StateMachine:
             final_bonus *= self.np_score_bonuses
             final_bonus[1:] *= self.np_combo_bonuses[1:]
 
+        self.weights = [
+            1.0 if combo == 0 else self.weights[combo - 1] for combo in self.combos
+        ]
+        
         self.note_scores = np.round(
             self.base_score
             * np.array(self.weights)
@@ -613,9 +634,13 @@ class StateMachine:
             self.cache_perfect_score_array = self.note_scores.copy()
         
         detail = {'note_offset' : note_time_deltas,
+                  'judgement' : self.judgements,
                   'skill_inactive' : self.skill_inactive_list,
                   'life' : self.life_list,
+                  'combo' : self.combos,
+                  'weight' : self.weights,
                   'score_bonus_skill' : self.score_bonus_skills,
+                  'score_great_bonus_skill' : self.score_great_bonus_skills,
                   'combo_bonus_skill' : self.combo_bonus_skills,
                   'score_list' : self.note_scores.tolist()}
 
@@ -883,19 +908,37 @@ class StateMachine:
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
-        self.combo += 1
-        self.combos.append(self.combo)
         score_bonus, score_great_bonus, combo_bonus = self.evaluate_bonuses(self.special_note_types[note_idx])
-        if (self.fail_simulate and not self.perfect_only) or self.cc_great > 0:
-            self.judgements.append(self.evaluate_judgement(note_delta, note_type, self.special_note_types[note_idx]))
+        if (self.fail_simulate and not self.perfect_only) or self.cc_great > 0 or self.custom:
+            if self.custom_note_miss is not None and note_idx in self.custom_note_miss:
+                judgement = Judgement.MISS
+            else:
+                judgement = self.evaluate_judgement(note_delta, note_type, self.special_note_types[note_idx])
+            self.judgements.append(judgement)
         else:
-            self.judgements.append(Judgement.PERFECT)
+            judgement = Judgement.PERFECT
+            self.judgements.append(judgement)
         self.score_bonuses.append(score_bonus)
-        self.score_bonus_skills.append(self.cache_score_bonus_skill)
         self.score_great_bonuses.append(score_great_bonus)
-        self.score_great_bonus_skills.append(self.cache_score_great_bonus_skill)
         self.combo_bonuses.append(combo_bonus)
-        self.combo_bonus_skills.append(self.cache_combo_bonus_skill)
+        
+        #TODO : Skills giving penalty is not included
+        if judgement == Judgement.PERFECT:
+            self.score_bonus_skills.append(self.cache_score_bonus_skill)
+            self.score_great_bonus_skills.append([])
+            self.combo_bonus_skills.append(self.cache_combo_bonus_skill)
+            self.combo += 1
+        elif judgement == Judgement.GREAT:
+            self.score_bonus_skills.append([])
+            self.score_great_bonus_skills.append(self.cache_score_great_bonus_skill)
+            self.combo_bonus_skills.append(self.cache_combo_bonus_skill)
+            self.combo += 1
+        else:
+            self.score_bonus_skills.append([])
+            self.score_great_bonus_skills.append([])
+            self.combo_bonus_skills.append([])
+            self.combo = 0
+        self.combos[note_idx] = self.combo
         self.has_skill_change = False
 
     def _handle_note_abuse(self):
@@ -976,13 +1019,41 @@ class StateMachine:
             return Judgement.MISS
         else:
             if note_type == NoteType.TAP:
+                l_b = BAD_TAP_RANGE[self.live.difficulty]
+                r_b = BAD_TAP_RANGE[self.live.difficulty]
+                l_n = NICE_TAP_RANGE[self.live.difficulty]
+                r_n = NICE_TAP_RANGE[self.live.difficulty]
+                l_g = GREAT_TAP_RANGE[self.live.difficulty]
+                r_g = GREAT_TAP_RANGE[self.live.difficulty]
                 l_p = PERFECT_TAP_RANGE[self.live.difficulty]
                 r_p = PERFECT_TAP_RANGE[self.live.difficulty]
             elif note_type == NoteType.FLICK or note_type == NoteType.LONG:
+                l_b = 200000
+                r_b = 200000
+                l_n = 190000
+                r_n = 190000
+                l_g = 180000
+                r_g = 180000
                 l_p = 150000
                 r_p = 150000
+            elif not is_checkpoint:
+                l_b = 0
+                r_b = 0
+                l_n = 0
+                r_n = 0
+                l_g = 0
+                r_g = 0
+                l_p = 200000
+                r_p = 200000
             else:
-                return Judgement.PERFECT
+                l_b = 0
+                r_b = 0
+                l_n = 0
+                r_n = 0
+                l_g = 0
+                r_g = 0
+                l_p = 0
+                r_p = 200000
 
             if has_cc:
                 l_p /= 2
@@ -995,8 +1066,14 @@ class StateMachine:
                         return Judgement.GREAT
             if -l_p <= note_delta <= r_p:
                 return Judgement.PERFECT
-            else:
+            elif -l_g <= note_delta <= r_g:
                 return Judgement.GREAT
+            elif -l_n <= note_delta <= r_n:
+                return Judgement.NICE
+            elif -l_b <= note_delta <= r_b:
+                return Judgement.BAD
+            else:
+                return Judgement.MISS
 
     def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None):
         if self.has_skill_change:

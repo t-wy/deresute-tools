@@ -71,11 +71,16 @@ class AutoSimulationResult(BaseSimulationResult):
 
 
 class LiveDetail():
-    def __init__(self, note_offset, skill_inactive, life, score_bonus_skill, combo_bonus_skill, note_score_list):
+    def __init__(self, note_offset, judgement, skill_inactive, life, combo, weight,
+                 score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list):
         self.note_offset = note_offset
+        self.judgement = judgement
         self.skill_inactive = skill_inactive
         self.life = life
+        self.combo = combo
+        self.weight = weight
         self.score_bonus_skill = score_bonus_skill
+        self.score_great_bonus_skill = score_great_bonus_skill
         self.combo_bonus_skill = combo_bonus_skill
         self.note_score_list = note_score_list
 
@@ -153,7 +158,7 @@ class Simulator:
     def simulate(self, times=100, appeals=None, extra_bonus=None, support=None, perfect_play=False,
                  chara_bonus_set=None, chara_bonus_value=0, special_option=None, special_value=None,
                  doublelife=False, perfect_only=True, abuse=False, output=False, auto=False, mirror=False,
-                 time_offset=0, inactive_skill=None):
+                 time_offset=0, inactive_skill=None, note_offset=None, note_miss=None):
         start = time.time()
         logger.debug("Unit: {}".format(self.live.unit))
         logger.debug("Song: {} - {} - Lv {}".format(self.live.music_name, self.live.difficulty, self.live.level))
@@ -161,11 +166,12 @@ class Simulator:
             times = 1
             logger.debug("Only need 1 simulation for perfect play or auto.")
         
-        if inactive_skill is not None:
+        if inactive_skill is not None or note_offset is not None or note_miss is not None :
             res = self._simulate_custom(appeals=appeals, extra_bonus=extra_bonus, support=support,
                                          chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
                                          special_option=special_option, special_value=special_value,
-                                         doublelife=doublelife, inactive_skill=inactive_skill)
+                                         doublelife=doublelife, inactive_skill=inactive_skill,
+                                         note_offset=note_offset, note_miss=note_miss)
             return res
         
         if not auto:
@@ -302,9 +308,13 @@ class Simulator:
             cc_great_num=cc_great_num,
             cc_base=cc_base,
             perfect_detail=LiveDetail(perfect_detail['note_offset'],
+                                      perfect_detail['judgement'],
                                       perfect_detail['skill_inactive'],
                                       perfect_detail['life'],
+                                      perfect_detail['combo'],
+                                      perfect_detail['weight'],
                                       perfect_detail['score_bonus_skill'],
+                                      perfect_detail['score_great_bonus_skill'],
                                       perfect_detail['combo_bonus_skill'],
                                       perfect_detail['score_list']
                                       )
@@ -374,7 +384,9 @@ class Simulator:
                   special_option=None,
                   special_value=None,
                   doublelife=False,
-                  inactive_skill=[]
+                  inactive_skill=[],
+                  note_offset={},
+                  note_miss=[]
                   ):
         self._setup_simulator(appeals=appeals, support=support, extra_bonus=extra_bonus,
                               chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
@@ -396,17 +408,23 @@ class Simulator:
             force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
             allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
             cc_great=0,
-            custom_inactive_skill=inactive_skill
+            custom_inactive_skill=inactive_skill,
+            custom_note_offset=note_offset,
+            custom_note_miss=note_miss
         )
         impl.reset_machine(perfect_play=True, perfect_only=True)
         score, _, detail = impl.simulate_impl()
         
         score_detail = LiveDetail(detail['note_offset'],
-                                detail['skill_inactive'],
-                                detail['life'],
-                                detail['score_bonus_skill'],
-                                detail['combo_bonus_skill'],
-                                detail['score_list']
+                                  detail['judgement'],
+                                  detail['skill_inactive'],
+                                  detail['life'],
+                                  detail['combo'],
+                                  detail['weight'],
+                                  detail['score_bonus_skill'],
+                                  detail['score_great_bonus_skill'],
+                                  detail['combo_bonus_skill'],
+                                  detail['score_list']
                                 )
         return (score, score_detail)
 

@@ -184,6 +184,10 @@ class BaseChartPicGenerator(ABC):
         self.notes_into_group()
         self.generate_note_objects()
 
+        self.note_miss_list = []
+        self.note_offset_dict = {}
+        self.selected_note = -1
+        
         self.skill_inactive_list = [[] for _ in range(15)]
         self.selected_skill = (-1, -1)
         self.skills = []
@@ -275,7 +279,7 @@ class BaseChartPicGenerator(ABC):
         return self.X_MARGIN + lane * self.LANE_DISTANCE
 
     def get_y(self, sec, label):
-        y = (label + 1) * MAX_LABEL_Y - Y_MARGIN - sec * SEC_HEIGHT + label
+        y = (label + 1) * MAX_LABEL_Y - Y_MARGIN - sec * SEC_HEIGHT
         if label == self.y_total // MAX_LABEL_Y:
             y -= MAX_LABEL_Y - self.y_total % MAX_LABEL_Y
         return y
@@ -635,6 +639,7 @@ class BaseChartPicGenerator(ABC):
         for idx, area in enumerate(scroll.note_clickable_areas):
             if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
                 note = self.get_note_from_index(idx)
+                self.selected_note = note.num - 1
                 self.draw_selected_note(idx)
                 self.viewer.show_detail_note_info(str(note.num), "{:.3f}".format(note.sec), str(note.note_type)[9:])
                 return
