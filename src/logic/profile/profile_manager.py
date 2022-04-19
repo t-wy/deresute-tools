@@ -16,7 +16,7 @@ from utils import storage
 
 keys = ["chara_id", "vo", "vi", "da", "li", "sk"]
 
-
+#TODO : Add custom cards to profile
 def import_from_gameid(game_id):
     try:
         assert len(str(game_id)) == 9

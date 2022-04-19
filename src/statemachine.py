@@ -74,17 +74,17 @@ class UnitCacheBonus:
         if skill.act is not None:
             self.tap = max(self.tap, skill.values[0])
             if skill.act is NoteType.LONG:
-                self.longg = max(self.longg, skill.values[2])
+                self.longg = max(self.longg, skill.values[1])
                 self.flick = max(self.flick, skill.values[0])
                 self.slide = max(self.slide, skill.values[0])
             elif skill.act is NoteType.FLICK:
                 self.longg = max(self.longg, skill.values[0])
-                self.flick = max(self.flick, skill.values[2])
+                self.flick = max(self.flick, skill.values[1])
                 self.slide = max(self.slide, skill.values[0])
             elif skill.act is NoteType.SLIDE:
                 self.longg = max(self.longg, skill.values[0])
                 self.flick = max(self.flick, skill.values[0])
-                self.slide = max(self.slide, skill.values[2])
+                self.slide = max(self.slide, skill.values[1])
             return
         if skill.v0 is not None and skill.v0 > 100:
             self.tap = max(self.tap, skill.v0)
@@ -623,7 +623,8 @@ class StateMachine:
         self.weights = [
             1.0 if combo == 0 else self.weights[combo - 1] for combo in self.combos
         ]
-        
+        print(len(self.weights))
+        print(len(final_bonus))
         self.note_scores = np.round(
             self.base_score
             * np.array(self.weights)
@@ -1150,7 +1151,7 @@ class StateMachine:
             for skill in skills:
                 if skill.act is not None:
                     if skill.act in special_note_types:
-                        skill.v0 = skill.values[2]
+                        skill.v0 = skill.values[1]
                         skill.v1 = 0
                         skill.v2 = 0
                     else:
