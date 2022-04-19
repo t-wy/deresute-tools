@@ -620,11 +620,6 @@ class StateMachine:
             final_bonus *= self.np_score_bonuses
             final_bonus[1:] *= self.np_combo_bonuses[1:]
 
-        self.weights = [
-            1.0 if combo == 0 else self.weights[combo - 1] for combo in self.combos
-        ]
-        print(len(self.weights))
-        print(len(final_bonus))
         self.note_scores = np.round(
             self.base_score
             * np.array(self.weights)
