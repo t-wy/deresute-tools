@@ -171,6 +171,8 @@ You may try to remove `chihiro.db` under `data/db` before retrying to see if the
 
 ### TypeError: Cannot cast scalar from dtype('int64') to dtype('int32') according to the rule 'safe' [^](#table-of-contents)
 
+Update: Pull the latest version to prevent the error.
+
 You may be running 32-bit Python which numpy shows some problems on that.
 
 You can use 64-bit Python, or revert the changes in `src\network\chart_cache_updater.py` done by Smanmos manually (Notice that without vectorization the code may run slower):
