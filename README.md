@@ -1,6 +1,13 @@
 # Deresute Tools
 
-For the compiled releases optimized for Windows 10, please refer to the [main branch](https://github.com/deresute-tools/deresute-tools).
+For the compiled releases optimized for Windows 10, you can use the [main branch](https://github.com/deresute-tools/deresute-tools). (The functionalities may not be up-to-date)
+
+[Official Guide](https://docs.google.com/document/d/e/2PACX-1vTjhwFyOT-pawJiBWhRjg9Edvx0AVcx1Dy-qw5QpNKG3HJhn2LuEl42dAxUVPaimv4O7xfJ1WFXTyz2/pub)
+
+## Languages:
+
+- [English](README.md)
+- [Trad. Chinese (正體中文)](README_zh-Hant.md)
 
 ## Table of Contents
 - [Setup](#setup-)
@@ -53,7 +60,7 @@ Choose the Advanced Tag, and then click the Environment Variables button at the 
 
 Find the "Path" variable in the System variables list, then click Edit.
 
-#### For Windows 10 (showing a listbox dialog) [^](#table-of-contents)
+#### For Windows 10 or after (showing a listbox dialog) [^](#table-of-contents)
 
 Click New, then input `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 - (Please change it to the actual installation path of Python, where `User` refer to the user name, and `Python37` refer to the installed Python version)
