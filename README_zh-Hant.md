@@ -4,7 +4,7 @@
 
 [官方說明書 (英文)](https://docs.google.com/document/d/e/2PACX-1vTjhwFyOT-pawJiBWhRjg9Edvx0AVcx1Dy-qw5QpNKG3HJhn2LuEl42dAxUVPaimv4O7xfJ1WFXTyz2/pub)
 
-## 語言 (Language):
+## 語言 (Languages):
 
 - [英文 (English)](README.md)
 - [正體中文 (Trad. Chinese)](README_zh-Hant.md)
@@ -113,7 +113,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 輸入 `python chihiro.py`，然後按 \[Enter\]。如果沒有問題，此工具將會正常啟動。
 
-如果無法看正常啟動，請參考下方的疑難排解部分。
+如無法正常啟動，請參考下方的疑難排解部分。
 
 在日後若要跳過開啟命令提示字元的步驟更方便地啟動工具，你可以在 `chihiro.py` 所在的資料夾創建一個有以下內容 `cmd` or `bat` 的文件：
 
