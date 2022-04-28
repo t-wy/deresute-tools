@@ -60,8 +60,16 @@ def copy_card_data_from_master(update_all=True, chara_id=None):
     if update_all:
         card_df.to_sql('card_data_cache', db.cachedb.get_connection(), index=False)
     else:
-        db.cachedb.execute("DELETE FROM card_data_cache WHERE chara_id = ?", [chara_id])
-        card_df.to_sql('card_data_cache', db.cachedb.get_connection(), if_exists='append', index=False)
+        for index, row in card_df.iterrows():
+            db.cachedb.execute("""
+                UPDATE card_data_cache
+                SET bonus_hp = ?,
+                    bonus_vocal = ?,
+                    bonus_dance = ?,
+                    bonus_visual = ?,
+                    bonus_skill = ?
+                WHERE id = ?
+            """, [row['bonus_hp'], row['bonus_vocal'], row['bonus_dance'], row['bonus_visual'], row['bonus_skill'], row['id']])
     db.cachedb.commit()
 
 

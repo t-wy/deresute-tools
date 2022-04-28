@@ -100,18 +100,23 @@ class QuickSearchModel:
 
     def add_options(self, parent_layout, main):
         for option, option_text in zip(
-                ["ssr", "idolized", "owned_only", "partial_match"],
-                ["SSR only", "Idolized only", "Owned cards only", "Partial match"]):
+                ["ssr", "idolized", "owned_only", "partial_match", "potential_stat"],
+                ["SSR only", "Idolized only", "Owned cards only", "Partial match", "Include potential stat"]):
             self._add_option(option, option_text, parent_layout, main)
         self.options['ssr'].setToolTip("Only show SSR and SSR+.")
         self.options['idolized'].setToolTip("Only show N+, R+, SR+, and SSR+.")
         self.options['owned_only'].setToolTip("Hide all cards you don't have.")
         self.options['partial_match'].setToolTip("This option might significantly increase query time!")
+        self.options['potential_stat'].setToolTip("Add stats from idol potential.")
         self.options['partial_match'].setChecked(True)
+        self.options['potential_stat'].stateChanged.connect(lambda: self.toggle_potential(self.options['potential_stat'].isChecked()))
 
     @subscribe(ToggleQuickSearchOptionEvent)
     def toggle_option(self, event: ToggleQuickSearchOptionEvent):
         self.options[event.option].nextCheckState()
+
+    def toggle_potential(self, potential):
+        self._card_view.model.initialize_cards(potential=potential)
 
 
 class SongShortcutQuickSearchWidget(ShortcutQuickSearchWidget):

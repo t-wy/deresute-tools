@@ -343,13 +343,14 @@ class BaseChartPicGenerator(ABC):
             else:
                 unit = Unit.from_list(cards=all_cards[:5])
         except InvalidUnit:
-            return
+            return False
         # Skip drawing if same unit else reset drawing
         if not self.grand and isinstance(unit, GrandUnit):
             unit = unit.ua
         if unit == self.unit:
-            return
+            return False
         self.unit = unit
+        return True
 
     def paint_skill(self, *draw_label):
         if len(draw_label) == 0:

@@ -137,7 +137,7 @@ class UiMainWindow:
         self.card_view = CardView(self.central_widget)
         self.card_model = CardModel(self.card_view)
         self.card_view.set_model(self.card_model)
-        self.card_model.initialize_cards()
+        self.card_model.initialize_cards(potential=False)
         self.card_view.initialize_pics()
         self.card_view.connect_cell_change()
         self.card_layout.addWidget(self.card_view.widget)

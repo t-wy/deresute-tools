@@ -63,6 +63,8 @@ class ChartViewer:
         self.generator = BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self, reset_main=False,
                                                              mirrored=self.mirrored)
         
+        self.perfect_detail = None
+        
         title, difficulty, level, total = self.get_song_info_from_id(self.song_id, self.difficulty)
         self.info_widget.title_line.setText(title)
         self.info_widget.difficulty_line.setText(difficulty)
@@ -141,8 +143,11 @@ class ChartViewer:
     def hook_unit(self, event: HookUnitToChartViewerEvent):
         if self.generator is None:
             return
-        self.generator.hook_cards(event.cards)
+        unit_changed = self.generator.hook_cards(event.cards)
         self.info_widget.mode_perfect_button.setCheckable(True)
+        self.perfect_detail = None
+        if self.chart_mode == 1 and unit_changed:
+            self.generator.draw_perfect_chart()
 
     @subscribe(ToggleMirrorEvent)
     def toggle_mirror(self, event: ToggleMirrorEvent):

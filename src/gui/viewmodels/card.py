@@ -202,12 +202,15 @@ class CardModel:
 
     @subscribe(PotentialUpdatedEvent)
     def initialize_cards_from_event(self, event: PotentialUpdatedEvent):
-        self.initialize_cards(event.card_list)
+        if self.potential:
+            self.initialize_cards(event.card_list, potential=True)
 
-    def initialize_cards(self, card_list=None):
+    def initialize_cards(self, card_list=None, potential=False):
+        self.potential = potential
+        
         db.cachedb.execute("""ATTACH DATABASE "{}" AS masterdb""".format(meta_updater.get_masterdb_path()))
         db.cachedb.commit()
-        query = """
+        query = query = """
             SELECT  cdc.id as ID,
                     oc.number as Owned,
                     cdc.name as Name,
@@ -218,10 +221,22 @@ class CardModel:
                     lk.keywords as Leader,
                     sd.condition as Interval,
                     pk.keywords as Prob,
+        """
+        if potential:
+            query += """
                     CAST(cdc.vocal_max + cdc.bonus_vocal AS INTEGER) as Vocal,
                     CAST(cdc.dance_max + cdc.bonus_dance AS INTEGER) as Dance,
                     CAST(cdc.visual_max + cdc.bonus_visual AS INTEGER) as Visual,
                     CAST(cdc.hp_max + cdc.bonus_hp AS INTEGER) as Life
+            """
+        else:
+            query += """
+                    CAST(cdc.vocal_max + cd.bonus_vocal AS INTEGER) as Vocal,
+                    CAST(cdc.dance_max + cd.bonus_dance AS INTEGER) as Dance,
+                    CAST(cdc.visual_max + cd.bonus_visual AS INTEGER) as Visual,
+                    CAST(cdc.hp_max + cd.bonus_hp AS INTEGER) as Life
+            """
+        query += """
             FROM card_data_cache as cdc
             INNER JOIN chara_cache cc on cdc.chara_id = cc.chara_id
             INNER JOIN rarity_text rt on cdc.rarity = rt.id
@@ -231,6 +246,7 @@ class CardModel:
             LEFT JOIN probability_keywords pk on pk.id = sd.probability_type
             LEFT JOIN skill_keywords sk on sd.skill_type = sk.id
             LEFT JOIN leader_keywords lk on cdc.leader_skill_id = lk.id
+            LEFT JOIN masterdb.card_data cd on cdc.id = cd.id
         """
         if card_list is not None:
             query += "WHERE cdc.id IN ({})".format(','.join(['?'] * len(card_list)))
