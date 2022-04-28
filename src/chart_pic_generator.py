@@ -183,9 +183,7 @@ class BaseChartPicGenerator(ABC):
                 self.notes['finishPos'] = 15 - (self.notes['finishPos'] + self.notes['status'])
         self.notes_into_group()
         self.generate_note_objects()
-
-        self.note_miss_list = []
-        self.note_offset_dict = {}
+        
         self.selected_note = -1
         
         self.skill_inactive_list = [[] for _ in range(15)]
@@ -199,6 +197,7 @@ class BaseChartPicGenerator(ABC):
             self.p.append(QPainter(self.label[_].pixmap()))
             self.p[_].setRenderHint(QPainter.Antialiasing)
         
+        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
         self.draw()
         for l in self.label: l.repaint()
 
@@ -240,7 +239,6 @@ class BaseChartPicGenerator(ABC):
     def initialize_ui(self):
         self.y_total = self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN
         self.x_total = (2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE)
-        
         self.chart_label = QWidget()
         self.chart_label_layout = QVBoxLayout(self.chart_label)
         self.chart_label_layout.setSpacing(0)
@@ -279,7 +277,7 @@ class BaseChartPicGenerator(ABC):
         return self.X_MARGIN + lane * self.LANE_DISTANCE
 
     def get_y(self, sec, label):
-        y = (label + 1) * MAX_LABEL_Y - Y_MARGIN - sec * SEC_HEIGHT
+        y = (label + 1) * (MAX_LABEL_Y + 1) - Y_MARGIN - sec * SEC_HEIGHT
         if label == self.y_total // MAX_LABEL_Y:
             y -= MAX_LABEL_Y - self.y_total % MAX_LABEL_Y
         return y
@@ -354,6 +352,9 @@ class BaseChartPicGenerator(ABC):
         self.unit = unit
 
     def paint_skill(self, *draw_label):
+        if len(draw_label) == 0:
+            self.skills = []
+            self.viewer.chart_widget.skill_clickable_areas.clear()
         for card_idx, card in enumerate(self.unit.all_cards()):
             skill = card.sk
             interval = skill.interval
@@ -362,7 +363,8 @@ class BaseChartPicGenerator(ABC):
             skill_time = 1
             label = 0
             self.skills.append({'type' : skill.skill_type, 'time' : []})
-            self.viewer.chart_widget.skill_clickable_areas.append([])
+            if len(self.viewer.chart_widget.skill_clickable_areas) - 1 < card_idx:
+                self.viewer.chart_widget.skill_clickable_areas.append([])
             while label < self.n_label:
                 left = skill_time * interval
                 right = skill_time * interval + duration
@@ -407,7 +409,7 @@ class BaseChartPicGenerator(ABC):
                                 self.SKILL_PAINT_WIDTH,
                                 duration * SEC_HEIGHT)
                 
-                if (left, right) in self.skills[card_idx]['time']:
+                if (left, right) in self.skills[card_idx]['time'] or left == 0:
                     continue
                 self.skills[card_idx]['time'].append((left, right))
                 
@@ -587,8 +589,8 @@ class BaseChartPicGenerator(ABC):
         y_current = 0
         while y_current < self.y_total:
             for n in range(self.n_label):
-                if n * MAX_LABEL_Y <= y_current and y_current + IMAGE_HEIGHT < (n+1) * MAX_LABEL_Y:
-                    if y_current + IMAGE_HEIGHT > self.y_total + Y_MARGIN: #Final part of the chart
+                if n * MAX_LABEL_Y <= y_current and y_current + IMAGE_HEIGHT <= (n+1) * MAX_LABEL_Y: # label is totally inside the group
+                    if y_current + IMAGE_HEIGHT > self.y_total: #Final part of the chart
                         h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
                         painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
                     else:
@@ -596,10 +598,14 @@ class BaseChartPicGenerator(ABC):
                         painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, IMAGE_HEIGHT))
                     break
                 else:
-                    if n * MAX_LABEL_Y <= y_current + IMAGE_HEIGHT <= (n+1) * MAX_LABEL_Y:
-                        y = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y) - IMAGE_HEIGHT
-                        h = self.label[n].pixmap().height() - y
-                        painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, h))
+                    if n * MAX_LABEL_Y <= y_current + IMAGE_HEIGHT <= (n+1) * MAX_LABEL_Y: 
+                        if y_current + IMAGE_HEIGHT > self.y_total:
+                            h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
+                            painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
+                        else:
+                            y = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y) - IMAGE_HEIGHT
+                            h = self.label[n].pixmap().height() - y
+                            painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, h))
                     if n * MAX_LABEL_Y <= y_current < (n+1) * MAX_LABEL_Y:
                         h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
                         painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))

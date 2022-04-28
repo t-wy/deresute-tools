@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QMetaObject, QCoreApplication, Qt
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QIntValidator, QFontMetrics
 from PyQt5.QtWidgets import QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QTabWidget, QPushButton, QApplication, \
-    QMainWindow, QCheckBox, QScrollArea
+    QMainWindow, QCheckBox, QScrollArea, QLineEdit, QSizePolicy
 
 import customlogger as logger
 from chihiro import ROOT_DIR
@@ -100,7 +100,7 @@ class UiMainWindow:
         
         self.unit_user_unit_custom_layout = QHBoxLayout()
         
-        self.user_unitLayout = QVBoxLayout()
+        self.user_unit_layout = QVBoxLayout()
         self.user_unit_view1 = UnitView(self.central_widget)
         self.user_unit_view2 = UnitView(self.central_widget)
         self.user_unit_view1.set_copy(self.user_unit_view2)
@@ -109,7 +109,7 @@ class UiMainWindow:
         self.user_unit_view1.set_model(self.user_unit_model)
         self.user_unit_view2.set_model(self.user_unit_model)
         self.user_unit_model.initialize_units()
-        self.user_unitLayout.addWidget(self.user_unit_view1.widget)
+        self.user_unit_layout.addWidget(self.user_unit_view1.widget)
         
         self.add_unit_button = QPushButton()
         self.add_unit_button.setText("Add unit")
@@ -119,9 +119,9 @@ class UiMainWindow:
             "First/Red card is the leader, last/blue card is the guest.")
         self.add_unit_button.clicked.connect(lambda: self.user_unit_view1.add_empty_widget())
         self.add_unit_button.clicked.connect(lambda: self.user_unit_view2.add_empty_widget())
-        self.user_unitLayout.addWidget(self.add_unit_button)
+        self.user_unit_layout.addWidget(self.add_unit_button)
         
-        self.unit_user_unit_custom_layout.addLayout(self.user_unitLayout, 2)
+        self.unit_user_unit_custom_layout.addLayout(self.user_unit_layout, 2)
         
         self.custom_view = CustomView()
         self.custom_view.setup()
@@ -161,8 +161,24 @@ class UiMainWindow:
         self.icon_loader_view.widget.setToolTip("Larger icons require more RAM to run.")
         self.icon_loader_model.load_image(0)
         self.card_quicksearch_layout.addWidget(self.icon_loader_view.widget)
+        
+        self.import_layout = QHBoxLayout()
+        self.import_text = QLineEdit(self.main)
+        txt = "999999999"
+        self.import_text.setPlaceholderText("User ID")
+        self.import_text.setValidator(QIntValidator(0, 999999999, None))  # Only number allowed
+        fm = QFontMetrics(self.import_text.font())
+        self.import_text.setFixedWidth(fm.width(txt) + 10)
+        self.import_button = QPushButton("Import from ID", self.main)
+        self.import_button.pressed.connect(lambda: self.import_from_id(self.import_text.text()))
+        self.import_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.import_layout.addWidget(self.import_text)
+        self.import_layout.addWidget(self.import_button)
+        self.card_quicksearch_layout.addLayout(self.import_layout)
+        
         self.card_layout.addLayout(self.card_quicksearch_layout)
         self.card_layout.setStretch(1, 1)
+        
         self.unit_left_layout.addLayout(self.card_layout)
         self.unit_layout.addLayout(self.unit_left_layout, 3)
         

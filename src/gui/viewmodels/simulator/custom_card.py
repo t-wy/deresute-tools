@@ -1,4 +1,5 @@
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QAbstractItemView
 
 from gui.viewmodels.utils import ValidatableNumericalTableWidgetItem
@@ -101,6 +102,9 @@ class CustomCardModel:
                 self.card.sk_pots,
                 self.card.star
             ])
+            for _ in range(7):
+                item = self.view.widget.item(_, 0)
+                item.setFlags(item.flags() ^ Qt.ItemIsEditable)
 
     def handle_cell_change(self, r_idx):
         v = self.view.widget.item(r_idx, 0).text()

@@ -93,6 +93,11 @@ class TurnOffRunningLabelFromUuidEvent:
         self.uuid = uuid
 
 
+class TurnOffRunningLabelFromUuidGrandEvent:
+    def __init__(self, uuid):
+        self.uuid = uuid
+
+
 class ToggleUnitLockingOptionsVisibilityEvent:
     def __init__(self):
         pass
@@ -104,11 +109,9 @@ class CacheSimulationEvent:
         
 
 class CustomSimulationEvent:
-    def __init__(self, simulation_event, skill_inactive_list, note_offset_dict, note_miss_list):
+    def __init__(self, simulation_event, skill_inactive_list):
         self.simulation_event = simulation_event
         self.skill_inactive_list = skill_inactive_list
-        self.note_offset_dict = note_offset_dict
-        self.note_miss_list = note_miss_list
 
 
 class CustomSimulationResultEvent:

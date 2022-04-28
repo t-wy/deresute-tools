@@ -9,7 +9,7 @@ import customlogger as logger
 from exceptions import InvalidUnit
 from gui.events.calculator_view_events import GetAllCardsEvent, SimulationEvent, DisplaySimulationResultEvent, \
     AddEmptyUnitEvent, YoinkUnitEvent, PushCardEvent, ContextAwarePushCardEvent, TurnOffRunningLabelFromUuidEvent, \
-    CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
+    TurnOffRunningLabelFromUuidGrandEvent, CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
 from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent, HookSimResultToChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
 from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent
@@ -24,7 +24,7 @@ from gui.viewmodels.simulator.calculator import CalculatorModel, CalculatorView,
 from gui.viewmodels.simulator.custom_bonus import CustomBonusView, CustomBonusModel
 from gui.viewmodels.simulator.custom_card import CustomCardView, CustomCardModel
 from gui.viewmodels.simulator.custom_settings import CustomSettingsView, CustomSettingsModel
-from gui.viewmodels.simulator.grandcalculator import GrandCalculatorView
+from gui.viewmodels.simulator.grandcalculator import GrandCalculatorView, GrandCalculatorModel
 from gui.viewmodels.simulator.support import SupportView, SupportModel
 from gui.viewmodels.simulator.unit_details import UnitDetailsView, UnitDetailsModel
 from logic.grandlive import GrandLive
@@ -98,7 +98,7 @@ class MainView:
         view_wide = CalculatorView(self.widget, self)
         view_grand = GrandCalculatorView(self.widget, self)
         model_wide = CalculatorModel(view_wide)
-        model_grand = CalculatorModel(view_grand)
+        model_grand = GrandCalculatorModel(view_grand)
         view_wide.set_model(model_wide)
         view_grand.set_model(model_grand)
         self.views = [view_wide, view_grand]
@@ -254,14 +254,20 @@ class MainModel(QObject):
                 if extended_cards_data.score_id is None:
                     # Lock chart but no music found
                     results.append(None)
-                    eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
+                    if len(cards) == 15:
+                        eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidGrandEvent(extended_cards_data.uuid))
+                    else:
+                        eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
                     continue
                 live.set_music(score_id=extended_cards_data.score_id, difficulty=extended_cards_data.diff_id)
                 groove_song_color = extended_cards_data.groove_song_color
             elif diff_id is not None:
                 live.set_music(score_id=score_id, difficulty=diff_id)
             else:
-                eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
+                if len(cards) == 15:
+                    eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidGrandEvent(extended_cards_data.uuid))
+                else:
+                    eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
                 continue
 
             # Negate custom_pots + load preset appeal bonus if defined, else ignore
@@ -370,9 +376,8 @@ class MainModel(QObject):
                               extra_bonus=event.extra_bonus, special_option=event.special_option,
                               special_value=event.special_value, doublelife=event.doublelife,
                               abuse=False, perfect_only=False, output=False,
-                              inactive_skill=custom_event.skill_inactive_list,
-                              note_offset=custom_event.note_offset_dict,
-                              note_miss=custom_event.note_miss_list)
+                              inactive_skill=custom_event.skill_inactive_list
+                              )
         
         eventbus.eventbus.post(CustomSimulationResultEvent(result))
 

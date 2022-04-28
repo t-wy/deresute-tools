@@ -71,8 +71,10 @@ class AutoSimulationResult(BaseSimulationResult):
 
 
 class LiveDetail():
-    def __init__(self, note_offset, judgement, skill_inactive, life, combo, weight,
+    def __init__(self, note_number, checkpoint, note_offset, judgement, skill_inactive, life, combo, weight,
                  score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list):
+        self.note_number = note_number
+        self.checkpoint = checkpoint
         self.note_offset = note_offset
         self.judgement = judgement
         self.skill_inactive = skill_inactive
@@ -306,7 +308,9 @@ class Simulator:
             cc_fr_base=cc_fr_base,
             cc_great_num=cc_great_num,
             cc_base=cc_base,
-            perfect_detail=LiveDetail(perfect_detail['note_offset'],
+            perfect_detail=LiveDetail(perfect_detail['note_number'],
+                                      perfect_detail['checkpoint'],
+                                      perfect_detail['note_offset'],
                                       perfect_detail['judgement'],
                                       perfect_detail['skill_inactive'],
                                       perfect_detail['life'],
@@ -414,7 +418,9 @@ class Simulator:
         impl.reset_machine(perfect_play=True, perfect_only=True)
         score, _, detail = impl.simulate_impl()
         
-        score_detail = LiveDetail(detail['note_offset'],
+        score_detail = LiveDetail(detail['note_number'],
+                                  detail['checkpoint'],
+                                  detail['note_offset'],
                                   detail['judgement'],
                                   detail['skill_inactive'],
                                   detail['life'],

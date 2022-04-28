@@ -233,7 +233,7 @@ class Unit(BaseUnit):
             total = self.motif_visual_trimmed
         else:
             return
-        return values[total]
+        return values[int(total)]
 
     def update_card(self, idx, card):
         self._cards[idx] = card
