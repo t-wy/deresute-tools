@@ -42,7 +42,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 如果你的裝置還沒有安裝 Python，請到 [Python 官方網站](https://www.python.org/downloads/) 尋找適合的版本下載。
 
 #### 關於 Windows 7 的額外指引 [^](#目錄)
-- 對於 Python 3 最後支援本作業系統的版本，請查閱：
+- 對於 Python 3 最後支援此作業系統的版本，請查閱：
   - [Python 3.8.10](https://www.python.org/downloads/release/python-3810/)
   - [Python 3.7.9](https://www.python.org/downloads/release/python-379/)
 
@@ -93,7 +93,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 在命令提示字元輸入 `pip`，然後按 \[Enter\] 檢查 `pip` 有否正常啟動。
 
-（如果你的裝置有安裝多餘一個 Python，你可以使用 `python -m pip`。（如果 `python` 啟動的並不是預設的 python 版本，請將上述指令的 `python` 改成 python 的路徑））
+（如果你的裝置有安裝多餘一個 Python，你可以使用 `python -m pip`。（如果 `python` 啟動的不是預設的 python 版本，請將上述指令的 `python` 改成 python 的路徑））
 
 如果 `pip` 未被安裝，你需要使用 `python -m ensurepip --upgrade` 安裝 `pip`。
 
@@ -103,7 +103,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 *如果你已安裝其他或會構成衝突的套件，你可以考慮從 (virtualenv)[https://docs.python.org/3/library/venv.html] 執行下列步驟*
 
-在命令提示字元輸入 `cd C:\...\...`（當中的 `C:\...\...` 指下載的壓縮檔解壓縮的位置，`C:\...\...\requirements.txt` 應該在該資料夾內），然後按s \[Enter\]，
+在命令提示字元輸入 `cd C:\...\...`（當中的 `C:\...\...` 指下載的壓縮檔解壓縮的位置，`C:\...\...\requirements.txt` 應該在該資料夾內），然後按 \[Enter\]，
 
 輸入 `python -m pip install -r requirements.txt`，然後按 \[Enter\]，pip 會安裝 `requirements.txt` 裡提及的所有套件。請耐心等待。
 
