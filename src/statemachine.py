@@ -1651,17 +1651,17 @@ class StateMachine:
                 unit_combo_skills.append(unified_non_magic_combo_skill)
             else:
                 if unified_magic_score > unified_non_magic_score:
-                    unit_score_skills.append(unified_magic_score_skill \
+                    unit_score_skills.append([unified_magic_score_skill] \
                                              if unified_magic_score_skill is not None else [])
                 else:
                     unit_score_skills.append(unified_non_magic_score_skill)
                 if unified_magic_score_great > unified_non_magic_score_great:
-                    unit_score_great_skills.append(unified_magic_score_great_skill \
+                    unit_score_great_skills.append([unified_magic_score_great_skill] \
                                                    if unified_magic_score_great_skill is not None else [])
                 else:
                     unit_score_great_skills.append(unified_non_magic_score_great_skill)
                 if unified_magic_combo > unified_non_magic_combo:
-                    unit_combo_skills.append(unified_magic_combo_skill \
+                    unit_combo_skills.append([unified_magic_combo_skill] \
                                              if unified_magic_combo_skill is not None else [])
                 else:
                     unit_combo_skills.append(unified_non_magic_combo_skill)

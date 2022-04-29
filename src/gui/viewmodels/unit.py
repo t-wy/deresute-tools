@@ -26,8 +26,8 @@ class UnitCard(ImageWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
+            self.unit_widget.set_card(self.card_idx, None)
             if str(type(self.unit_widget.unit_view)) == "<class 'gui.viewmodels.unit.UnitView'>":
-                self.unit_widget.set_card(self.card_idx, None)
                 self.unit_widget.unit_view.copy.copy_unit(self.unit_widget.unit_view)
         elif event.button() == Qt.LeftButton:
             self.unit_widget.toggle_custom_card(self.card_idx)
