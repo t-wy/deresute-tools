@@ -414,7 +414,7 @@ class BaseChartPicGenerator(ABC):
                     continue
                 self.skills[card_idx]['time'].append((left, right))
                 
-                y_scroll = self.y_total - (Y_MARGIN + right * SEC_HEIGHT)
+                y_scroll = self.y_total + (label + 1) - (Y_MARGIN + right * SEC_HEIGHT)
                 polygon = QPolygonF()
                 polygon.append(QPoint(x - self.SKILL_PAINT_WIDTH // 2, y_scroll))
                 polygon.append(QPoint(x - self.SKILL_PAINT_WIDTH // 2, y_scroll + duration * SEC_HEIGHT))
@@ -692,20 +692,27 @@ class BaseChartPicGenerator(ABC):
                     y = self.get_y(note.sec, label_idx)
                     self.p[label_idx].drawRoundedRect(x - w // 2, y - h // 2, w, h, 2, 2)
         for l in self.label: l.repaint()
-
-    def draw_selected_skill(self, card_idx, idx):
-        self.draw_nothing_selected()
+    
+    def get_label_of_skill(self, card_idx, idx):
         draw_label = []
         for label_idx, label in enumerate(self.note_labels):
             left = self.skills[card_idx]['time'][idx][0]
             right = self.skills[card_idx]['time'][idx][1]
-            duration = right - left
             if left > ((label_idx + 1) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT + 3:
                 continue
             if right < ((label_idx) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT - 3:
                 continue
             self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
             draw_label.append(label_idx)
+        return draw_label
+    
+    def draw_selected_skill(self, card_idx, idx):
+        self.draw_nothing_selected()
+        
+        draw_label = self.get_label_of_skill(card_idx, idx)
+        left = self.skills[card_idx]['time'][idx][0]
+        right = self.skills[card_idx]['time'][idx][1]
+        duration = right - left
         
         for p_idx in draw_label: self.p[p_idx].fillRect(0, 0, self.x_total, self.y_total, Qt.black)
         self.paint_skill(draw_label)
@@ -733,6 +740,15 @@ class BaseChartPicGenerator(ABC):
         
         self.draw(draw_label)
         for l in self.label: l.repaint()
+        
+    def draw_perfect_chart_skill_part(self, card_idx, idx):
+        draw_label = self.get_label_of_skill(card_idx, idx)
+        
+        for p_idx in draw_label: self.p[p_idx].fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.paint_skill(draw_label)
+        self.draw(draw_label)
+        for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
 
 
 class BasicChartPicGenerator(BaseChartPicGenerator):
@@ -758,7 +774,7 @@ class BasicChartPicGenerator(BaseChartPicGenerator):
                 self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
                 
                 polygon = QPolygonF()
-                y_scroll = self.y_total - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                y_scroll = self.y_total + (label_idx + 1) - (Y_MARGIN + note.sec * SEC_HEIGHT) 
                 if note.note_type == NoteType.FLICK:
                     if note.right_flick:
                         for theta in range(60, 301, 30):
@@ -825,7 +841,7 @@ class GrandChartPicGenerator(BaseChartPicGenerator):
                 self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
             
                 polygon = QPolygonF()
-                y_scroll = self.y_total - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                y_scroll = self.y_total + (label_idx + 1) - (Y_MARGIN + note.sec * SEC_HEIGHT)
                 if note.note_type == NoteType.FLICK:
                     if note.right_flick:
                         polygon.append(QPoint(self.get_x(note.lane + note.span) + 23, y_scroll))

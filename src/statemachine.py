@@ -960,7 +960,6 @@ class StateMachine:
         self.score_great_bonuses.append(score_great_bonus)
         self.combo_bonuses.append(combo_bonus)
         
-        #TODO : Skills giving penalty is not included
         if judgement == Judgement.PERFECT:
             self.score_bonus_skills.append(self.cache_score_bonus_skill)
             self.score_great_bonus_skills.append([])

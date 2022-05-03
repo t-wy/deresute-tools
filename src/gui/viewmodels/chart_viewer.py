@@ -306,8 +306,13 @@ class ChartViewer:
         else:
             self.generator.skill_inactive_list[idx].append(num)
             self.info_widget.custom_skill_active_line.setText("Not Activated")
-        self.generator.draw_perfect_chart() #TODO : Optimize by redrawing partially
+        self.generator.draw_perfect_chart_skill_part(idx, num)
         self.generator.draw_selected_skill(idx, num)
+
+    def reset_all_custom_settings(self):
+        self.generator.skill_inactive_list = [[] for _ in range(15)]
+        self.set_stacked_widget_index(self.info_widget.detail_widget, 0)
+        self.generator.draw_perfect_chart()
     
     def update_custom_chart(self):
         self.generator.draw_perfect_chart()
@@ -619,7 +624,7 @@ class ChartViewer:
         self.info_widget.custom_update_button = QPushButton("Update")
         self.info_widget.custom_update_button.clicked.connect(lambda: self.simulate_custom())
         self.info_widget.custom_reset_button = QPushButton("Reset All")
-        self.info_widget.custom_reset_button.setDisabled(True)
+        self.info_widget.custom_reset_button.clicked.connect(lambda: self.reset_all_custom_settings())
         self.info_widget.custom_button_layout.addWidget(self.info_widget.custom_update_button)
         self.info_widget.custom_button_layout.addWidget(self.info_widget.custom_reset_button)
         
