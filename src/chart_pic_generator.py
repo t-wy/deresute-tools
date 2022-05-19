@@ -627,7 +627,7 @@ class BaseChartPicGenerator(ABC):
         for l in self.label: l.repaint()
         self.pixmap_cache = [None] * self.n_label
     
-    def draw_abuse_chart(self):
+    def draw_abuse_chart(self): # This draws only abuse detail
         for group_idx, qt_group in enumerate(self.note_labels):
             for note in qt_group:
                 self.draw_abuse(note, group_idx)
@@ -657,12 +657,13 @@ class BaseChartPicGenerator(ABC):
                     if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
                         self.selected_skill = (card_idx, idx)
                         skill_type = self.skills[card_idx]['type']
-                        skill_type_text = SKILL_BASE[skill_type]['name']
                         skill_time = self.skills[card_idx]['time'][idx]
                         skill_time_text = "{:.1f} ~ {:.1f}".format(skill_time[0], skill_time[1])
                         self.draw_selected_skill(card_idx, idx)
-                        self.viewer.show_detail_skill_info(skill_type_text, skill_time_text, "")
+                        self.viewer.show_detail_skill_info(skill_type, skill_time_text)
                         return
+        self.selected_note = -1
+        self.selected_skill = (-1, -1)
         self.draw_nothing_selected()
         self.viewer.show_detail_nothing()
 
@@ -674,6 +675,9 @@ class BaseChartPicGenerator(ABC):
         for l in self.label: l.repaint()
     
     def draw_selected_note(self, idx):
+        if self.selected_note == -1:
+            return
+        
         self.draw_nothing_selected()
         num = self.get_note_from_index(idx).num
         for label_idx, label in enumerate(self.note_labels):
@@ -707,6 +711,9 @@ class BaseChartPicGenerator(ABC):
         return draw_label
     
     def draw_selected_skill(self, card_idx, idx):
+        if card_idx == -1 and idx == -1:
+            return
+        
         self.draw_nothing_selected()
         
         draw_label = self.get_label_of_skill(card_idx, idx)
@@ -739,6 +746,10 @@ class BaseChartPicGenerator(ABC):
             self.p[label_idx].drawRoundedRect(x - w // 2, y - 1, w, h, 2, 2)
         
         self.draw(draw_label)
+        if self.viewer.chart_mode == 2 or (self.viewer.chart_mode == 3 and self.viewer.custom_abuse == 1):
+            for label_idx in draw_label:
+                for note in self.note_labels[label_idx]:
+                    self.draw_abuse(note, label_idx)
         for l in self.label: l.repaint()
         
     def draw_perfect_chart_skill_part(self, card_idx, idx):

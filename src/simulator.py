@@ -71,8 +71,9 @@ class AutoSimulationResult(BaseSimulationResult):
 
 
 class LiveDetail():
-    def __init__(self, note_number, checkpoint, note_offset, judgement, skill_inactive, life, combo, weight,
-                 score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list):
+    def __init__(self, skill_probability, note_number, checkpoint, note_offset, judgement, skill_inactive, life, combo, weight,
+                 score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list, amr_bonus):
+        self.skill_probability = skill_probability
         self.note_number = note_number
         self.checkpoint = checkpoint
         self.note_offset = note_offset
@@ -85,6 +86,7 @@ class LiveDetail():
         self.score_great_bonus_skill = score_great_bonus_skill
         self.combo_bonus_skill = combo_bonus_skill
         self.note_score_list = note_score_list
+        self.amr_bonus = amr_bonus
 
 
 class Simulator:
@@ -308,7 +310,8 @@ class Simulator:
             cc_fr_base=cc_fr_base,
             cc_great_num=cc_great_num,
             cc_base=cc_base,
-            perfect_detail=LiveDetail(perfect_detail['note_number'],
+            perfect_detail=LiveDetail(perfect_detail['skill_probability'],
+                                      perfect_detail['note_number'],
                                       perfect_detail['checkpoint'],
                                       perfect_detail['note_offset'],
                                       perfect_detail['judgement'],
@@ -319,7 +322,8 @@ class Simulator:
                                       perfect_detail['score_bonus_skill'],
                                       perfect_detail['score_great_bonus_skill'],
                                       perfect_detail['combo_bonus_skill'],
-                                      perfect_detail['score_list']
+                                      perfect_detail['score_list'],
+                                      perfect_detail['amr_bonus']
                                       )
         )
 
@@ -376,7 +380,8 @@ class Simulator:
             abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
             logger.debug("Total abuse: {}".format(int(abuse_result_score)))
             logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
-        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, cc_great_num, perfect_detail
+        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, \
+            cc_great_num, perfect_detail
 
     def _simulate_custom(self,
                   appeals=None,
@@ -418,7 +423,8 @@ class Simulator:
         impl.reset_machine(perfect_play=True, perfect_only=True)
         score, _, detail = impl.simulate_impl()
         
-        score_detail = LiveDetail(detail['note_number'],
+        score_detail = LiveDetail(detail['skill_probability'],
+                                  detail['note_number'],
                                   detail['checkpoint'],
                                   detail['note_offset'],
                                   detail['judgement'],
@@ -429,9 +435,18 @@ class Simulator:
                                   detail['score_bonus_skill'],
                                   detail['score_great_bonus_skill'],
                                   detail['combo_bonus_skill'],
-                                  detail['score_list']
+                                  detail['score_list'],
+                                  detail['amr_bonus']
                                 )
-        return (score, score_detail)
+        
+        abuse_result_score = 0
+        abuse_data: AbuseData = None
+        impl.reset_machine(perfect_play=True, abuse=True, perfect_only=False)
+        abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
+        logger.debug("Total abuse: {}".format(int(abuse_result_score)))
+        logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
+        
+        return (score, score_detail, abuse_result_score, abuse_data)
 
     def _simulate_auto(self,
                        appeals=None,

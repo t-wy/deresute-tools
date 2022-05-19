@@ -124,6 +124,93 @@ for d in [SPARKLE_BONUS_SSR, SPARKLE_BONUS_SR, SPARKLE_BONUS_SSR_GRAND, SPARKLE_
         if c_v < value:
             c_v = value
 
+SKILL_DESCRIPTION = {
+    0: "",
+    1: "{}% SCORE UP to PERFECT notes.",
+    2: "{}% SCORE UP to PERFECT/GREAT notes.",
+    4: "{}% COMBO BONUS UP.",
+    5: "Set GREAT notes to PERFECT.",
+    6: "Set GREAT/NICE notes to PERFECT.",
+    7: "Set GREAT/NICE/BAD notes to PERFECT.",
+    9: "Sustain combo on NICE.",
+    12: "Prevents life decrease.",
+    14: "Consuming {} life, {}% SCORE UP to PERFECT/GREAT notes and sustain combo on NICE/BAD.",
+    15: "{}% SCORE UP to PERFECT notes, halves PERFECT timing window.",
+    16: "Repeats the skill of other idols that was last activated.",
+    17: "Heals {} life on PERFECT.",
+    20: "Boosts skill effects of other idols. (SCORE UP/COMBO BONUS UP is boosted by {}%)",
+    21: "If only CUTE idols are in the unit, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
+    22: "If only COOL idols are in the unit, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
+    23: "If only PASSION idols are in the unit, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
+    24: "{}% COMBO BONUS UP, heals {} life on PERFECT",
+    25: "With the scale of the life value, COMBO BONUS UP.",
+    26: "If idols of all 3 types are in the unit, {}% SCORE UP and {} life healing on PERFECT notes, {}% COMBO BONUS UP.",
+    27: "{}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
+    28: "{}% SCORE UP to PERFECT notes, {}% SCORE UP to PERFECT LONG notes.",
+    29: "{}% SCORE UP to PERFECT notes, {}% SCORE UP to PERFECT FLICK notes.",
+    30: "{}% SCORE UP to PERFECT notes, {}% SCORE UP to PERFECT SLIDE notes.",
+    31: "{}% COMBO BONUS UP, set GREAT/NICE notes to PERFECT.",
+    32: "Boosts SCORE UP/COMBO BONUS UP skill effects of other CUTE idols by {}%.",
+    33: "Boosts SCORE UP/COMBO BONUS UP skill effects of other COOL idols by {}%.",
+    34: "Boosts SCORE UP/COMBO BONUS UP skill effects of other PASSION idols by {}%.",
+    35: "With the scale of the VOCAL value of the unit, SCORE UP to PERFECT notes.",
+    36: "With the scale of the DANCE value of the unit, SCORE UP to PERFECT notes.",
+    37: "With the scale of the VISUAL value of the unit, SCORE UP to PERFECT notes.",
+    38: "If idols of all 3 types are in the unit, boosts SCORE UP/COMBO BONUS UP skill effects by {}% and boosts other skill effects of other idols.",
+    39: "{}% COMBO BONUS DOWN, apply the highest SCORE UP effect activated during LIVE {}% boosted.",
+    40: "Apply the highest SCORE UP/COMBO BONUS UP effect activated during LIVE.",
+    41: "Activates the effects of all idols in the unit and applies the highest effect.",
+    42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted."
+    }
+
+def get_skill_description(card_id):
+    skill_data = db.masterdb.execute_and_fetchone("""
+                                                     SELECT
+                                                         skill_type,
+                                                         skill_trigger_value,
+                                                         value,
+                                                         value_2,
+                                                         value_3
+                                                     FROM skill_data
+                                                     WHERE id = ?
+                                                     """, [card_id])
+    if skill_data[0] in (5, 6, 7, 9, 12, 16, 25, 35, 36, 37, 40, 41):
+        return SKILL_DESCRIPTION[skill_data[0]]
+    elif skill_data[0] in (1, 2, 4, 15, 31):
+        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100)
+    elif skill_data[0] == 17:
+        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2])
+    elif skill_data[0] in (21, 22, 23, 27, 28, 29, 30):
+        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100, skill_data[3] - 100)
+    elif skill_data[0] == 24:
+        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100, skill_data[3])
+    elif skill_data[0] == 26:
+        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100, skill_data[4], skill_data[3] - 100)
+    elif skill_data[0] == 14:
+        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[1], skill_data[2] - 100)
+    elif skill_data[0] in (39, 42):
+        return SKILL_DESCRIPTION[skill_data[0]].format(100 - skill_data[2], (skill_data[3] - 1000) // 10)
+    elif skill_data[0] in (20, 32, 33, 34, 38):
+        boost_data = db.masterdb.execute_and_fetchone("""
+                                                         SELECT
+                                                             boost_value_1
+                                                         FROM skill_boost_type
+                                                         WHERE skill_value = ? AND target_type = 1
+                                                         """, [skill_data[2]])
+        return SKILL_DESCRIPTION[skill_data[0]].format((boost_data[0] - 1000) // 10)
+
+SKILL_INACTIVATION_REASON = {
+    1: "Not enough life left.",
+    2: "The unit does not consist of only CUTE idols.",
+    3: "The unit does not consist of only COOL idols.",
+    4: "The unit does not consist of only PASSION idols.",
+    5: "The unit does not consist of all 3 type idols.",
+    6: "There are no skills to encore.",
+    7: "No SCORE UP skill effects have been activated.",
+    8: "No COMBO BONUS UP skill effects have been activated.",
+    9: "There are no skills that magic can activate."
+    }
+
 def get_sparkle_bonus(rarity, grand=False):
     if grand:
         if rarity > 6:

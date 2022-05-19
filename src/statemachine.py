@@ -16,6 +16,7 @@ from static.note_type import NoteType
 from static.skill import get_sparkle_bonus
 from static.song_difficulty import PERFECT_TAP_RANGE, GREAT_TAP_RANGE, NICE_TAP_RANGE, BAD_TAP_RANGE, \
     Difficulty, FLICK_DRAIN, NONFLICK_DRAIN
+import customlogger as logger
 
 
 class AbuseData:
@@ -136,12 +137,24 @@ class UnitCacheBonus:
                 self.alt_combo[idx] = self.combo - 100
             return
         if skill.is_refrain:
-            self.ref_tap[idx] = max(self.ref_tap.get(idx, 0), self.tap - 100)
-            self.ref_flick[idx] = max(self.ref_flick.get(idx, 0), self.flick - 100)
-            self.ref_long[idx] = max(self.ref_long.get(idx, 0), self.longg - 100)
-            self.ref_slide[idx] = max(self.ref_slide.get(idx, 0), self.slide - 100)
-            self.ref_great[idx] = max(self.ref_great.get(idx, 0), self.great - 100)
-            self.ref_combo[idx] = max(self.ref_combo.get(idx, 0), self.combo - 100)
+            if idx not in self.ref_tap or self.ref_tap[idx] == 0:
+                self.ref_tap[idx] = self.tap - 100
+                self.ref_flick[idx] = self.flick - 100
+                self.ref_long[idx] = self.longg - 100
+                self.ref_slide[idx] = self.slide - 100
+            else:
+                self.ref_tap[idx] = max(self.ref_tap.get(idx, 0), self.tap - 100)
+                self.ref_flick[idx] = max(self.ref_flick.get(idx, 0), self.flick - 100)
+                self.ref_long[idx] = max(self.ref_long.get(idx, 0), self.longg - 100)
+                self.ref_slide[idx] = max(self.ref_slide.get(idx, 0), self.slide - 100)
+            if idx not in self.ref_great or  self.ref_great[idx] == 0:
+                self.ref_great[idx] = self.great - 100
+            else:
+                self.ref_great[idx] = max(self.ref_great.get(idx, 0), self.great - 100)
+            if idx not in self.ref_combo or  self.ref_combo[idx] == 0:
+                self.ref_combo[idx] = self.combo - 100
+            else:
+                self.ref_combo[idx] = max(self.ref_combo.get(idx, 0), self.combo - 100)
             return
 
 
@@ -400,6 +413,8 @@ class StateMachine:
         self.unit_caches = list()
         for _ in range(len(self.live.unit.all_units)):
             self.unit_caches.append(UnitCacheBonus())
+        
+        self.amr_bonuses = dict()
 
         # Metrics
         self.full_roll_chance = 1
@@ -669,7 +684,8 @@ class StateMachine:
         if not self.fail_simulate and not self.abuse:
             self.cache_perfect_score_array = self.note_scores.copy()
         
-        detail = {'note_number' : self.note_numbers,
+        detail = {'skill_probability' : self.probabilities,
+                  'note_number' : self.note_numbers,
                   'checkpoint' : self.checkpoints,
                   'note_offset' : note_time_deltas,
                   'judgement' : self.judgements,
@@ -680,7 +696,9 @@ class StateMachine:
                   'score_bonus_skill' : self.score_bonus_skills,
                   'score_great_bonus_skill' : self.score_great_bonus_skills,
                   'combo_bonus_skill' : self.combo_bonus_skills,
-                  'score_list' : self.note_scores.tolist()}
+                  'score_list' : self.note_scores.tolist(),
+                  'amr_bonus' : self.amr_bonuses}
+        print(self.amr_bonuses)
 
         if self.abuse:
             assert self.cache_perfect_score_array is not None
@@ -933,6 +951,9 @@ class StateMachine:
             self.skill_queue.pop(-self.skill_indices[0])
             self.skill_indices.pop(0)
             self.skill_times.pop(0)
+        logger.debug(self.skill_queue)
+        logger.debug(self.skill_indices)
+        logger.debug(self.skill_times)
 
     def handle_note(self):
         if self.abuse:
@@ -1796,6 +1817,31 @@ class StateMachine:
                 else:
                     unit_idx = skill.original_unit_idx
                 self.unit_caches[unit_idx].update_AMR(skill)
+                unit = self.unit_caches[unit_idx]
+                idx = self.skill_indices[0] - 1
+                num = int(self.skill_times[0] / 1E6 / skill.interval) - 1
+                if skill.is_refrain:
+                    ref = (unit.ref_tap, unit.ref_long, unit.ref_flick, unit.ref_slide, unit.ref_great, unit.ref_combo)
+                    _ = [0, 0, 0, 0, 0, 0]
+                    for i, note in enumerate(ref):
+                        if idx in note:
+                            _[i] = note[idx]
+                    if idx in self.amr_bonuses:
+                        self.amr_bonuses[idx][num] = _
+                    else:
+                        self.amr_bonuses[idx] = dict()
+                        self.amr_bonuses[idx][num] = _
+                else:
+                    alt = (unit.alt_tap, unit.alt_long, unit.alt_flick, unit.alt_slide, unit.alt_great, unit.alt_combo)
+                    _ = [0, 0, 0, 0, 0, 0]
+                    for i, note in enumerate(alt):
+                        if idx in note:
+                            _[i] = note[idx]
+                    if idx in self.amr_bonuses:
+                        self.amr_bonuses[idx][num] = _
+                    else:
+                        self.amr_bonuses[idx] = dict()
+                        self.amr_bonuses[idx][num] = _
 
     def _helper_get_current_skills(self):
         if self.skill_indices[0] not in self.skill_queue:

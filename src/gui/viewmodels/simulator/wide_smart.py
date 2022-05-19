@@ -375,10 +375,9 @@ class MainModel(QObject):
         result = sim.simulate(perfect_play=True, times=1, appeals=event.appeals, support=event.support,
                               extra_bonus=event.extra_bonus, special_option=event.special_option,
                               special_value=event.special_value, doublelife=event.doublelife,
-                              abuse=False, perfect_only=False, output=False,
+                              abuse=True, perfect_only=False, output=False,
                               inactive_skill=custom_event.skill_inactive_list
                               )
-        
         eventbus.eventbus.post(CustomSimulationResultEvent(result))
 
     def handle_yoink_button(self):
