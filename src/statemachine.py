@@ -138,21 +138,21 @@ class UnitCacheBonus:
             return
         if skill.is_refrain:
             if idx not in self.ref_tap or self.ref_tap[idx] == 0:
-                self.ref_tap[idx] = self.tap - 100
-                self.ref_flick[idx] = self.flick - 100
-                self.ref_long[idx] = self.longg - 100
-                self.ref_slide[idx] = self.slide - 100
+                self.ref_tap[idx] = self.tap - 100 if self.tap != 0 else 0
+                self.ref_flick[idx] = self.flick - 100 if self.flick != 0 else 0
+                self.ref_long[idx] = self.longg - 100 if self.longg != 0 else 0
+                self.ref_slide[idx] = self.slide - 100 if self.slide != 0 else 0
             else:
                 self.ref_tap[idx] = max(self.ref_tap.get(idx, 0), self.tap - 100)
                 self.ref_flick[idx] = max(self.ref_flick.get(idx, 0), self.flick - 100)
                 self.ref_long[idx] = max(self.ref_long.get(idx, 0), self.longg - 100)
                 self.ref_slide[idx] = max(self.ref_slide.get(idx, 0), self.slide - 100)
             if idx not in self.ref_great or  self.ref_great[idx] == 0:
-                self.ref_great[idx] = self.great - 100
+                self.ref_great[idx] = self.great - 100 if self.great != 0 else 0
             else:
                 self.ref_great[idx] = max(self.ref_great.get(idx, 0), self.great - 100)
             if idx not in self.ref_combo or  self.ref_combo[idx] == 0:
-                self.ref_combo[idx] = self.combo - 100
+                self.ref_combo[idx] = self.combo - 100 if self.combo != 0 else 0
             else:
                 self.ref_combo[idx] = max(self.ref_combo.get(idx, 0), self.combo - 100)
             return
@@ -1292,10 +1292,10 @@ class StateMachine:
     def _evaluate_bonuses_phase_boost(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]]):
         if not self.has_skill_change:
             return self.cache_max_boosts, self.cache_sum_boosts
-        
+        print(magics)
         boost_cache = list()
         magic_boosts = [
-            # Score(Perfect), Score(Great) Combo, Life, Support
+            # Score(Perfect), Score(Great), Combo, Life, Support
             [1000, 1000, 1000, 1000, 0],  # Cute
             [1000, 1000, 1000, 1000, 0],  # Cool
             [1000, 1000, 1000, 1000, 0]  # Passion
