@@ -25,10 +25,10 @@ def fail_safe(f):
 
 def get_client():
     res = get_truth_version()
-    response = requests.get('https://play.google.com/store/apps/details?id=jp.co.bandainamcoent.BNEI0242&hl=ja')
+    response = requests.get('https://play.google.com/store/apps/details?id=jp.co.bandainamcoent.BNEI0242&hl=ja&gl=US')
     content = response.content.decode('utf-8')
-    idx = content.find(u'現在のバージョン')
-    app_ver = re.search('\\d\\.\\d\\.\\d', content[idx:idx + 200]).group(0)
+    idx = content.find('現在のバージョン')
+    app_ver = re.search('\\["\\d+\\.\\d+\\.\\d+"', content).group(0)[2:-1]
     client = ApiClient(user_id, viewer_id, udid, app_ver, res)
     return client
 
