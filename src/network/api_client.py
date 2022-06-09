@@ -38,7 +38,7 @@ def post_process(build):
             _['potential_param_2'],
             _['potential_param_4'],
             _['potential_param_5']
-        ))
+        ), custom_info=_["custom_info"] if "custom_info" in _ else None)
         for _ in build['member_list']
     ]
     if len(build['supporter']) > 0:
@@ -49,7 +49,7 @@ def post_process(build):
                 build['supporter']['potential_param_2'],
                 build['supporter']['potential_param_4'],
                 build['supporter']['potential_param_5']
-            ))
+            ), custom_info=build['supporter']["custom_info"] if "custom_info" in build['supporter'] else None)
         )
     return cards, support
 

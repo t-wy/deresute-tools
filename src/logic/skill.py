@@ -120,20 +120,35 @@ class Skill:
 
     @classmethod
     def _fetch_skill_data_from_db(cls, skill_id):
-        return db.masterdb.execute_and_fetchone(
-            """
-            SELECT skill_data.*,
-                card_data.attribute,
-                probability_type.probability_max,
-                available_time_type.available_time_max
-            FROM card_data, skill_data, probability_type, available_time_type
-            WHERE skill_data.id = ? AND 
-                card_data.skill_id = ? AND 
-                probability_type.probability_type = skill_data.probability_type AND
-                available_time_type.available_time_type = skill_data.available_time_type
-            """,
-            params=[skill_id, skill_id],
-            out_dict=True)
+        if skill_id > 5000000:
+            return db.masterdb.execute_and_fetchone(
+                """
+                SELECT skill_data.*,
+                    4 attribute,
+                    probability_type.probability_max,
+                    available_time_type.available_time_max
+                FROM skill_data, probability_type, available_time_type
+                WHERE skill_data.id = ? AND 
+                    probability_type.probability_type = skill_data.probability_type AND
+                    available_time_type.available_time_type = skill_data.available_time_type
+                """,
+                params=[skill_id],
+                out_dict=True)
+        else:
+            return db.masterdb.execute_and_fetchone(
+                """
+                SELECT skill_data.*,
+                    card_data.attribute,
+                    probability_type.probability_max,
+                    available_time_type.available_time_max
+                FROM card_data, skill_data, probability_type, available_time_type
+                WHERE skill_data.id = ? AND 
+                    card_data.skill_id = ? AND 
+                    probability_type.probability_type = skill_data.probability_type AND
+                    available_time_type.available_time_type = skill_data.available_time_type
+                """,
+                params=[skill_id, skill_id],
+                out_dict=True)
 
     @classmethod
     def _fetch_boost_value_from_db(cls, skill_value):
