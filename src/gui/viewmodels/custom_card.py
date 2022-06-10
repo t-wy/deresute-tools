@@ -371,7 +371,7 @@ class CustomView:
         self.card_painter.drawImage(QPoint(0, 0), image)
         self.card_painter.drawImage(QPoint(0, 0), frame)
         self.card_painter.drawImage(QPoint(82, 2), my)
-        self.card_painter.drawImage(QPoint(1, 98), attr_icon)
+        self.card_painter.drawImage(QPoint(2, 99), attr_icon)
         self.card_image.repaint()
     
     def change_appeal_mode(self):
