@@ -1605,11 +1605,11 @@ class StateMachine:
                                                              temp_combo_results[magic_idx], temp_combo_boosts[magic_idx])
                             unified_magic_combo = max((unified_magic_combo, temp_combo_results[magic_idx]))
             if unified_magic_score is None:
-                unified_magic_score = 0
+                unified_magic_score = 0 if self.live.unit.all_units[unit_idx].resonance else -9000
             if unified_magic_score_great is None:
-                unified_magic_score_great = 0
+                unified_magic_score_great = 0 if self.live.unit.all_units[unit_idx].resonance else -9000
             if unified_magic_combo is None:
-                unified_magic_combo = 0
+                unified_magic_combo = 0 if self.live.unit.all_units[unit_idx].resonance else -9000
             for non_magic in unit_non_magics:
                 if non_magic in temp_score_results:
                     if unified_non_magic_score is None:
@@ -1654,14 +1654,24 @@ class StateMachine:
                                                                     temp_combo_results[non_magic], temp_combo_boosts[non_magic])
                         unified_non_magic_combo = agg_func((unified_non_magic_combo, temp_combo_results[non_magic]))
             if unified_non_magic_score is None:
-                unified_non_magic_score = 0
+                unified_non_magic_score = 0 if self.live.unit.all_units[unit_idx].resonance else -9000
             if unified_non_magic_score_great is None:
-                unified_non_magic_score_great = 0
+                unified_non_magic_score_great = 0 if self.live.unit.all_units[unit_idx].resonance else -9000
             if unified_non_magic_combo is None:
-                unified_non_magic_combo = 0
-            unit_score_bonuses.append(agg_func((unified_magic_score, unified_non_magic_score)))
-            unit_score_great_bonuses.append(agg_func((unified_magic_score_great, unified_non_magic_score_great)))
-            unit_combo_bonuses.append(agg_func((unified_magic_combo, unified_non_magic_combo)))
+                unified_non_magic_combo = 0 if self.live.unit.all_units[unit_idx].resonance else -9000
+            
+            score_agg = agg_func((unified_magic_score, unified_non_magic_score))
+            score_great_agg = agg_func((unified_magic_score_great, unified_non_magic_score_great))
+            combo_agg = agg_func((unified_magic_combo, unified_non_magic_combo))
+            if score_agg == -9000:
+                score_agg = 0
+            if score_great_agg == -9000:
+                score_great_agg = 0
+            if combo_agg == -9000:
+                combo_agg = 0
+            unit_score_bonuses.append(score_agg)
+            unit_score_great_bonuses.append(score_great_agg)
+            unit_combo_bonuses.append(combo_agg)
             if self.live.unit.all_units[unit_idx].resonance:
                 unified_non_magic_score_skill.append(unified_magic_score_skill)
                 unit_score_skills.append(unified_non_magic_score_skill)
