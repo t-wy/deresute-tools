@@ -121,20 +121,20 @@ class UnitCacheBonus:
                 self.alt_long[idx] = ceil((self.longg - 100) * skill.values[0] / 1000)
                 self.alt_slide[idx] = ceil((self.slide - 100) * skill.values[0] / 1000)
             else:
-                self.alt_tap[idx] = self.tap - 100
-                self.alt_flick[idx] = self.flick - 100
-                self.alt_long[idx] = self.longg - 100
-                self.alt_slide[idx] = self.slide - 100
+                self.alt_tap[idx] = self.tap - 100 if self.tap != 0 else 0
+                self.alt_flick[idx] = self.flick - 100 if self.flick != 0 else 0
+                self.alt_long[idx] = self.longg - 100 if self.longg != 0 else 0
+                self.alt_slide[idx] = self.slide - 100 if self.slide != 0 else 0
             if self.great > 100:
                 self.alt_great[idx] = ceil((self.great - 100) * skill.values[1] / 1000)
             else:
-                self.alt_great[idx] = self.great - 100
+                self.alt_great[idx] = self.great - 100 if self.great != 0 else 0
             return
         if skill.is_mutual:
             if self.combo > 100:
                 self.alt_combo[idx] = ceil((self.combo - 100) * skill.values[2] / 1000)
             else:
-                self.alt_combo[idx] = self.combo - 100
+                self.alt_combo[idx] = self.combo - 100 if self.combo != 0 else 0
             return
         if skill.is_refrain:
             if idx not in self.ref_tap or self.ref_tap[idx] == 0:
@@ -309,9 +309,11 @@ class StateMachine:
         self.probabilities = list()
         for unit_idx, unit in enumerate(self.live.unit.all_units):
             for card_idx, card in enumerate(unit.all_cards()):
-                self.probabilities.append(self.live.get_probability(unit_idx * 5 + card_idx))
+                probability = self.live.get_probability(unit_idx * 5 + card_idx)
+                self.probabilities.append(probability)
                 card.skill.set_original_unit_idx(unit_idx)
                 card.skill.set_card_idx(unit_idx * 5 + card_idx)
+                card.skill.probability = probability
 
         self._sparkle_bonus_ssr = get_sparkle_bonus(8, self.grand)
         self._sparkle_bonus_sr = get_sparkle_bonus(6, self.grand)
@@ -408,13 +410,16 @@ class StateMachine:
         self.cache_mut = dict()
         self.cache_ref = dict()
         self.cache_enc = dict()
+        self.cache_skill_magic = None
 
         # Cache for AMR
         self.unit_caches = list()
         for _ in range(len(self.live.unit.all_units)):
             self.unit_caches.append(UnitCacheBonus())
         
+        self.encore_skills = dict()
         self.amr_bonuses = dict()
+        self.magic_bonuses = dict()
 
         # Metrics
         self.full_roll_chance = 1
@@ -586,26 +591,31 @@ class StateMachine:
                 if self.probabilities[idx] == 0:
                     self.skill_inactive_list[idx] = skill_range
                     continue
+                inact = 0
                 for act_idx in skill_range:
                     if self.probabilities[idx] < 1 and self.fail_simulate:
                         if random() > self.probabilities[idx]:
                             self.skill_inactive_list[idx].append(act_idx)
                             continue
-                    if self.unit_offset == 3:
-                        if self.custom_inactive_skill is not None and (act_idx - 1) // 3 in self.custom_inactive_skill[idx]:
-                            self.skill_inactive_list[idx].append(act_idx)
-                            continue
-                    else:
-                        if self.custom_inactive_skill is not None and act_idx - 1 in self.custom_inactive_skill[idx]:
-                            self.skill_inactive_list[idx].append(act_idx)
-                            continue
+                    if self.custom_inactive_skill is not None:
+                        if self.unit_offset == 3:
+                            if (act_idx - 1) // 3 in self.custom_inactive_skill[idx]:
+                                self.skill_inactive_list[idx].append(act_idx)
+                                inact += 1
+                                continue
+                        else:
+                            if act_idx - 1 in self.custom_inactive_skill[idx]:
+                                self.skill_inactive_list[idx].append(act_idx)
+                                inact += 1
+                                continue
                     act = act_idx * skill.interval
                     deact = act_idx * skill.interval + skill.duration
                     skill_times.append(int(act * 1E6))
                     skill_times.append(int(deact * 1E6))
                     skill_indices.append(unit_idx * 5 + card_idx + 1)
                     skill_indices.append(-unit_idx * 5 - card_idx - 1)
-                self.full_roll_chance *= self.probabilities[idx] ** len(skill_range)
+                self.full_roll_chance *= self.probabilities[idx] ** (len(skill_range) - inact)
+                self.full_roll_chance *= (1 - self.probabilities[idx]) ** (inact)
         np_skill_times = np.array(skill_times)
         np_skill_indices = np.array(skill_indices)
         sorted_indices = np.argsort(np_skill_times, kind='stable')
@@ -697,8 +707,9 @@ class StateMachine:
                   'score_great_bonus_skill' : self.score_great_bonus_skills,
                   'combo_bonus_skill' : self.combo_bonus_skills,
                   'score_list' : self.note_scores.tolist(),
-                  'amr_bonus' : self.amr_bonuses}
-        print(self.amr_bonuses)
+                  'encore_skill' : self.encore_skills,
+                  'amr_bonus' : self.amr_bonuses,
+                  'magic_bonus' : self.magic_bonuses}
 
         if self.abuse:
             assert self.cache_perfect_score_array is not None
@@ -938,6 +949,7 @@ class StateMachine:
         if self.skill_indices[0] > 0:
             if not self._expand_encore():
                 return
+            self._cache_magic_marker()
             self._expand_magic()
             self._handle_skill_activation()
             # By this point, all skills that can be activated should be in self.skill_queue
@@ -945,6 +957,7 @@ class StateMachine:
             self._evaluate_ls()
             self._cache_skill_data()
             self._cache_AMR()
+            self._cache_magic()
             self.skill_indices.pop(0)
             self.skill_times.pop(0)
         else:
@@ -1292,7 +1305,6 @@ class StateMachine:
     def _evaluate_bonuses_phase_boost(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]]):
         if not self.has_skill_change:
             return self.cache_max_boosts, self.cache_sum_boosts
-        print(magics)
         boost_cache = list()
         magic_boosts = [
             # Score(Perfect), Score(Great), Combo, Life, Support
@@ -1784,6 +1796,15 @@ class StateMachine:
             encore_copy.duration = skill.duration
             self.skill_queue[self.skill_indices[0]] = encore_copy
             self.cache_enc[self.skill_indices[0]] = last_encoreable_skill
+            idx = self.skill_indices[0] - 1
+            num = (int(self.skill_times[0] / 1E6 / skill.interval) - 1) // len(self.unit_caches)
+            if idx not in self.encore_skills:
+                self.encore_skills[idx] = dict()
+            if self.last_activated_time[-1] == self.skill_times[0]:
+                time = self.last_activated_time[-2]
+            else:
+                time = self.last_activated_time[-1]
+            self.encore_skills[idx][num] = (encore_copy.card_idx, encore_copy.skill_type, time // 1E6)
         return True
 
     def _get_last_encoreable_skill(self):
@@ -1829,29 +1850,131 @@ class StateMachine:
                 self.unit_caches[unit_idx].update_AMR(skill)
                 unit = self.unit_caches[unit_idx]
                 idx = self.skill_indices[0] - 1
-                num = int(self.skill_times[0] / 1E6 / skill.interval) - 1
+                num = (int(self.skill_times[0] / 1E6 / skill.interval) - 1) // len(self.unit_caches)
                 if skill.is_refrain:
                     ref = (unit.ref_tap, unit.ref_long, unit.ref_flick, unit.ref_slide, unit.ref_great, unit.ref_combo)
                     _ = [0, 0, 0, 0, 0, 0]
                     for i, note in enumerate(ref):
                         if idx in note:
                             _[i] = note[idx]
-                    if idx in self.amr_bonuses:
-                        self.amr_bonuses[idx][num] = _
-                    else:
-                        self.amr_bonuses[idx] = dict()
-                        self.amr_bonuses[idx][num] = _
                 else:
                     alt = (unit.alt_tap, unit.alt_long, unit.alt_flick, unit.alt_slide, unit.alt_great, unit.alt_combo)
                     _ = [0, 0, 0, 0, 0, 0]
                     for i, note in enumerate(alt):
                         if idx in note:
                             _[i] = note[idx]
-                    if idx in self.amr_bonuses:
-                        self.amr_bonuses[idx][num] = _
-                    else:
-                        self.amr_bonuses[idx] = dict()
-                        self.amr_bonuses[idx][num] = _
+                if idx not in self.amr_bonuses:
+                    self.amr_bonuses[idx] = dict()
+                self.amr_bonuses[idx][num] = _
+    
+    def _cache_magic_marker(self):
+        skill = self.reference_skills[self.skill_indices[0]]
+        if skill.skill_type == 41:
+            self.cache_skill_magic = skill
+        else:
+            self.cache_skill_magic = None
+    
+    def _cache_magic(self):
+        if self.cache_skill_magic is None:
+            return
+        _ = {"tap" : -9000, "long" : -9000, "flick" : -9000, "slide" : -9000, "great" : -9000, "combo" : -9000,
+             "sparkle" : -9000, "life" : 0, "psupport" : 0, "csupport" : 0,
+             "cu_score" : 0, "cu_combo" : 0, "cu_life" : 0, "cu_support" : 0,
+             "co_score" : 0, "co_combo" : 0, "co_life" : 0, "co_support" : 0,
+             "pa_score" : 0, "pa_combo" : 0, "pa_life" : 0, "pa_support" : 0,
+             "guard" : False, "overload" : 0, "concentration" : False}
+        unit_idx = (self.skill_indices[0] - 1) // 5
+        idx = self.skill_indices[0] - 1
+        num = (int(self.skill_times[0] / 1E6 / self.cache_skill_magic.interval) - 1) // len(self.unit_caches)
+        skills_to_check = self._helper_get_current_skills()
+        for skill in skills_to_check:
+            if skill.is_combo_support:
+                _["csupport"] = max(_["csupport"], 1)
+                continue
+            if skill.is_guard:
+                _["guard"] = True
+                continue
+            if skill.is_overload:
+                _["csupport"] = max(_["csupport"], 2)
+                _["overload"] += skill.life_requirement
+            if skill.is_cc:
+                _["concentration"] = True
+            if skill.boost:
+                if 0 in skill.targets:
+                    _["cu_score"] = max(_["cu_score"], skill.values[0] // 10 - 100 if skill.values[0] != 0 else 0)
+                    _["cu_combo"] = max(_["cu_combo"], skill.values[2] // 10 - 100 if skill.values[1] != 0 else 0)
+                    _["cu_life"] = max(_["cu_life"], skill.values[3] // 10 - 100 if skill.values[2] != 0 else 0)
+                    _["cu_support"] = max(_["cu_support"], skill.values[4])
+                if 1 in skill.targets:
+                    _["co_score"] = max(_["co_score"], skill.values[0] // 10 - 100 if skill.values[0] != 0 else 0)
+                    _["co_combo"] = max(_["co_combo"], skill.values[2] // 10 - 100 if skill.values[1] != 0 else 0)
+                    _["co_life"] = max(_["co_life"], skill.values[3] // 10 - 100 if skill.values[2] != 0 else 0)
+                    _["co_support"] = max(_["co_support"], skill.values[4])
+                if 2 in skill.targets:
+                    _["pa_score"] = max(_["pa_score"], skill.values[0] // 10 - 100 if skill.values[0] != 0 else 0)
+                    _["pa_combo"] = max(_["pa_combo"], skill.values[2] // 10 - 100 if skill.values[1] != 0 else 0)
+                    _["pa_life"] = max(_["pa_life"], skill.values[3] // 10 - 100 if skill.values[2] != 0 else 0)
+                    _["pa_support"] = max(_["pa_support"], skill.values[4])
+                continue
+            if skill.is_sparkle:
+                _["sparkle"] = max(_["sparkle"], skill.v2 - 100)
+                continue
+            if skill.act == NoteType.LONG:
+                _["tap"] = max(_["tap"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["long"] = max(_["long"], skill.values[1] - 100 if skill.values[1] != 0 else 0)
+                _["flick"] = max(_["flick"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["slide"] = max(_["slide"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                continue
+            if skill.act == NoteType.FLICK:
+                _["tap"] = max(_["tap"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["long"] = max(_["long"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["flick"] = max(_["flick"], skill.values[1] - 100 if skill.values[1] != 0 else 0)
+                _["slide"] = max(_["slide"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                continue
+            if skill.act == NoteType.SLIDE:
+                _["tap"] = max(_["tap"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["long"] = max(_["long"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["flick"] = max(_["flick"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+                _["slide"] = max(_["slide"], skill.values[1] - 100 if skill.values[1] != 0 else 0)
+                continue
+            if skill.is_motif:
+                value = self.live.unit.all_units[unit_idx].convert_motif(skill.skill_type, self.grand) - 100
+                _["tap"] = max(_["tap"], value)
+                _["long"] = max(_["long"], value)
+                _["flick"] = max(_["flick"], value)
+                _["slide"] = max(_["slide"], value)
+                continue
+            if skill.is_alternate:
+                _["tap"] = max(_["tap"], self.unit_caches[unit_idx].alt_tap[skill.card_idx])
+                _["long"] = max(_["long"], self.unit_caches[unit_idx].alt_long[skill.card_idx])
+                _["flick"] = max(_["flick"], self.unit_caches[unit_idx].alt_flick[skill.card_idx])
+                _["slide"] = max(_["slide"], self.unit_caches[unit_idx].alt_slide[skill.card_idx])
+                continue
+            if skill.is_refrain:
+                _["tap"] = max(_["tap"], self.unit_caches[unit_idx].ref_tap[skill.card_idx])
+                _["long"] = max(_["long"], self.unit_caches[unit_idx].ref_long[skill.card_idx])
+                _["flick"] = max(_["flick"], self.unit_caches[unit_idx].ref_flick[skill.card_idx])
+                _["slide"] = max(_["slide"], self.unit_caches[unit_idx].ref_slide[skill.card_idx])
+                _["combo"] = max(_["combo"], self.unit_caches[unit_idx].ref_combo[skill.card_idx])
+                continue
+            if skill.is_mutual:
+                _["combo"] = max(_["combo"], self.unit_caches[unit_idx].alt_combo[skill.card_idx])
+                continue
+            _["tap"] = max(_["tap"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+            _["long"] = max(_["long"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+            _["flick"] = max(_["flick"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+            _["slide"] = max(_["slide"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
+            _["great"] = max(_["great"], skill.values[1] - 100 if skill.values[1] != 0 else 0)
+            _["combo"] = max(_["combo"], skill.values[2] - 100 if skill.values[2] != 0 else 0)
+            _["life"] = max(_["life"], skill.values[3])
+            _["psupport"] = max(_["psupport"], skill.values[4])
+        for key, value in _.items():
+            if value == -9000 or value == 9000:
+                _[key] = 0
+        if idx not in self.magic_bonuses:
+            self.magic_bonuses[idx] = dict()
+        self.magic_bonuses[idx][num] = _
+        
 
     def _helper_get_current_skills(self):
         if self.skill_indices[0] not in self.skill_queue:
@@ -1970,6 +2093,7 @@ class StateMachine:
                 continue
         for skill in to_be_removed:
             skills_to_check.remove(skill)
+            self.full_roll_chance /= skill.probability
         self.skill_queue[self.skill_indices[0]] = skills_to_check
         return len(skills_to_check) > 0
     

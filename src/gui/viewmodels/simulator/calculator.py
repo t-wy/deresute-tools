@@ -289,6 +289,10 @@ class DroppableCalculatorWidget(QTableWidget):
             self.calculator_view.duplicate_unit(True)
         elif QApplication.keyboardModifiers() == Qt.ControlModifier and event.key() == Qt.Key_D:
             self.calculator_view.duplicate_unit(False)
+        if QApplication.keyboardModifiers() == Qt.ControlModifier and event.key() == Qt.Key_Up:
+            self.calculator_view.swap_unit(True)
+        if QApplication.keyboardModifiers() == Qt.ControlModifier and event.key() == Qt.Key_Down:
+            self.calculator_view.swap_unit(False)
         else:
             super().keyPressEvent(event)
 
@@ -379,15 +383,17 @@ class CalculatorView:
         self.model = model
         self._restore_from_backup()
 
-    def insert_unit(self):
-        self.widget.insertRow(self.widget.rowCount())
-        self.widget.setVerticalHeaderItem(self.widget.rowCount() - 1, QTableWidgetItem(""))
+    def insert_unit(self, row=None):
+        if row is None:
+            row = self.widget.rowCount()
+        self.widget.insertRow(row)
+        self.widget.setVerticalHeaderItem(row, QTableWidgetItem(""))
         self.widget.verticalHeader().setFixedWidth(25)
         simulator_unit_widget = CalculatorUnitWidget(self, None, size=32)
-        self.widget.setCellWidget(self.widget.rowCount() - 1, 0, simulator_unit_widget)
+        self.widget.setCellWidget(row, 0, simulator_unit_widget)
         logger.debug("Inserted empty unit at {}".format(self.widget.rowCount()))
         self.widget.setColumnWidth(0, 40 * 6)
-        self.widget.setRowHeight(self.widget.rowCount() - 1, 300)
+        self.widget.setRowHeight(row, 300)
 
     def delete_unit(self):
         if len(self.widget.selectionModel().selectedRows()) == 0:
@@ -412,6 +418,42 @@ class CalculatorView:
                 if card is None:
                     continue
                 card.refresh_values()
+    
+    def swap_unit(self, dir_up):
+        selected_row = self.widget.selectionModel().selectedRows()[0].row()
+        cell_widget = self.widget.cellWidget(selected_row, 0)
+        card_ids = cell_widget.card_ids
+        
+        if (dir_up and selected_row == 0) or (not dir_up and selected_row == self.widget.rowCount() - 1):
+            return
+        if dir_up:
+            self.insert_unit(selected_row - 1)
+            self.set_unit(card_ids, selected_row - 1)
+            self.swap_unit_int(selected_row - 1)
+            self.widget.removeRow(selected_row + 1)
+            self.widget.setCurrentCell(selected_row, 0)
+        else:
+            self.insert_unit(selected_row + 2)
+            self.set_unit(card_ids, selected_row + 2)
+            self.swap_unit_int(selected_row + 2)
+            self.widget.removeRow(selected_row)
+            self.widget.setCurrentCell(selected_row + 1, 0)
+    
+    def swap_unit_int(self, row):
+        selected_row = self.widget.selectionModel().selectedRows()[0].row()
+        cell_widget = self.widget.cellWidget(selected_row, 0)
+        
+        cloned_card_internals = cell_widget.clone_internal()
+        new_unit = self.widget.cellWidget(row, 0)
+        new_unit.cards_internal = cloned_card_internals
+        new_unit.clone_extended_cards_data(cell_widget.extended_cards_data)
+        new_unit.lock_chart_checkbox.setChecked(cell_widget.lock_chart_checkbox.isChecked())
+        new_unit.lock_unit_checkbox.setChecked(cell_widget.lock_unit_checkbox.isChecked())
+        new_unit.clone_label(cell_widget.song_name_label)
+        for card in cloned_card_internals:
+            if card is None:
+                continue
+            card.refresh_values()
 
     def set_unit(self, cards, row=None):
         if row is None:
