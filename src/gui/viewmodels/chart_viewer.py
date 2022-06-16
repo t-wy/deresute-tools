@@ -220,14 +220,14 @@ class ChartViewer:
             self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
     
     def show_detail_note_info(self, num, time, note_type):
-        idx = int(num) - 1
         self.set_stacked_widget_index(self.info_widget.detail_widget, 1)
         self.info_widget.note_number_line.setText(num)
         self.info_widget.note_second_line.setText(time)
         self.info_widget.note_type_line.setText(note_type)
         
-        if self.chart_mode in (1, 3) and self.perfect_detail != None:
+        if self.chart_mode in (1, 3) and note_type != "DAMAGE" and self.perfect_detail != None:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 1)
+            idx = int(num) - 1
             self._show_detail_note_score_info(idx)
         else:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)

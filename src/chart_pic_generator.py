@@ -86,8 +86,10 @@ class ChartPicNote:
             note_file_prefix = "slide"
         elif self.note_type == NoteType.FLICK and self.right_flick:
             note_file_prefix = "flickr"
-        else:
+        elif self.note_type == NoteType.FLICK and not self.right_flick:
             note_file_prefix = "flickl"
+        else:
+            note_file_prefix = "damage"
         if self.grand:
             note_file_prefix = "g" + note_file_prefix
             self.note_pic = ChartPicNote.get_grand_note(note_file_prefix, self.span, False)
@@ -170,10 +172,13 @@ class BaseChartPicGenerator(ABC):
         else:
             self.lane_count = 5
 
-        self.notes = fetch_chart(None, song_id, difficulty, event=False, skip_load_notes=False)[0]
+        self.notes = fetch_chart(None, song_id, difficulty, event=False, skip_load_notes=False, skip_damage_notes=False)[0]
         if self.notes is None:
             self.notes = fetch_chart(None, song_id, difficulty, event=True, skip_load_notes=False)[0]
+        self.damage_notes = self.notes[self.notes['note_type'] == NoteType.DAMAGE].reset_index()
+        self.notes = self.notes[self.notes['note_type'] != NoteType.DAMAGE].reset_index()
         self.notes['finishPos'] -= 1
+        self.damage_notes['finishPos'] -= 1
         self.notes_offset = [0] * len(self.notes)
         self.mirrored = mirrored
         if mirrored:
@@ -185,6 +190,7 @@ class BaseChartPicGenerator(ABC):
         self.generate_note_objects()
         
         self.selected_note = -1
+        self.selected_damage_note = -1
         
         self.skill_inactive_list = [[] for _ in range(15)]
         self.selected_skill = (-1, -1)
@@ -262,6 +268,7 @@ class BaseChartPicGenerator(ABC):
         scroll = DraggableQScrollArea()
         scroll.setWidget(self.chart_label)
         scroll.note_clickable_areas = []
+        scroll.damage_note_clickable_areas = []
         scroll.skill_clickable_areas = []
         scroll.mousePressEvent = self.mouse_pressed
         # Scroll to bottom
@@ -290,6 +297,14 @@ class BaseChartPicGenerator(ABC):
                 double_drawn_num += 1
         return notes[idx + double_drawn_num]
     
+    def get_damage_note_from_index(self, idx):
+        notes = sum(self.damage_note_labels , [])
+        double_drawn_num = 0
+        for i in range(idx):
+            if self._is_double_drawn_note(notes[i], 1):
+                double_drawn_num += 1
+        return notes[idx + double_drawn_num]
+    
     # Lanes start from 0
     def generate_note_objects(self, abuse_data: AbuseData = None):
         self.last_sec_float = self.notes.sec.iloc[-1]
@@ -297,6 +312,7 @@ class BaseChartPicGenerator(ABC):
         
         self.n_label = (self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN) // MAX_LABEL_Y + 1
         self.note_labels = list()
+        self.damage_note_labels = list()
         for n in range(self.n_label):
             group = list()
             df_slice = self.notes[(n * MAX_SECS_PER_LABEL - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= self.notes['sec']) &
@@ -323,6 +339,16 @@ class BaseChartPicGenerator(ABC):
                                            great=great)
                 group.append(note_object)
             self.note_labels.append(group)
+            group = list()
+            df_slice = self.damage_notes[(n * MAX_SECS_PER_LABEL - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= self.damage_notes['sec']) &
+                                         (self.damage_notes['sec'] <= (n + 1) * MAX_SECS_PER_LABEL + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT)]
+            for _, row in df_slice.iterrows():
+                note_object = ChartPicNote(num=_+1, sec=row['sec'], note_type=row['note_type'], lane=row['finishPos'],
+                                           sync=0, qgroup=n, group_id=0, delta=0, early=0, late=0, right_flick=False,
+                                           grand=False, span=0, great=False)
+                group.append(note_object)
+            self.damage_note_labels.append(group)
+            
 
     def draw(self, *draw_label):
         if len(draw_label) > 0:
@@ -647,8 +673,17 @@ class BaseChartPicGenerator(ABC):
             if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
                 note = self.get_note_from_index(idx)
                 self.selected_note = note.num - 1
+                self.selected_damage_note = -1
                 self.draw_selected_note(idx)
                 self.viewer.show_detail_note_info(str(note.num), "{:.3f}".format(note.sec), str(note.note_type)[9:])
+                return
+        for idx, area in enumerate(scroll.damage_note_clickable_areas):
+            if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                note = self.get_damage_note_from_index(idx)
+                self.selected_note = -1
+                self.selected_damage_note = note.num - 1
+                self.draw_selected_damage_note(idx)
+                self.viewer.show_detail_note_info("-", "{:.3f}".format(note.sec), str(note.note_type)[9:])
                 return
         
         if self.viewer.chart_mode != 0:
@@ -663,6 +698,7 @@ class BaseChartPicGenerator(ABC):
                         self.viewer.show_detail_skill_info(skill_type, skill_time_text)
                         return
         self.selected_note = -1
+        self.selected_damage_note = -1
         self.selected_skill = (-1, -1)
         self.draw_nothing_selected()
         self.viewer.show_detail_nothing()
@@ -687,6 +723,28 @@ class BaseChartPicGenerator(ABC):
             group_line_brush = QBrush(QColor(0, 0, 0, 0))
             self.p[label_idx].setBrush(group_line_brush)
             
+            for note in label:
+                if note.num == num:
+                    self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+                    w = note.note_pic.width() + 4
+                    h = note.note_pic.height() + 4
+                    x = self.get_x(note.lane + note.span / 2)
+                    y = self.get_y(note.sec, label_idx)
+                    self.p[label_idx].drawRoundedRect(x - w // 2, y - h // 2, w, h, 2, 2)
+        for l in self.label: l.repaint()
+    
+    def draw_selected_damage_note(self, idx):
+        if self.selected_damage_note == -1:
+            return
+        
+        self.draw_nothing_selected()
+        num = self.get_damage_note_from_index(idx).num
+        for label_idx, label in enumerate(self.damage_note_labels):
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
             for note in label:
                 if note.num == num:
                     self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
@@ -811,6 +869,23 @@ class BasicChartPicGenerator(BaseChartPicGenerator):
                         py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
                         polygon.append(QPoint(px, py))
                 self.viewer.chart_widget.note_clickable_areas.append(polygon)
+        for label_idx, label in enumerate(self.damage_note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
+            for note in label:
+                w = note.note_pic.width()
+                h = note.note_pic.height()
+                x = self.get_x(note.lane)
+                y = self.get_y(note.sec, label_idx)
+                self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
+                
+                polygon = QPolygonF()
+                y_scroll = self.y_total + (label_idx + 1) - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                for theta in range(0, 360, 90):
+                    px = x + w // 2 * math.cos(math.pi * (theta / 180))
+                    py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                    polygon.append(QPoint(px, py))
+                self.viewer.chart_widget.damage_note_clickable_areas.append(polygon)
 
 
 class GrandChartPicGenerator(BaseChartPicGenerator):

@@ -21,6 +21,8 @@ pyximport.install(language_level=3)
 
 
 def classify_note(row):
+    if row.type == 8:
+        return NoteType.DAMAGE
     if row.type == 5:
         return NoteType.SLIDE
     if row.type == 4:
@@ -51,7 +53,7 @@ def get_score_color(score_id):
     return Color(color - 1)
 
 
-def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, skip_load_notes=False):
+def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, skip_load_notes=False, skip_damage_notes=True):
     assert base_difficulty in Difficulty
     difficulty = base_difficulty.value
 
@@ -104,7 +106,14 @@ def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, sk
         return None, Color(color - 1), level, None
     notes_data = pd.read_csv(io.StringIO(row_data[1].decode()))
     duration = notes_data.iloc[-1]['sec']
-    notes_data = notes_data[notes_data["type"] < 10].reset_index(drop=True)
+    if difficulty == 6:
+        if skip_damage_notes:
+            notes_data = notes_data[(notes_data["type"] < 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+        else:
+            notes_data = notes_data[(notes_data["type"] <= 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+        
+    else:
+        notes_data = notes_data[notes_data["type"] < 8].reset_index(drop=True)
     notes_data = notes_data.drop(["id"], axis=1)
     notes_data['note_type'] = notes_data.apply(classify_note, axis=1)
     return notes_data, Color(color - 1), level, duration
