@@ -410,8 +410,14 @@ class BaseChartPicGenerator(ABC):
                     skill_time += 1
                     continue
                 if not self.grand and skill_time - 1 in self.skill_inactive_list[card_idx]:
-                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.DiagCrossPattern)
                 elif self.grand and (skill_time - 1) // 3 in self.skill_inactive_list[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.DiagCrossPattern)
+                elif not self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
+                    skill_time - 1 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                elif self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
+                    (skill_time - 1) // 3 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
                 else:
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))

@@ -208,7 +208,8 @@ SKILL_INACTIVATION_REASON = {
     6: "There are no skills to encore.",
     7: "No SCORE UP skill effects have been activated.",
     8: "No COMBO BONUS UP skill effects have been activated.",
-    9: "There are no skills that magic can activate."
+    9: "No SCORE UP nor COMBO BONUS UP skill effects have been activated.",
+    10: "There are no skills that magic can activate."
     }
 
 def get_sparkle_bonus(rarity, grand=False):

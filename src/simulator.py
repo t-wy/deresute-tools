@@ -73,7 +73,7 @@ class AutoSimulationResult(BaseSimulationResult):
 class LiveDetail():
     def __init__(self, skill_probability, note_number, checkpoint, note_offset, judgement, skill_inactive,
                  life, combo, weight, score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list,
-                 encore_skill, amr_bonus, magic_bonus):
+                 encore_skill, amr_bonus, magic_bonus, skill_inactivation_reason):
         self.skill_probability = skill_probability
         self.note_number = note_number
         self.checkpoint = checkpoint
@@ -90,6 +90,7 @@ class LiveDetail():
         self.encore_skill = encore_skill
         self.amr_bonus = amr_bonus
         self.magic_bonus = magic_bonus
+        self.skill_inactivation_reason = skill_inactivation_reason
 
 
 class Simulator:
@@ -328,7 +329,8 @@ class Simulator:
                                       perfect_detail['score_list'],
                                       perfect_detail['encore_skill'],
                                       perfect_detail['amr_bonus'],
-                                      perfect_detail['magic_bonus']
+                                      perfect_detail['magic_bonus'],
+                                      perfect_detail['skill_inactivation_reason']
                                       )
         )
 
@@ -443,7 +445,8 @@ class Simulator:
                                   detail['score_list'],
                                   detail['encore_skill'],
                                   detail['amr_bonus'],
-                                  detail['magic_bonus']
+                                  detail['magic_bonus'],
+                                  detail['skill_inactivation_reason']
                                 )
         
         abuse_result_score = 0

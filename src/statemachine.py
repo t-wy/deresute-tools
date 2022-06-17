@@ -420,6 +420,7 @@ class StateMachine:
         self.encore_skills = dict()
         self.amr_bonuses = dict()
         self.magic_bonuses = dict()
+        self.skill_inactivation_reason = dict()
 
         # Metrics
         self.full_roll_chance = 1
@@ -571,17 +572,25 @@ class StateMachine:
         for unit_idx, unit in enumerate(self.live.unit.all_units):
             for _ in range(5): self.skill_inactive_list.append([])
             iterating_order = list()
-            _cache_cached_classes = list()
+            _cache_alt = list()
+            _cache_mut = list()
+            _cache_ref = list()
             _cache_magic = list()
             for card_idx, card in enumerate(unit.all_cards()):
                 if card.skill.is_magic:
                     _cache_magic.append((card_idx, card))
                     continue
-                if card.skill.is_alternate or card.skill.is_mutual or card.skill.is_refrain:
-                    _cache_cached_classes.append((card_idx, card))
+                if card.skill.is_alternate:
+                    _cache_alt.append((card_idx, card))
+                    continue
+                if card.skill.is_mutual:
+                    _cache_mut.append((card_idx, card))
+                    continue
+                if card.skill.is_refrain:
+                    _cache_ref.append((card_idx, card))
                     continue
                 iterating_order.append((card_idx, card))
-            iterating_order = _cache_magic + iterating_order + _cache_cached_classes
+            iterating_order = _cache_magic + iterating_order + _cache_alt + _cache_mut + _cache_ref
             for card_idx, card in iterating_order:
                 skill = copy.copy(card.skill)
                 idx = unit_idx * 5 + card_idx
@@ -590,6 +599,20 @@ class StateMachine:
                 skill_range = list(range(skill.offset + 1, times + 1, self.unit_offset))
                 if self.probabilities[idx] == 0:
                     self.skill_inactive_list[idx] = skill_range
+                    if idx not in self.skill_inactivation_reason:
+                        self.skill_inactivation_reason[idx] = dict()
+                    if skill.skill_type == 21:
+                        for _ in skill_range:
+                            self.skill_inactivation_reason[idx][_-1] = 2
+                    elif skill.skill_type == 22:
+                        for _ in skill_range:
+                            self.skill_inactivation_reason[idx][_-1] = 3
+                    elif skill.skill_type == 23:
+                        for _ in skill_range:
+                            self.skill_inactivation_reason[idx][_-1] = 4
+                    elif skill.skill_type in (26, 38):
+                        for _ in skill_range:
+                            self.skill_inactivation_reason[idx][_-1] = 5
                     continue
                 inact = 0
                 for act_idx in skill_range:
@@ -694,6 +717,33 @@ class StateMachine:
         if not self.fail_simulate and not self.abuse:
             self.cache_perfect_score_array = self.note_scores.copy()
         
+        # Convert skills that was originally encore
+        encore_idx = self.encore_skills.keys()
+        for note_idx, note in enumerate(self.score_bonus_skills):
+            for skill_idx, skill in enumerate(note):
+                if skill[3] is not None:
+                    for boost_idx, boost in enumerate(skill[3]):
+                        if boost[0] in encore_idx:
+                            skill[3][boost_idx] = (boost[0], 16, boost[2])
+                if skill[0] in encore_idx:
+                    self.score_bonus_skills[note_idx][skill_idx] = (skill[0], 16, skill[2], skill[3])
+        for note_idx, note in enumerate(self.score_great_bonus_skills):
+            for skill_idx, skill in enumerate(note):
+                if skill[3] is not None:
+                    for boost_idx, boost in enumerate(skill[3]):
+                        if boost[0] in encore_idx:
+                            skill[3][boost_idx] = (boost[0], 16, boost[2])
+                if skill[0] in encore_idx:
+                    self.score_great_bonus_skills[note_idx][skill_idx] = (skill[0], 16, skill[2], skill[3])
+        for note_idx, note in enumerate(self.combo_bonus_skills):
+            for skill_idx, skill in enumerate(note):
+                if skill[3] is not None:
+                    for boost_idx, boost in enumerate(skill[3]):
+                        if boost[0] in encore_idx:
+                            skill[3][boost_idx] = (boost[0], 16, boost[2])
+                if skill[0] in encore_idx:
+                    self.combo_bonus_skills[note_idx][skill_idx] = (skill[0], 16, skill[2], skill[3])
+        
         detail = {'skill_probability' : self.probabilities,
                   'note_number' : self.note_numbers,
                   'checkpoint' : self.checkpoints,
@@ -709,7 +759,8 @@ class StateMachine:
                   'score_list' : self.note_scores.tolist(),
                   'encore_skill' : self.encore_skills,
                   'amr_bonus' : self.amr_bonuses,
-                  'magic_bonus' : self.magic_bonuses}
+                  'magic_bonus' : self.magic_bonuses,
+                  'skill_inactivation_reason' : self.skill_inactivation_reason}
 
         if self.abuse:
             assert self.cache_perfect_score_array is not None
@@ -1749,7 +1800,9 @@ class StateMachine:
                 unit_idx = (self.cache_enc[self.skill_indices[0]] - 1) // 5
             self.skill_queue[self.skill_indices[0]] = list()
             iterating_order = list()
-            _cache_cached_classes = list()
+            _cache_alt = list()
+            _cache_mut = list()
+            _cache_ref = list()
             for idx in range(unit_idx * 5, unit_idx * 5 + 5):
                 idx = idx + 1
                 copied_skill = copy.deepcopy(self.reference_skills[idx])
@@ -1772,13 +1825,23 @@ class StateMachine:
                     if copied_skill.is_magic:
                         continue
                     # Else let magic copy the encored skill instead
-                if copied_skill.is_alternate or copied_skill.is_mutual or copied_skill.is_refrain:
-                    _cache_cached_classes.append(copied_skill)
+                if copied_skill.is_alternate:
+                    _cache_alt.append(copied_skill)
+                    continue
+                if copied_skill.is_mutual:
+                    _cache_mut.append(copied_skill)
+                    continue
+                if copied_skill.is_refrain:
+                    _cache_ref.append(copied_skill)
                     continue
                 iterating_order.append(copied_skill)
-            iterating_order = iterating_order + _cache_cached_classes
+            iterating_order = iterating_order + _cache_alt + _cache_mut + _cache_ref
             for _ in iterating_order:
                 self.skill_queue[self.skill_indices[0]].append(_)
+            if len(iterating_order) == 0:
+                idx = self.skill_indices[0] - 1
+                num = (int(self.skill_times[0] / 1E6 / self.cache_skill_magic.interval) - 1) // len(self.unit_caches)
+                self.skill_inactivation_reason[idx][num] = 10
 
     def _expand_encore(self):
         skill = self.reference_skills[self.skill_indices[0]]
@@ -1945,20 +2008,24 @@ class StateMachine:
                 _["slide"] = max(_["slide"], value)
                 continue
             if skill.is_alternate:
-                _["tap"] = max(_["tap"], self.unit_caches[unit_idx].alt_tap[skill.card_idx])
-                _["long"] = max(_["long"], self.unit_caches[unit_idx].alt_long[skill.card_idx])
-                _["flick"] = max(_["flick"], self.unit_caches[unit_idx].alt_flick[skill.card_idx])
-                _["slide"] = max(_["slide"], self.unit_caches[unit_idx].alt_slide[skill.card_idx])
+                if skill.card_idx in self.unit_caches[unit_idx].alt_tap:
+                    _["tap"] = max(_["tap"], self.unit_caches[unit_idx].alt_tap[skill.card_idx])
+                    _["long"] = max(_["long"], self.unit_caches[unit_idx].alt_long[skill.card_idx])
+                    _["flick"] = max(_["flick"], self.unit_caches[unit_idx].alt_flick[skill.card_idx])
+                    _["slide"] = max(_["slide"], self.unit_caches[unit_idx].alt_slide[skill.card_idx])
                 continue
             if skill.is_refrain:
-                _["tap"] = max(_["tap"], self.unit_caches[unit_idx].ref_tap[skill.card_idx])
-                _["long"] = max(_["long"], self.unit_caches[unit_idx].ref_long[skill.card_idx])
-                _["flick"] = max(_["flick"], self.unit_caches[unit_idx].ref_flick[skill.card_idx])
-                _["slide"] = max(_["slide"], self.unit_caches[unit_idx].ref_slide[skill.card_idx])
-                _["combo"] = max(_["combo"], self.unit_caches[unit_idx].ref_combo[skill.card_idx])
+                if skill.card_idx in self.unit_caches[unit_idx].ref_tap:
+                    _["tap"] = max(_["tap"], self.unit_caches[unit_idx].ref_tap[skill.card_idx])
+                    _["long"] = max(_["long"], self.unit_caches[unit_idx].ref_long[skill.card_idx])
+                    _["flick"] = max(_["flick"], self.unit_caches[unit_idx].ref_flick[skill.card_idx])
+                    _["slide"] = max(_["slide"], self.unit_caches[unit_idx].ref_slide[skill.card_idx])
+                if skill.card_idx in self.unit_caches[unit_idx].ref_combo:
+                    _["combo"] = max(_["combo"], self.unit_caches[unit_idx].ref_combo[skill.card_idx])
                 continue
             if skill.is_mutual:
-                _["combo"] = max(_["combo"], self.unit_caches[unit_idx].alt_combo[skill.card_idx])
+                if skill.card_idx in self.unit_caches[unit_idx].alt_combo:
+                    _["combo"] = max(_["combo"], self.unit_caches[unit_idx].alt_combo[skill.card_idx])
                 continue
             _["tap"] = max(_["tap"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
             _["long"] = max(_["long"], skill.values[0] - 100 if skill.values[0] != 0 else 0)
@@ -2060,36 +2127,51 @@ class StateMachine:
         has_failed = False
         to_be_removed = list()
         for skill in skills_to_check:
-
+            idx = self.skill_indices[0] - 1
+            num = (int(self.skill_times[0] / 1E6 / skill.interval) - 1) // len(self.unit_caches)
             if self.force_encore_amr_cache_to_encore_unit:
                 unit_idx = (self.skill_indices[0] - 1) // 5
             else:
                 unit_idx = skill.original_unit_idx
+            if idx not in self.skill_inactivation_reason:
+                self.skill_inactivation_reason[idx] = dict()
 
             if has_failed and skill.is_overload:
                 to_be_removed.append(skill)
+                self.skill_inactivation_reason[idx][num] = 1
                 continue
             if not has_failed and skill.is_overload:
                 has_failed = self._handle_ol_drain(skill.life_requirement)
                 if has_failed:
                     to_be_removed.append(skill)
+                    self.skill_inactivation_reason[idx][num] = 1
                 continue
             if skill.is_encore:
                 # Encore should not be here, all encores should have already been replaced
                 to_be_removed.append(skill)
+                self.skill_inactivation_reason[idx][num] = 6
                 continue
             if skill.is_alternate and self.unit_caches[unit_idx].tap == 0:
                 to_be_removed.append(skill)
+                self.skill_inactivation_reason[idx][num] = 7
                 continue
             if skill.is_mutual and self.unit_caches[unit_idx].combo == 0:
                 to_be_removed.append(skill)
+                self.skill_inactivation_reason[idx][num] = 8
                 continue
             if skill.is_refrain and self.unit_caches[unit_idx].tap == 0 and self.unit_caches[unit_idx].combo == 0:
                 to_be_removed.append(skill)
+                self.skill_inactivation_reason[idx][num] = 9
                 continue
             if skill.is_focus:
                 if not self._check_focus_activation(unit_idx=(self.skill_indices[0] - 1) // 5, skill=skill):
                     to_be_removed.append(skill)
+                    if skill.skill_type == 21:
+                        self.skill_inactivation_reason[idx][num] = 2
+                    if skill.skill_type == 22:
+                        self.skill_inactivation_reason[idx][num] = 3
+                    if skill.skill_type == 23:
+                        self.skill_inactivation_reason[idx][num] = 4
                 continue
         for skill in to_be_removed:
             skills_to_check.remove(skill)

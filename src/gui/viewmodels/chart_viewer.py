@@ -300,121 +300,138 @@ class ChartViewer:
         else:
             self.info_widget.skill_description_line.setText(get_skill_description(card_id))
         
-        if skill_type == 16: #encore
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 1)
-            if card_idx in self.perfect_detail.encore_skill and idx in self.perfect_detail.encore_skill[card_idx]:
-                encore_skill = self.perfect_detail.encore_skill[card_idx][idx]
-                self.info_widget.skill_detail_encore_line.setText("[{}] {}".format(encore_skill[0] + 1,
-                                                                                   SKILL_BASE[encore_skill[1]]["name"]))
-                self.info_widget.skill_detail_encore_line_.setText("{:.1f}".format(encore_skill[2]))
-            else:
-                self.info_widget.skill_detail_encore_line.setText("")
-                self.info_widget.skill_detail_encore_line_.setText("")
-        elif skill_type == 25: #life sparkle
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 2)
-            t = float(time.split(" ~ ")[0])
-            if self.cache_simulation.left_inclusive:
-                last_note = self.generator.notes.index[self.generator.notes['sec'] < t].tolist()[-1]
-            else:
-                last_note = self.generator.notes.index[self.generator.notes['sec'] <= t].tolist()[-1]
-            self.info_widget.skill_detail_sparkle_life_line.setText(str(self.perfect_detail.life[last_note]))
-            self.update_sparkle_value()
-        elif skill_type in (35, 36, 37): #motif
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 3)
-            _ = card_idx // 5 * 5
-            if skill_type == 35:
-                appeal = sum([_.vo for _ in self.cards[_:_+5]])
-                self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
-            elif skill_type == 36:
-                appeal = sum([_.da for _ in self.cards[_:_+5]])
-                self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
-            elif skill_type == 37:
-                appeal = sum([_.vi for _ in self.cards[_:_+5]])
-                self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
-            self.update_motif_value()
-        elif skill_type == 39: #alternate
-            if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
-                alt_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
-            else:
-                alt_bonus = [0, 0, 0, 0, 0]
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 4)
-            self.info_widget.skill_detail_alt_tap_line.setText("{:+}%".format(alt_bonus[0]))
-            self.info_widget.skill_detail_alt_long_line.setText("{:+}%".format(alt_bonus[1]))
-            self.info_widget.skill_detail_alt_flick_line.setText("{:+}%".format(alt_bonus[2]))
-            self.info_widget.skill_detail_alt_slide_line.setText("{:+}%".format(alt_bonus[3]))
-            self.info_widget.skill_detail_alt_great_line.setText("{:+}%".format(alt_bonus[4]))
-        elif skill_type == 40: #refrain
-            if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
-                ref_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
-            else:
-                ref_bonus = [0, 0, 0, 0, 0, 0]    
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 5)
-            self.info_widget.skill_detail_ref_tap_line.setText("{:+}%".format(ref_bonus[0]))
-            self.info_widget.skill_detail_ref_long_line.setText("{:+}%".format(ref_bonus[1]))
-            self.info_widget.skill_detail_ref_flick_line.setText("{:+}%".format(ref_bonus[2]))
-            self.info_widget.skill_detail_ref_slide_line.setText("{:+}%".format(ref_bonus[3]))
-            self.info_widget.skill_detail_ref_great_line.setText("{:+}%".format(ref_bonus[4]))
-            self.info_widget.skill_detail_ref_combo_line.setText("{:+}%".format(ref_bonus[5]))
-        elif skill_type == 41: #magic
-            if card_idx in self.perfect_detail.magic_bonus and idx in self.perfect_detail.magic_bonus[card_idx]:
-                magic_bonus = self.perfect_detail.magic_bonus[card_idx][idx]
-            else:
-                magic_bonus = {"tap" : 0, "long" : 0, "flick" : 0, "slide" : 0, "great" : 0, "combo" : 0,
-                     "sparkle" : 0, "life" : 0, "psupport" : 0, "csupport" : 0,
-                     "cu_score" : 0, "cu_combo" : 0, "cu_life" : 0, "cu_support" : 0,
-                     "co_score" : 0, "co_combo" : 0, "co_life" : 0, "co_support" : 0,
-                     "pa_score" : 0, "pa_combo" : 0, "pa_life" : 0, "pa_support" : 0,
-                     "guard" : False, "overload" : 0, "concentration" : False}
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 6)
-            self.info_widget.skill_detail_magic_tap_line.setText("{:+}%".format(magic_bonus["tap"]))
-            self.info_widget.skill_detail_magic_long_line.setText("{:+}%".format(magic_bonus["long"]))
-            self.info_widget.skill_detail_magic_flick_line.setText("{:+}%".format(magic_bonus["flick"]))
-            self.info_widget.skill_detail_magic_slide_line.setText("{:+}%".format(magic_bonus["slide"]))
-            self.info_widget.skill_detail_magic_great_line.setText("{:+}%".format(magic_bonus["great"]))
-            if magic_bonus["sparkle"] != 0:
-                combo_text = "({:+}%)".format(max(magic_bonus["combo"], magic_bonus["sparkle"]))
-                self.info_widget.skill_detail_magic_combo_line.setToolTip("COMBO BONUS value from Life Sparkle can change while the skill is active.")
-            else:
-                combo_text = "{:+}%".format(max(magic_bonus["combo"], magic_bonus["sparkle"]))
-                self.info_widget.skill_detail_magic_combo_line.setToolTip("")
-            self.info_widget.skill_detail_magic_combo_line.setText(combo_text)
-            self.info_widget.skill_detail_magic_life_line.setText("-{} / {:+}".format(magic_bonus["overload"], magic_bonus["life"]))
-            self.info_widget.skill_detail_magic_life_line.setToolTip("Life consumed on skill activation / Life recovered on PERFECT note")
-            psupport_text = ["-", "GREAT", "NICE", "BAD", "MISS"]
-            csupport_text = ["-", "NICE", "BAD", "MISS"]
-            self.info_widget.skill_detail_magic_psupport_line.setText(psupport_text[magic_bonus["psupport"]])
-            self.info_widget.skill_detail_magic_csupport_line.setText(csupport_text[magic_bonus["csupport"]])
-            self.info_widget.skill_detail_magic_boost_score_cute_line.setText("{:+}%".format(magic_bonus["cu_score"]))
-            self.info_widget.skill_detail_magic_boost_combo_cute_line.setText("{:+}%".format(magic_bonus["cu_combo"]))
-            self.info_widget.skill_detail_magic_boost_life_cute_line.setText("{:+}%".format(magic_bonus["cu_life"]))
-            self.info_widget.skill_detail_magic_boost_support_cute_line.setText("{:+}".format(magic_bonus["cu_support"]))
-            self.info_widget.skill_detail_magic_boost_score_cool_line.setText("{:+}%".format(magic_bonus["co_score"]))
-            self.info_widget.skill_detail_magic_boost_combo_cool_line.setText("{:+}%".format(magic_bonus["co_combo"]))
-            self.info_widget.skill_detail_magic_boost_life_cool_line.setText("{:+}%".format(magic_bonus["co_life"]))
-            self.info_widget.skill_detail_magic_boost_support_cool_line.setText("{:+}".format(magic_bonus["co_support"]))
-            self.info_widget.skill_detail_magic_boost_score_passion_line.setText("{:+}%".format(magic_bonus["pa_score"]))
-            self.info_widget.skill_detail_magic_boost_combo_passion_line.setText("{:+}%".format(magic_bonus["pa_combo"]))
-            self.info_widget.skill_detail_magic_boost_life_passion_line.setText("{:+}%".format(magic_bonus["pa_life"]))
-            self.info_widget.skill_detail_magic_boost_support_passion_line.setText("{:+}".format(magic_bonus["pa_support"]))
-            self.info_widget.skill_detail_magic_guard_checkbox.setChecked(magic_bonus["guard"])
-            self.info_widget.skill_detail_magic_concentration_checkbox.setChecked(magic_bonus["concentration"])
-        elif skill_type == 42: #mutual
-            if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
-                mut_bonus = self.perfect_detail.amr_bonus[card_idx][idx][5]
-            else:
-                mut_bonus = 0
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 7)
-            self.info_widget.skill_detail_mut_combo_line.setText("{:+}%".format(mut_bonus))
-        else:
+        if card_idx in self.perfect_detail.skill_inactivation_reason and \
+            idx in self.perfect_detail.skill_inactivation_reason[card_idx]:
             self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
+            self.set_stacked_widget_index(self.info_widget.skill_inactivation_widget, 1)
+            self.info_widget.skill_prob_line.setText("-")
+            self.info_widget.skill_inactivation_detail_line.setText(
+                SKILL_INACTIVATION_REASON[self.perfect_detail.skill_inactivation_reason[card_idx][idx]])
+        else:
+            self.set_stacked_widget_index(self.info_widget.skill_inactivation_widget, 0)
+            
+            if skill_type == 16: #encore
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 1)
+                if card_idx in self.perfect_detail.encore_skill and idx in self.perfect_detail.encore_skill[card_idx]:
+                    encore_skill = self.perfect_detail.encore_skill[card_idx][idx]
+                    self.info_widget.skill_detail_encore_line.setText("[{}] {}".format(encore_skill[0] + 1,
+                                                                                       SKILL_BASE[encore_skill[1]]["name"]))
+                    self.info_widget.skill_detail_encore_line_.setText("{:.1f}".format(encore_skill[2]))
+                else:
+                    self.info_widget.skill_detail_encore_line.setText("")
+                    self.info_widget.skill_detail_encore_line_.setText("")
+            elif skill_type == 25: #life sparkle
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 2)
+                t = float(time.split(" ~ ")[0])
+                if self.cache_simulation.left_inclusive:
+                    last_note = self.generator.notes.index[self.generator.notes['sec'] < t].tolist()[-1]
+                else:
+                    last_note = self.generator.notes.index[self.generator.notes['sec'] <= t].tolist()[-1]
+                self.info_widget.skill_detail_sparkle_life_line.setText(str(self.perfect_detail.life[last_note]))
+                self.update_sparkle_value()
+            elif skill_type in (35, 36, 37): #motif
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 3)
+                _ = card_idx // 5 * 5
+                if skill_type == 35:
+                    appeal = sum([_.vo for _ in self.cards[_:_+5]])
+                    self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+                elif skill_type == 36:
+                    appeal = sum([_.da for _ in self.cards[_:_+5]])
+                    self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+                elif skill_type == 37:
+                    appeal = sum([_.vi for _ in self.cards[_:_+5]])
+                    self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+                self.update_motif_value()
+            elif skill_type == 39: #alternate
+                if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
+                    alt_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
+                else:
+                    alt_bonus = [0, 0, 0, 0, 0]
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 4)
+                self.info_widget.skill_detail_alt_tap_line.setText("{:+}%".format(alt_bonus[0]))
+                self.info_widget.skill_detail_alt_long_line.setText("{:+}%".format(alt_bonus[1]))
+                self.info_widget.skill_detail_alt_flick_line.setText("{:+}%".format(alt_bonus[2]))
+                self.info_widget.skill_detail_alt_slide_line.setText("{:+}%".format(alt_bonus[3]))
+                self.info_widget.skill_detail_alt_great_line.setText("{:+}%".format(alt_bonus[4]))
+            elif skill_type == 40: #refrain
+                if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
+                    ref_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
+                else:
+                    ref_bonus = [0, 0, 0, 0, 0, 0]    
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 5)
+                self.info_widget.skill_detail_ref_tap_line.setText("{:+}%".format(ref_bonus[0]))
+                self.info_widget.skill_detail_ref_long_line.setText("{:+}%".format(ref_bonus[1]))
+                self.info_widget.skill_detail_ref_flick_line.setText("{:+}%".format(ref_bonus[2]))
+                self.info_widget.skill_detail_ref_slide_line.setText("{:+}%".format(ref_bonus[3]))
+                self.info_widget.skill_detail_ref_great_line.setText("{:+}%".format(ref_bonus[4]))
+                self.info_widget.skill_detail_ref_combo_line.setText("{:+}%".format(ref_bonus[5]))
+            elif skill_type == 41: #magic
+                if card_idx in self.perfect_detail.magic_bonus and idx in self.perfect_detail.magic_bonus[card_idx]:
+                    magic_bonus = self.perfect_detail.magic_bonus[card_idx][idx]
+                else:
+                    magic_bonus = {"tap" : 0, "long" : 0, "flick" : 0, "slide" : 0, "great" : 0, "combo" : 0,
+                         "sparkle" : 0, "life" : 0, "psupport" : 0, "csupport" : 0,
+                         "cu_score" : 0, "cu_combo" : 0, "cu_life" : 0, "cu_support" : 0,
+                         "co_score" : 0, "co_combo" : 0, "co_life" : 0, "co_support" : 0,
+                         "pa_score" : 0, "pa_combo" : 0, "pa_life" : 0, "pa_support" : 0,
+                         "guard" : False, "overload" : 0, "concentration" : False}
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 6)
+                self.info_widget.skill_detail_magic_tap_line.setText("{:+}%".format(magic_bonus["tap"]))
+                self.info_widget.skill_detail_magic_long_line.setText("{:+}%".format(magic_bonus["long"]))
+                self.info_widget.skill_detail_magic_flick_line.setText("{:+}%".format(magic_bonus["flick"]))
+                self.info_widget.skill_detail_magic_slide_line.setText("{:+}%".format(magic_bonus["slide"]))
+                self.info_widget.skill_detail_magic_great_line.setText("{:+}%".format(magic_bonus["great"]))
+                if magic_bonus["sparkle"] != 0:
+                    combo_text = "({:+}%)".format(max(magic_bonus["combo"], magic_bonus["sparkle"]))
+                    self.info_widget.skill_detail_magic_combo_line.setToolTip("COMBO BONUS value from Life Sparkle can change while the skill is active.")
+                else:
+                    combo_text = "{:+}%".format(max(magic_bonus["combo"], magic_bonus["sparkle"]))
+                    self.info_widget.skill_detail_magic_combo_line.setToolTip("")
+                self.info_widget.skill_detail_magic_combo_line.setText(combo_text)
+                self.info_widget.skill_detail_magic_life_line.setText("-{} / {:+}".format(magic_bonus["overload"], magic_bonus["life"]))
+                self.info_widget.skill_detail_magic_life_line.setToolTip("Life consumed on skill activation / Life recovered on PERFECT note")
+                psupport_text = ["-", "GREAT", "NICE", "BAD", "MISS"]
+                csupport_text = ["-", "NICE", "BAD", "MISS"]
+                self.info_widget.skill_detail_magic_psupport_line.setText(psupport_text[magic_bonus["psupport"]])
+                self.info_widget.skill_detail_magic_csupport_line.setText(csupport_text[magic_bonus["csupport"]])
+                self.info_widget.skill_detail_magic_boost_score_cute_line.setText("{:+}%".format(magic_bonus["cu_score"]))
+                self.info_widget.skill_detail_magic_boost_combo_cute_line.setText("{:+}%".format(magic_bonus["cu_combo"]))
+                self.info_widget.skill_detail_magic_boost_life_cute_line.setText("{:+}%".format(magic_bonus["cu_life"]))
+                self.info_widget.skill_detail_magic_boost_support_cute_line.setText("{:+}".format(magic_bonus["cu_support"]))
+                self.info_widget.skill_detail_magic_boost_score_cool_line.setText("{:+}%".format(magic_bonus["co_score"]))
+                self.info_widget.skill_detail_magic_boost_combo_cool_line.setText("{:+}%".format(magic_bonus["co_combo"]))
+                self.info_widget.skill_detail_magic_boost_life_cool_line.setText("{:+}%".format(magic_bonus["co_life"]))
+                self.info_widget.skill_detail_magic_boost_support_cool_line.setText("{:+}".format(magic_bonus["co_support"]))
+                self.info_widget.skill_detail_magic_boost_score_passion_line.setText("{:+}%".format(magic_bonus["pa_score"]))
+                self.info_widget.skill_detail_magic_boost_combo_passion_line.setText("{:+}%".format(magic_bonus["pa_combo"]))
+                self.info_widget.skill_detail_magic_boost_life_passion_line.setText("{:+}%".format(magic_bonus["pa_life"]))
+                self.info_widget.skill_detail_magic_boost_support_passion_line.setText("{:+}".format(magic_bonus["pa_support"]))
+                self.info_widget.skill_detail_magic_guard_checkbox.setChecked(magic_bonus["guard"])
+                self.info_widget.skill_detail_magic_concentration_checkbox.setChecked(magic_bonus["concentration"])
+            elif skill_type == 42: #mutual
+                if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
+                    mut_bonus = self.perfect_detail.amr_bonus[card_idx][idx][5]
+                else:
+                    mut_bonus = 0
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 7)
+                self.info_widget.skill_detail_mut_combo_line.setText("{:+}%".format(mut_bonus))
+            else:
+                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
+        
         if self.chart_mode == 3:
             self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 1)
             idx = self.generator.selected_skill[0]
             num = self.generator.selected_skill[1]
-            if num in self.generator.skill_inactive_list[idx]:
-                self.info_widget.custom_skill_active_line.setText("Not Activated")
+            if idx in self.perfect_detail.skill_inactivation_reason and \
+                num in self.perfect_detail.skill_inactivation_reason[idx]:
+                self.info_widget.custom_skill_active_button.setDisabled(True)
+                self.info_widget.custom_skill_active_line.setText("-")
             else:
-                self.info_widget.custom_skill_active_line.setText("Activated")
+                self.info_widget.custom_skill_active_button.setDisabled(False)
+                if num in self.generator.skill_inactive_list[idx]:
+                    self.info_widget.custom_skill_active_line.setText("Not Activated")
+                else:
+                    self.info_widget.custom_skill_active_line.setText("Activated")
     
     def update_sparkle_value(self):
         life = int(self.info_widget.skill_detail_sparkle_life_line.text())
@@ -770,7 +787,7 @@ class ChartViewer:
         self.info_widget.skill_prob_layout.addWidget(self.info_widget.skill_prob_line)
         
         self.info_widget.skill_description_layout = QVBoxLayout()
-        self.info_widget.skill_description_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_description_layout.setContentsMargins(0, 6, 0, 6)
         self.info_widget.skill_description_label = QLabel("Effect")
         self.info_widget.skill_description_label.setAlignment(Qt.AlignCenter)
         self.info_widget.skill_description_line = QTextEdit()
@@ -779,6 +796,7 @@ class ChartViewer:
         self.info_widget.skill_description_line.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.info_widget.skill_description_line.setReadOnly(True)
         self.info_widget.skill_description_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_description_layout.addSpacing(6)
         self.info_widget.skill_description_layout.addWidget(self.info_widget.skill_description_label)
         self.info_widget.skill_description_layout.addWidget(self.info_widget.skill_description_line)
         
@@ -1176,6 +1194,23 @@ class ChartViewer:
         self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_magic_widget)
         self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_mut_widget)
         
+        self.info_widget.skill_inactivation_widget = QStackedWidget()
+        self.info_widget.skill_inactivation_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.info_widget.skill_inactivation_widget.addWidget(QWidget())
+        self.info_widget.skill_inactivation_widget.setCurrentIndex(0)
+        self.info_widget.skill_inactivation_detail_widget = QWidget()
+        self.info_widget.skill_inactivation_detail_layout = QVBoxLayout(self.info_widget.skill_inactivation_detail_widget)
+        margin = self.info_widget.skill_inactivation_detail_layout.contentsMargins()
+        self.info_widget.skill_inactivation_detail_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.skill_inactivation_detail_label = QLabel("[！] This skill does not activate because of the following reason:")
+        self.info_widget.skill_inactivation_detail_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_inactivation_detail_line = QLineEdit()
+        self.info_widget.skill_inactivation_detail_line.setReadOnly(True)
+        self.info_widget.skill_inactivation_detail_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_inactivation_detail_layout.addWidget(self.info_widget.skill_inactivation_detail_label)
+        self.info_widget.skill_inactivation_detail_layout.addWidget(self.info_widget.skill_inactivation_detail_line)
+        self.info_widget.skill_inactivation_widget.addWidget(self.info_widget.skill_inactivation_detail_widget)
+        
         self.info_widget.skill_widget = QWidget()
         self.info_widget.skill_layout = QVBoxLayout(self.info_widget.skill_widget)
         margin = self.info_widget.skill_layout.contentsMargins()
@@ -1184,9 +1219,13 @@ class ChartViewer:
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_type_layout)
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_time_layout)
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_prob_layout)
+        self.info_widget.skill_layout.setSpacing(0)
         self.info_widget.skill_layout.addLayout(self.info_widget.skill_info_layout)
         self.info_widget.skill_layout.addLayout(self.info_widget.skill_description_layout)
         self.info_widget.skill_layout.addWidget(self.info_widget.skill_detail_widget)
+        self.info_widget.skill_layout.addWidget(self.info_widget.skill_inactivation_widget)
+        self.info_widget.skill_info_layout.setSpacing(6)
+        self.info_widget.skill_description_layout.setSpacing(6)
         self.info_widget.detail_widget.addWidget(self.info_widget.skill_widget)
 
     def _setup_custom(self):
