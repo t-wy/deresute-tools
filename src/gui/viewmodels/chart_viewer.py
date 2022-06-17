@@ -1,7 +1,7 @@
 import math
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QPainter, QFont, QFontMetrics
+from PyQt5.QtGui import QPixmap, QPainter, QFont, QFontMetrics, QIntValidator
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget, QLineEdit, QHBoxLayout, QGridLayout, \
     QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QCheckBox, QPushButton, QSpinBox, QTextEdit, \
     QSpacerItem, QCheckBox
@@ -310,12 +310,34 @@ class ChartViewer:
             else:
                 self.info_widget.skill_detail_encore_line.setText("")
                 self.info_widget.skill_detail_encore_line_.setText("")
+        elif skill_type == 25: #life sparkle
+            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 2)
+            t = float(time.split(" ~ ")[0])
+            if self.cache_simulation.left_inclusive:
+                last_note = self.generator.notes.index[self.generator.notes['sec'] < t].tolist()[-1]
+            else:
+                last_note = self.generator.notes.index[self.generator.notes['sec'] <= t].tolist()[-1]
+            self.info_widget.skill_detail_sparkle_life_line.setText(str(self.perfect_detail.life[last_note]))
+            self.update_sparkle_value()
+        elif skill_type in (35, 36, 37): #motif
+            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 3)
+            _ = card_idx // 5 * 5
+            if skill_type == 35:
+                appeal = sum([_.vo for _ in self.cards[_:_+5]])
+                self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+            elif skill_type == 36:
+                appeal = sum([_.da for _ in self.cards[_:_+5]])
+                self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+            elif skill_type == 37:
+                appeal = sum([_.vi for _ in self.cards[_:_+5]])
+                self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+            self.update_motif_value()
         elif skill_type == 39: #alternate
             if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
                 alt_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
             else:
                 alt_bonus = [0, 0, 0, 0, 0]
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 2)
+            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 4)
             self.info_widget.skill_detail_alt_tap_line.setText("{:+}%".format(alt_bonus[0]))
             self.info_widget.skill_detail_alt_long_line.setText("{:+}%".format(alt_bonus[1]))
             self.info_widget.skill_detail_alt_flick_line.setText("{:+}%".format(alt_bonus[2]))
@@ -326,7 +348,7 @@ class ChartViewer:
                 ref_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
             else:
                 ref_bonus = [0, 0, 0, 0, 0, 0]    
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 3)
+            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 5)
             self.info_widget.skill_detail_ref_tap_line.setText("{:+}%".format(ref_bonus[0]))
             self.info_widget.skill_detail_ref_long_line.setText("{:+}%".format(ref_bonus[1]))
             self.info_widget.skill_detail_ref_flick_line.setText("{:+}%".format(ref_bonus[2]))
@@ -343,7 +365,7 @@ class ChartViewer:
                      "co_score" : 0, "co_combo" : 0, "co_life" : 0, "co_support" : 0,
                      "pa_score" : 0, "pa_combo" : 0, "pa_life" : 0, "pa_support" : 0,
                      "guard" : False, "overload" : 0, "concentration" : False}
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 4)
+            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 6)
             self.info_widget.skill_detail_magic_tap_line.setText("{:+}%".format(magic_bonus["tap"]))
             self.info_widget.skill_detail_magic_long_line.setText("{:+}%".format(magic_bonus["long"]))
             self.info_widget.skill_detail_magic_flick_line.setText("{:+}%".format(magic_bonus["flick"]))
@@ -381,11 +403,10 @@ class ChartViewer:
                 mut_bonus = self.perfect_detail.amr_bonus[card_idx][idx][5]
             else:
                 mut_bonus = 0
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 5)
+            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 7)
             self.info_widget.skill_detail_mut_combo_line.setText("{:+}%".format(mut_bonus))
         else:
             self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
-        
         if self.chart_mode == 3:
             self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 1)
             idx = self.generator.selected_skill[0]
@@ -394,6 +415,40 @@ class ChartViewer:
                 self.info_widget.custom_skill_active_line.setText("Not Activated")
             else:
                 self.info_widget.custom_skill_active_line.setText("Activated")
+    
+    def update_sparkle_value(self):
+        life = int(self.info_widget.skill_detail_sparkle_life_line.text())
+        rarity_ssr = self.cards[self.generator.selected_skill[0]].sk.values[0] == 1
+        
+        life_trimmed = life // 10
+        
+        if rarity_ssr:
+            sparkle_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_01_value FROM skill_life_value")]
+        else:
+            sparkle_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_02_value FROM skill_life_value")]
+        
+        if life_trimmed >= len(sparkle_values):
+            life_trimmed = len(sparkle_values) - 1
+        
+        value = sparkle_values[int(life_trimmed)]
+        self.info_widget.skill_detail_sparkle_combo_line.setText("{:+}%".format(value - 100))
+    
+    def update_motif_value(self):
+        appeal = int(self.info_widget.skill_detail_motif_appeal_line.text())
+        grand = len(self.cards) == 15
+        
+        appeal_trimmed = appeal // 1000
+        
+        if grand:
+            motif_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_01_value FROM skill_motif_value_grand")]
+        else:
+            motif_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_01_value FROM skill_motif_value")]
+        
+        if appeal_trimmed >= len(motif_values):
+            appeal_trimmed = len(motif_values) - 1
+        
+        value = motif_values[int(appeal_trimmed)]
+        self.info_widget.skill_detail_motif_score_line.setText("{:+}%".format(value - 100))
     
     def save_chart(self):
         self.generator.save_image()
@@ -753,6 +808,62 @@ class ChartViewer:
         self.info_widget.skill_detail_encore_top_layout.addWidget(self.info_widget.skill_detail_encore_line_, 1)
         self.info_widget.skill_detail_encore_layout.addLayout(self.info_widget.skill_detail_encore_top_layout)
         
+        self.info_widget.skill_detail_sparkle_widget = QWidget()
+        self.info_widget.skill_detail_sparkle_layout = QHBoxLayout(self.info_widget.skill_detail_sparkle_widget)
+        margin = self.info_widget.skill_detail_sparkle_layout.contentsMargins()
+        self.info_widget.skill_detail_sparkle_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.skill_detail_sparkle_life_layout = QHBoxLayout()
+        self.info_widget.skill_detail_sparkle_life_label = QLabel("Current life :")
+        self.info_widget.skill_detail_sparkle_life_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_sparkle_life_line = QLineEdit()
+        self.info_widget.skill_detail_sparkle_life_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_sparkle_life_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.info_widget.skill_detail_sparkle_life_line.setToolTip("Life Sparkle COMBO BONUS UP value can change while the skill is active.\n" + 
+                                                                     "The default value shown here is the life value at the moment of skill activation.")
+        self.info_widget.skill_detail_sparkle_life_line.setValidator(QIntValidator(1, 9999, None))
+        self.info_widget.skill_detail_sparkle_life_line.editingFinished.connect(lambda: self.update_sparkle_value())
+        self.info_widget.skill_detail_sparkle_combo_layout = QHBoxLayout()
+        self.info_widget.skill_detail_sparkle_combo_label = QLabel("Life Sparkle COMBO BONUS :")
+        self.info_widget.skill_detail_sparkle_combo_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_sparkle_combo_line = QLineEdit()
+        self.info_widget.skill_detail_sparkle_combo_line.setReadOnly(True)
+        self.info_widget.skill_detail_sparkle_combo_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_sparkle_combo_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.info_widget.skill_detail_sparkle_life_layout.addWidget(self.info_widget.skill_detail_sparkle_life_label)
+        self.info_widget.skill_detail_sparkle_life_layout.addWidget(self.info_widget.skill_detail_sparkle_life_line)
+        self.info_widget.skill_detail_sparkle_combo_layout.addWidget(self.info_widget.skill_detail_sparkle_combo_label)
+        self.info_widget.skill_detail_sparkle_combo_layout.addWidget(self.info_widget.skill_detail_sparkle_combo_line)
+        self.info_widget.skill_detail_sparkle_layout.addLayout(self.info_widget.skill_detail_sparkle_life_layout)
+        self.info_widget.skill_detail_sparkle_layout.addSpacing(12)
+        self.info_widget.skill_detail_sparkle_layout.addLayout(self.info_widget.skill_detail_sparkle_combo_layout)
+        
+        self.info_widget.skill_detail_motif_widget = QWidget()
+        self.info_widget.skill_detail_motif_layout = QHBoxLayout(self.info_widget.skill_detail_motif_widget)
+        margin = self.info_widget.skill_detail_motif_layout.contentsMargins()
+        self.info_widget.skill_detail_motif_layout.setContentsMargins(0, margin.top(), 0, 0)
+        self.info_widget.skill_detail_motif_appeal_layout = QHBoxLayout()
+        self.info_widget.skill_detail_motif_appeal_label = QLabel("Appeal of the unit :")
+        self.info_widget.skill_detail_motif_appeal_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_motif_appeal_line = QLineEdit()
+        self.info_widget.skill_detail_motif_appeal_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_motif_appeal_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.info_widget.skill_detail_motif_appeal_line.setValidator(QIntValidator(0, 99999, None))
+        self.info_widget.skill_detail_motif_appeal_line.editingFinished.connect(lambda: self.update_motif_value())
+        self.info_widget.skill_detail_motif_score_layout = QHBoxLayout()
+        self.info_widget.skill_detail_motif_score_label = QLabel("Motif SCORE UP :")
+        self.info_widget.skill_detail_motif_score_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_motif_score_line = QLineEdit()
+        self.info_widget.skill_detail_motif_score_line.setReadOnly(True)
+        self.info_widget.skill_detail_motif_score_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.skill_detail_motif_score_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.info_widget.skill_detail_motif_appeal_layout.addWidget(self.info_widget.skill_detail_motif_appeal_label)
+        self.info_widget.skill_detail_motif_appeal_layout.addWidget(self.info_widget.skill_detail_motif_appeal_line)
+        self.info_widget.skill_detail_motif_score_layout.addWidget(self.info_widget.skill_detail_motif_score_label)
+        self.info_widget.skill_detail_motif_score_layout.addWidget(self.info_widget.skill_detail_motif_score_line)
+        self.info_widget.skill_detail_motif_layout.addLayout(self.info_widget.skill_detail_motif_appeal_layout)
+        self.info_widget.skill_detail_motif_layout.addSpacing(12)
+        self.info_widget.skill_detail_motif_layout.addLayout(self.info_widget.skill_detail_motif_score_layout)
+        
         self.info_widget.skill_detail_alt_widget = QWidget()
         self.info_widget.skill_detail_alt_layout = QHBoxLayout(self.info_widget.skill_detail_alt_widget)
         margin = self.info_widget.skill_detail_alt_layout.contentsMargins()
@@ -1058,6 +1169,8 @@ class ChartViewer:
         self.info_widget.skill_detail_mut_layout.addWidget(self.info_widget.skill_detail_mut_combo_line)
         
         self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_encore_widget)
+        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_sparkle_widget)
+        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_motif_widget)
         self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_alt_widget)
         self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_ref_widget)
         self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_magic_widget)
