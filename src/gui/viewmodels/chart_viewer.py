@@ -203,6 +203,10 @@ class ChartViewer:
         h = self.info_widget.height()
         self._resize_stacked_widget(widget, idx)
         widget.setCurrentIndex(idx)
+        if idx == 0:
+            widget.hide()
+        else:
+            widget.show()
         delta = self.info_widget.height() - h
         self.chart_widget.verticalScrollBar().setValue(self.chart_widget.verticalScrollBar().value() + delta)
 
@@ -299,6 +303,9 @@ class ChartViewer:
             self.info_widget.skill_description_line.setText("")
         else:
             self.info_widget.skill_description_line.setText(get_skill_description(card_id))
+        
+        if self.perfect_detail == None:
+            return
         
         if card_idx in self.perfect_detail.skill_inactivation_reason and \
             idx in self.perfect_detail.skill_inactivation_reason[card_idx]:
@@ -515,10 +522,14 @@ class ChartViewer:
     
     def setup_info_widget(self):
         self.info_widget.layout = QVBoxLayout(self.info_widget)
+        self.info_widget.layout.setSpacing(0)
         
         self._setup_song_info()
+        self.info_widget.song_info_layout.setSpacing(6)
         self.info_widget.layout.addSpacing(12)
+        
         self._setup_chart_mode()
+        self.info_widget.mode_button_layout.setSpacing(6)
         
         self.info_widget.detail_widget = QStackedWidget()
         self.info_widget.detail_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
@@ -526,23 +537,92 @@ class ChartViewer:
         
         self._setup_note_info()
         self._setup_note_score_info()
+        self.info_widget.note_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.note_score_layout.setContentsMargins(0, 6, 0, 0)
         
         self._setup_skill_info()
+        self.info_widget.skill_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_encore_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_sparkle_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_motif_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_alt_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_ref_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_magic_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_detail_mut_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.skill_inactivation_detail_layout.setContentsMargins(0, 6, 0, 0)
         
         self.info_widget.custom_widget = QStackedWidget()
         self.info_widget.custom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.info_widget.custom_widget.addWidget(QWidget())
         
         self._setup_custom()
+        self.info_widget.custom_setting_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.custom_skill_layout.setContentsMargins(0, 6, 0, 0)
         
         self.info_widget.layout.addWidget(self.info_widget.custom_widget)
         self.info_widget.layout.addWidget(self.info_widget.detail_widget)
-        self.info_widget.layout.setSpacing(0)
         
         self._resize_stacked_widget(self.info_widget.detail_widget, 0)
         self._resize_stacked_widget(self.info_widget.custom_widget, 0)
         self._resize_stacked_widget(self.info_widget.note_score_info_widget, 0)
         self._resize_stacked_widget(self.info_widget.custom_detail_widget, 0)
+        self._resize_stacked_widget(self.info_widget.skill_detail_widget, 0)
+        self._resize_stacked_widget(self.info_widget.skill_inactivation_widget, 0)
+    
+    '''
+    self.info_widget
+        self.info_widget.song_info_layout
+            self.info_widget.title_layout
+            self.info_widget.difficulty_layout
+            self.info_widget.level_layout
+            self.info_widget.total_layout
+            self.info_widget.save
+        self.info_widget.mode_button_layout
+            self.info_widget.mode_label
+            self.info_widget.mode_default_button
+            self.info_widget.mode_perfect_button
+            self.info_widget.mode_abuse_button
+            self.info_widget.mode_custom_button
+        self.info_widget.custom_widget
+            QWidget()
+            self.info_widget.custom_setting_widget
+                self.info_widget.custom_general_layout
+                    self.info_widget.custom_score_layout
+                    self.info_widget.custom_button_layout
+                self.info_widget.custom_detail_widget
+                    QWidget()
+                    self.info_widget.custom_skill_widget
+        self.info_widget.detail_widget
+            QWidget()
+            self.info_widget.note_widget
+                self.info_widget.note_info_layout
+                    self.info_widget.note_number_layout
+                    self.info_widget.note_second_layout
+                    self.info_widget.note_type_layout
+                self.info_widget.note_score_info_widget
+                    QWidget()
+                    self.info_widget.note_score_widget
+                        self.info_widget.note_score_general_layout
+                        self.info_widget.note_skills_layout
+            self.info_widget.skill_widget
+                self.info_widget.skill_info_layout
+                    self.info_widget.skill_type_layout
+                    self.info_widget.skill_time_layout
+                    self.info_widget.skill_prob_layout
+                self.info_widget.skill_description_layout
+                self.info_widget.skill_detail_widget
+                    QWidget()    
+                    self.info_widget.skill_detail_encore_widget
+                    self.info_widget.skill_detail_sparkle_widget
+                    self.info_widget.skill_detail_motif_widget
+                    self.info_widget.skill_detail_alt_widget
+                    self.info_widget.skill_detail_ref_widget
+                    self.info_widget.skill_detail_magic_widget
+                    self.info_widget.skill_detail_mut_widget
+                self.info_widget.skill_inactivation_widget
+                    QWidget()
+                    self.info_widget.skill_inactivation_detail_widget
+    '''
         
     def _setup_song_info(self):
         self.info_widget.title_layout = QVBoxLayout()
@@ -572,10 +652,6 @@ class ChartViewer:
         self.info_widget.level_layout.addWidget(self.info_widget.level_label)
         self.info_widget.level_layout.addWidget(self.info_widget.level_line)
         
-        self.info_widget.save = QPushButton("Save")
-        self.info_widget.save.clicked.connect(lambda: self.save_chart())
-        self.info_widget.save.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
         self.info_widget.total_notes_layout = QVBoxLayout()
         self.info_widget.total_notes_label = QLabel("Notes")
         self.info_widget.total_notes_label.setAlignment(Qt.AlignCenter)
@@ -585,8 +661,11 @@ class ChartViewer:
         self.info_widget.total_notes_layout.addWidget(self.info_widget.total_notes_label)
         self.info_widget.total_notes_layout.addWidget(self.info_widget.total_notes_line)
         
+        self.info_widget.save = QPushButton("Save")
+        self.info_widget.save.clicked.connect(lambda: self.save_chart())
+        self.info_widget.save.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
         self.info_widget.song_info_layout = QHBoxLayout()
-        self.info_widget.song_info_layout.setSpacing(6)
         self.info_widget.song_info_layout.addLayout(self.info_widget.title_layout, 9)
         self.info_widget.song_info_layout.addLayout(self.info_widget.difficulty_layout, 2)
         self.info_widget.song_info_layout.addLayout(self.info_widget.level_layout, 2)
@@ -620,7 +699,6 @@ class ChartViewer:
         self.info_widget.mode_button_group.addButton(self.info_widget.mode_custom_button, 3)
         
         self.info_widget.mode_button_layout = QHBoxLayout()
-        self.info_widget.mode_button_layout.setSpacing(6)
         self.info_widget.mode_button_layout.addStretch(1)
         self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_label, 2)
         self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_default_button, 2)
@@ -659,14 +737,12 @@ class ChartViewer:
         
         self.info_widget.note_widget = QWidget()
         self.info_widget.note_layout = QVBoxLayout(self.info_widget.note_widget)
-        margin = self.info_widget.note_layout.contentsMargins()
-        self.info_widget.note_layout.setContentsMargins(0, margin.top(), 0, 0)
-        self.info_widget.note_layout.setSpacing(0)
+        
         self.info_widget.note_info_layout = QHBoxLayout()
-        self.info_widget.note_info_layout.setSpacing(6)
         self.info_widget.note_info_layout.addLayout(self.info_widget.note_number_layout)
         self.info_widget.note_info_layout.addLayout(self.info_widget.note_second_layout)
         self.info_widget.note_info_layout.addLayout(self.info_widget.note_type_layout)
+        self.info_widget.note_layout.addSpacing(6)
         self.info_widget.note_layout.addLayout(self.info_widget.note_info_layout)
         
     def _setup_note_score_info(self):
@@ -745,8 +821,7 @@ class ChartViewer:
         
         self.info_widget.note_score_widget = QWidget()
         self.info_widget.note_score_layout = QVBoxLayout(self.info_widget.note_score_widget)
-        margin = self.info_widget.note_score_layout.contentsMargins()
-        self.info_widget.note_score_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.note_score_layout.addLayout(self.info_widget.note_score_general_layout)
         self.info_widget.note_score_layout.addLayout(self.info_widget.note_skills_layout)
         
@@ -786,8 +861,6 @@ class ChartViewer:
         self.info_widget.skill_prob_layout.addWidget(self.info_widget.skill_prob_label)
         self.info_widget.skill_prob_layout.addWidget(self.info_widget.skill_prob_line)
         
-        self.info_widget.skill_description_layout = QVBoxLayout()
-        self.info_widget.skill_description_layout.setContentsMargins(0, 6, 0, 6)
         self.info_widget.skill_description_label = QLabel("Effect")
         self.info_widget.skill_description_label.setAlignment(Qt.AlignCenter)
         self.info_widget.skill_description_line = QTextEdit()
@@ -796,7 +869,8 @@ class ChartViewer:
         self.info_widget.skill_description_line.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.info_widget.skill_description_line.setReadOnly(True)
         self.info_widget.skill_description_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_description_layout.addSpacing(6)
+        
+        self.info_widget.skill_description_layout = QVBoxLayout()
         self.info_widget.skill_description_layout.addWidget(self.info_widget.skill_description_label)
         self.info_widget.skill_description_layout.addWidget(self.info_widget.skill_description_line)
         
@@ -807,8 +881,7 @@ class ChartViewer:
         
         self.info_widget.skill_detail_encore_widget = QWidget()
         self.info_widget.skill_detail_encore_layout = QVBoxLayout(self.info_widget.skill_detail_encore_widget)
-        margin = self.info_widget.skill_detail_encore_layout.contentsMargins()
-        self.info_widget.skill_detail_encore_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_detail_encore_label = QLabel("Encored skill : ")
         self.info_widget.skill_detail_encore_label.setAlignment(Qt.AlignCenter)
         self.info_widget.skill_detail_encore_line = QLineEdit()
@@ -828,8 +901,7 @@ class ChartViewer:
         
         self.info_widget.skill_detail_sparkle_widget = QWidget()
         self.info_widget.skill_detail_sparkle_layout = QHBoxLayout(self.info_widget.skill_detail_sparkle_widget)
-        margin = self.info_widget.skill_detail_sparkle_layout.contentsMargins()
-        self.info_widget.skill_detail_sparkle_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_detail_sparkle_life_layout = QHBoxLayout()
         self.info_widget.skill_detail_sparkle_life_label = QLabel("Current life :")
         self.info_widget.skill_detail_sparkle_life_label.setAlignment(Qt.AlignCenter)
@@ -857,8 +929,7 @@ class ChartViewer:
         
         self.info_widget.skill_detail_motif_widget = QWidget()
         self.info_widget.skill_detail_motif_layout = QHBoxLayout(self.info_widget.skill_detail_motif_widget)
-        margin = self.info_widget.skill_detail_motif_layout.contentsMargins()
-        self.info_widget.skill_detail_motif_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_detail_motif_appeal_layout = QHBoxLayout()
         self.info_widget.skill_detail_motif_appeal_label = QLabel("Appeal of the unit :")
         self.info_widget.skill_detail_motif_appeal_label.setAlignment(Qt.AlignCenter)
@@ -884,8 +955,7 @@ class ChartViewer:
         
         self.info_widget.skill_detail_alt_widget = QWidget()
         self.info_widget.skill_detail_alt_layout = QHBoxLayout(self.info_widget.skill_detail_alt_widget)
-        margin = self.info_widget.skill_detail_alt_layout.contentsMargins()
-        self.info_widget.skill_detail_alt_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_detail_alt_tap_layout = QVBoxLayout()
         self.info_widget.skill_detail_alt_tap_label = QLabel("TAP")
         self.info_widget.skill_detail_alt_tap_label.setAlignment(Qt.AlignCenter)
@@ -934,8 +1004,7 @@ class ChartViewer:
         
         self.info_widget.skill_detail_ref_widget = QWidget()
         self.info_widget.skill_detail_ref_layout = QHBoxLayout(self.info_widget.skill_detail_ref_widget)
-        margin = self.info_widget.skill_detail_ref_layout.contentsMargins()
-        self.info_widget.skill_detail_ref_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_detail_ref_tap_layout = QVBoxLayout()
         self.info_widget.skill_detail_ref_tap_label = QLabel("TAP")
         self.info_widget.skill_detail_ref_tap_label.setAlignment(Qt.AlignCenter)
@@ -994,8 +1063,7 @@ class ChartViewer:
         self.info_widget.skill_detail_magic_widget = QWidget()
         self.info_widget.skill_detail_magic_layout = QVBoxLayout(self.info_widget.skill_detail_magic_widget)
         self.info_widget.skill_detail_magic_note_layout = QHBoxLayout()
-        margin = self.info_widget.skill_detail_magic_layout.contentsMargins()
-        self.info_widget.skill_detail_magic_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_detail_magic_tap_layout = QVBoxLayout()
         self.info_widget.skill_detail_magic_tap_label = QLabel("TAP")
         self.info_widget.skill_detail_magic_tap_label.setAlignment(Qt.AlignCenter)
@@ -1175,8 +1243,6 @@ class ChartViewer:
         
         self.info_widget.skill_detail_mut_widget = QWidget()
         self.info_widget.skill_detail_mut_layout = QHBoxLayout(self.info_widget.skill_detail_mut_widget)
-        margin = self.info_widget.skill_detail_mut_layout.contentsMargins()
-        self.info_widget.skill_detail_mut_layout.setContentsMargins(0, margin.top(), 0, 0)
         self.info_widget.skill_detail_mut_combo_label = QLabel("COMBO BONUS")
         self.info_widget.skill_detail_mut_combo_label.setAlignment(Qt.AlignCenter)
         self.info_widget.skill_detail_mut_combo_line = QLineEdit()
@@ -1200,8 +1266,7 @@ class ChartViewer:
         self.info_widget.skill_inactivation_widget.setCurrentIndex(0)
         self.info_widget.skill_inactivation_detail_widget = QWidget()
         self.info_widget.skill_inactivation_detail_layout = QVBoxLayout(self.info_widget.skill_inactivation_detail_widget)
-        margin = self.info_widget.skill_inactivation_detail_layout.contentsMargins()
-        self.info_widget.skill_inactivation_detail_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_inactivation_detail_label = QLabel("[！] This skill does not activate because of the following reason:")
         self.info_widget.skill_inactivation_detail_label.setAlignment(Qt.AlignCenter)
         self.info_widget.skill_inactivation_detail_line = QLineEdit()
@@ -1213,19 +1278,18 @@ class ChartViewer:
         
         self.info_widget.skill_widget = QWidget()
         self.info_widget.skill_layout = QVBoxLayout(self.info_widget.skill_widget)
-        margin = self.info_widget.skill_layout.contentsMargins()
-        self.info_widget.skill_layout.setContentsMargins(0, margin.top(), 0, 0)
+        
         self.info_widget.skill_info_layout = QHBoxLayout()
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_type_layout)
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_time_layout)
         self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_prob_layout)
-        self.info_widget.skill_layout.setSpacing(0)
+        
+        self.info_widget.skill_layout.addSpacing(6)
         self.info_widget.skill_layout.addLayout(self.info_widget.skill_info_layout)
+        self.info_widget.skill_layout.addSpacing(6)
         self.info_widget.skill_layout.addLayout(self.info_widget.skill_description_layout)
         self.info_widget.skill_layout.addWidget(self.info_widget.skill_detail_widget)
         self.info_widget.skill_layout.addWidget(self.info_widget.skill_inactivation_widget)
-        self.info_widget.skill_info_layout.setSpacing(6)
-        self.info_widget.skill_description_layout.setSpacing(6)
         self.info_widget.detail_widget.addWidget(self.info_widget.skill_widget)
 
     def _setup_custom(self):
@@ -1278,15 +1342,12 @@ class ChartViewer:
         self.info_widget.custom_button_layout.addLayout(self.info_widget.custom_button_bottom_layout)
         
         self.info_widget.custom_general_layout = QHBoxLayout()
-        self.info_widget.custom_general_layout.setSpacing(6)
         self.info_widget.custom_general_layout.addLayout(self.info_widget.custom_score_layout)
         self.info_widget.custom_general_layout.addLayout(self.info_widget.custom_button_layout)
         
         self.info_widget.custom_skill_widget = QWidget()
         self.info_widget.custom_skill_layout = QHBoxLayout(self.info_widget.custom_skill_widget)
-        margin = self.info_widget.custom_skill_layout.contentsMargins()
-        self.info_widget.custom_skill_layout.setContentsMargins(0, margin.top(), 0, 0)
-        self.info_widget.custom_skill_layout.setSpacing(6)
+        
         self.info_widget.custom_skill_active_line = QLineEdit()
         self.info_widget.custom_skill_active_line.setReadOnly(True)
         self.info_widget.custom_skill_active_line.setAlignment(Qt.AlignCenter)
@@ -1302,9 +1363,8 @@ class ChartViewer:
         
         self.info_widget.custom_setting_widget = QWidget()
         self.info_widget.custom_setting_layout = QVBoxLayout(self.info_widget.custom_setting_widget)
-        margin = self.info_widget.custom_setting_layout.contentsMargins()
-        self.info_widget.custom_setting_layout.setContentsMargins(0, margin.top(), 0, 0)
-        self.info_widget.custom_setting_layout.setSpacing(0)
+        
+        self.info_widget.custom_setting_layout.addSpacing(6)
         self.info_widget.custom_setting_layout.addLayout(self.info_widget.custom_general_layout)
         self.info_widget.custom_setting_layout.addWidget(self.info_widget.custom_detail_widget)
         
