@@ -219,6 +219,9 @@ class ChartViewer:
 
     def show_detail_nothing(self):
         self.set_stacked_widget_index(self.info_widget.detail_widget, 0)
+        self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
+        self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
+        self.set_stacked_widget_index(self.info_widget.skill_inactivation_widget, 0)
         
         if self.chart_mode == 3:
             self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)

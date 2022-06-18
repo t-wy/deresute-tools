@@ -409,16 +409,18 @@ class BaseChartPicGenerator(ABC):
                 if skill.skill_type is None:
                     skill_time += 1
                     continue
-                if not self.grand and skill_time - 1 in self.skill_inactive_list[card_idx]:
+                if self.viewer.perfect_detail is not None and \
+                    not self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
+                    skill_time - 1 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                elif self.viewer.perfect_detail is not None and \
+                    self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
+                    (skill_time - 1) // 3 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                elif not self.grand and skill_time - 1 in self.skill_inactive_list[card_idx]:
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.DiagCrossPattern)
                 elif self.grand and (skill_time - 1) // 3 in self.skill_inactive_list[card_idx]:
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.DiagCrossPattern)
-                elif not self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
-                    skill_time - 1 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
-                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
-                elif self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
-                    (skill_time - 1) // 3 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
-                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
                 else:
                     skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
                 skill_time += 1
@@ -681,6 +683,7 @@ class BaseChartPicGenerator(ABC):
                 self.selected_note = note.num - 1
                 self.selected_damage_note = -1
                 self.draw_selected_note(idx)
+                self.viewer.show_detail_nothing()
                 self.viewer.show_detail_note_info(str(note.num), "{:.3f}".format(note.sec), str(note.note_type)[9:])
                 return
         for idx, area in enumerate(scroll.damage_note_clickable_areas):
@@ -689,6 +692,7 @@ class BaseChartPicGenerator(ABC):
                 self.selected_note = -1
                 self.selected_damage_note = note.num - 1
                 self.draw_selected_damage_note(idx)
+                self.viewer.show_detail_nothing()
                 self.viewer.show_detail_note_info("-", "{:.3f}".format(note.sec), str(note.note_type)[9:])
                 return
         
@@ -701,6 +705,7 @@ class BaseChartPicGenerator(ABC):
                         skill_time = self.skills[card_idx]['time'][idx]
                         skill_time_text = "{:.1f} ~ {:.1f}".format(skill_time[0], skill_time[1])
                         self.draw_selected_skill(card_idx, idx)
+                        self.viewer.show_detail_nothing()
                         self.viewer.show_detail_skill_info(skill_type, skill_time_text)
                         return
         self.selected_note = -1

@@ -717,7 +717,7 @@ class StateMachine:
         if not self.fail_simulate and not self.abuse:
             self.cache_perfect_score_array = self.note_scores.copy()
         
-        # Convert skills that was originally encore
+        # For live detail, convert skills that was originally encore
         encore_idx = self.encore_skills.keys()
         for note_idx, note in enumerate(self.score_bonus_skills):
             for skill_idx, skill in enumerate(note):
@@ -1841,13 +1841,20 @@ class StateMachine:
             if len(iterating_order) == 0:
                 idx = self.skill_indices[0] - 1
                 num = (int(self.skill_times[0] / 1E6 / self.cache_skill_magic.interval) - 1) // len(self.unit_caches)
+                if idx not in self.skill_inactivation_reason:
+                    self.skill_inactivation_reason[idx] = dict()
                 self.skill_inactivation_reason[idx][num] = 10
 
     def _expand_encore(self):
         skill = self.reference_skills[self.skill_indices[0]]
         if skill.is_encore:
+            idx = self.skill_indices[0] - 1
+            num = (int(self.skill_times[0] / 1E6 / skill.interval) - 1) // len(self.unit_caches)
             last_encoreable_skill = self._get_last_encoreable_skill()
             if last_encoreable_skill is None:
+                if idx not in self.skill_inactivation_reason:
+                    self.skill_inactivation_reason[idx] = dict()
+                self.skill_inactivation_reason[idx][num] = 6
                 pop_skill_index = self.skill_indices.index(-self.skill_indices[0])
                 self.skill_times.pop(pop_skill_index)
                 self.skill_indices.pop(pop_skill_index)
@@ -1859,8 +1866,6 @@ class StateMachine:
             encore_copy.duration = skill.duration
             self.skill_queue[self.skill_indices[0]] = encore_copy
             self.cache_enc[self.skill_indices[0]] = last_encoreable_skill
-            idx = self.skill_indices[0] - 1
-            num = (int(self.skill_times[0] / 1E6 / skill.interval) - 1) // len(self.unit_caches)
             if idx not in self.encore_skills:
                 self.encore_skills[idx] = dict()
             if self.last_activated_time[-1] == self.skill_times[0]:
@@ -2138,41 +2143,54 @@ class StateMachine:
 
             if has_failed and skill.is_overload:
                 to_be_removed.append(skill)
-                self.skill_inactivation_reason[idx][num] = 1
+                if self.cache_skill_magic is None:
+                    self.skill_inactivation_reason[idx][num] = 1
                 continue
             if not has_failed and skill.is_overload:
                 has_failed = self._handle_ol_drain(skill.life_requirement)
                 if has_failed:
                     to_be_removed.append(skill)
-                    self.skill_inactivation_reason[idx][num] = 1
+                    if self.cache_skill_magic is None:
+                        self.skill_inactivation_reason[idx][num] = 1
                 continue
             if skill.is_encore:
                 # Encore should not be here, all encores should have already been replaced
                 to_be_removed.append(skill)
-                self.skill_inactivation_reason[idx][num] = 6
+                if self.cache_skill_magic is None:
+                    self.skill_inactivation_reason[idx][num] = 6
                 continue
             if skill.is_alternate and self.unit_caches[unit_idx].tap == 0:
                 to_be_removed.append(skill)
-                self.skill_inactivation_reason[idx][num] = 7
+                if self.cache_skill_magic is None:
+                    self.skill_inactivation_reason[idx][num] = 7
                 continue
             if skill.is_mutual and self.unit_caches[unit_idx].combo == 0:
                 to_be_removed.append(skill)
-                self.skill_inactivation_reason[idx][num] = 8
+                if self.cache_skill_magic is None:
+                    self.skill_inactivation_reason[idx][num] = 8
                 continue
             if skill.is_refrain and self.unit_caches[unit_idx].tap == 0 and self.unit_caches[unit_idx].combo == 0:
                 to_be_removed.append(skill)
-                self.skill_inactivation_reason[idx][num] = 9
+                if self.cache_skill_magic is None:
+                    self.skill_inactivation_reason[idx][num] = 9
                 continue
             if skill.is_focus:
                 if not self._check_focus_activation(unit_idx=(self.skill_indices[0] - 1) // 5, skill=skill):
                     to_be_removed.append(skill)
                     if skill.skill_type == 21:
-                        self.skill_inactivation_reason[idx][num] = 2
+                        if self.cache_skill_magic is None:
+                            self.skill_inactivation_reason[idx][num] = 2
                     if skill.skill_type == 22:
-                        self.skill_inactivation_reason[idx][num] = 3
+                        if self.cache_skill_magic is None:
+                            self.skill_inactivation_reason[idx][num] = 3
                     if skill.skill_type == 23:
-                        self.skill_inactivation_reason[idx][num] = 4
+                        if self.cache_skill_magic is None:
+                            self.skill_inactivation_reason[idx][num] = 4
                 continue
+        if len(skills_to_check) == len(to_be_removed) and self.cache_skill_magic is not None:
+            idx = self.skill_indices[0] - 1
+            num = (int(self.skill_times[0] / 1E6 / self.cache_skill_magic.interval) - 1) // len(self.unit_caches)
+            self.skill_inactivation_reason[idx][num] = 10
         for skill in to_be_removed:
             skills_to_check.remove(skill)
             self.full_roll_chance /= skill.probability
