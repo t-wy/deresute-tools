@@ -93,7 +93,8 @@ class Card:
                 """,
                 params=[card_id],
                 out_dict=True)
-            
+            if custom_card_data == None:
+                return None
             card_data = {}
             card_data['chara_id'] = db.masterdb.execute_and_fetchone("SELECT chara_id FROM card_data WHERE id = ?",
                                                                      [custom_card_data['image_id']])[0]
@@ -202,6 +203,8 @@ class Card:
                 """,
                 params=[card_id],
                 out_dict=True)
+            if custom_card_data == None:
+                return
             
             card_data = {}
             card_data['chara_id'] = db.masterdb.execute_and_fetchone("SELECT chara_id FROM card_data WHERE id = ?",

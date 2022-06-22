@@ -4,7 +4,7 @@ import pyximport
 from db import db
 from static.color import Color
 from static.note_type import NoteType
-from static.skill import SKILL_BASE, SKILL_SAMPLE
+from static.skill import SKILL_BASE, SKILL_SAMPLE, SKILL_DESCRIPTION
 
 pyximport.install(language_level=3)
 BOOST_TYPES = {20, 32, 33, 34, 38}
@@ -280,6 +280,32 @@ class Skill:
             max_requirements=max_requirements,
             life_requirement=life_requirement
         )
+    
+    def get_skill_description(self):
+        if self.skill_type in (5, 6, 7, 9, 12, 16, 25, 35, 36, 37, 40, 41):
+            return SKILL_DESCRIPTION[self.skill_type]
+        elif self.skill_type in (1, 2, 15):
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100)
+        elif self.skill_type in (4, 31):
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[2] - 100)
+        elif self.skill_type == 17:
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[3])
+        elif self.skill_type in (21, 22, 23, 27):
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100, self.values[2] - 100)
+        elif self.skill_type in (21, 22, 23, 27, 28, 29, 30):
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100, self.values[1] - 100)
+        elif self.skill_type == 24:
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[2] - 100, self.values[3])
+        elif self.skill_type == 26:
+            return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100, self.values[3], self.values[2] - 100)
+        elif self.skill_type == 14:
+            return SKILL_DESCRIPTION[self.skill_type].format(self.life_requirement, self.values[0] - 100)
+        elif self.skill_type == 39:
+            return SKILL_DESCRIPTION[self.skill_type].format(100 - self.values[2], (self.values[0] - 1000) // 10)
+        elif self.skill_type == 42:
+            return SKILL_DESCRIPTION[self.skill_type].format(100 - self.values[0], (self.values[2] - 1000) // 10)
+        elif self.skill_type in (20, 32, 33, 34, 38):
+            return SKILL_DESCRIPTION[self.skill_type].format((self.values[0] - 1000) // 10)
 
     def __eq__(self, other):
         if other is None or not isinstance(other, Skill):

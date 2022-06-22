@@ -163,42 +163,6 @@ SKILL_DESCRIPTION = {
     42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted."
     }
 
-def get_skill_description(card_id):
-    skill_data = db.masterdb.execute_and_fetchone("""
-                                                     SELECT
-                                                         skill_type,
-                                                         skill_trigger_value,
-                                                         value,
-                                                         value_2,
-                                                         value_3
-                                                     FROM skill_data
-                                                     WHERE id = ?
-                                                     """, [card_id])
-    if skill_data[0] in (5, 6, 7, 9, 12, 16, 25, 35, 36, 37, 40, 41):
-        return SKILL_DESCRIPTION[skill_data[0]]
-    elif skill_data[0] in (1, 2, 4, 15, 31):
-        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100)
-    elif skill_data[0] == 17:
-        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2])
-    elif skill_data[0] in (21, 22, 23, 27, 28, 29, 30):
-        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100, skill_data[3] - 100)
-    elif skill_data[0] == 24:
-        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100, skill_data[3])
-    elif skill_data[0] == 26:
-        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[2] - 100, skill_data[4], skill_data[3] - 100)
-    elif skill_data[0] == 14:
-        return SKILL_DESCRIPTION[skill_data[0]].format(skill_data[1], skill_data[2] - 100)
-    elif skill_data[0] in (39, 42):
-        return SKILL_DESCRIPTION[skill_data[0]].format(100 - skill_data[2], (skill_data[3] - 1000) // 10)
-    elif skill_data[0] in (20, 32, 33, 34, 38):
-        boost_data = db.masterdb.execute_and_fetchone("""
-                                                         SELECT
-                                                             boost_value_1
-                                                         FROM skill_boost_type
-                                                         WHERE skill_value = ? AND target_type = 1
-                                                         """, [skill_data[2]])
-        return SKILL_DESCRIPTION[skill_data[0]].format((boost_data[0] - 1000) // 10)
-
 SKILL_INACTIVATION_REASON = {
     1: "Not enough life left.",
     2: "The unit does not consist of only CUTE idols.",

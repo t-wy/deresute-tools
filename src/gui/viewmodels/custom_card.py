@@ -7,6 +7,8 @@ from PyQt5.QtWidgets import QAbstractItemView, QApplication,QCheckBox,  QComboBo
 from PIL import Image
 
 from db import db
+from gui.events.calculator_view_events import PushCardEvent
+from gui.events.utils import eventbus
 from gui.viewmodels.mime_headers import CARD
 from gui.viewmodels.utils import NumericalTableWidgetItem
 from network import meta_updater
@@ -19,6 +21,48 @@ INTERVAL_LIST = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18]
 DURATION_LIST = [(3, "一瞬の間 "), (4.5, "わずかな間"), (6, "少しの間"), (7.5, "しばらくの間"), (9, "かなりの間")]
 PROBABILITY_LIST = ["High probability", "Middle probability", "Low probability"]
 
+def initialize_custom_card_list():
+    db.cachedb.execute("DROP TABLE IF EXISTS custom_card")
+    db.cachedb.execute("""
+        CREATE TABLE custom_card (
+            id INTEGER PRIMARY KEY UNIQUE,
+            rarity INTEGER,
+            image_id INTEGER,
+            vocal INTEGER,
+            dance INTEGER,
+            visual INTEGER,
+            life INTEGER,
+            leader_skill_id INTEGER,
+            skill_type INTEGER,
+            condition INTEGER,
+            available_time_type INTEGER,
+            probability_type INTEGER,
+            value INTEGER,
+            value_2 INTEGER,
+            value_3 INTEGER
+        )
+    """)
+    db.cachedb.commit()
+
+class CustomIdInputWidget(QLineEdit):
+    def __init__(self, *__args):
+        super().__init__(*__args)
+
+    def keyPressEvent(self, event):
+        if self.text() != "":
+            card_id = 500000 + int(self.text())
+        
+            assert 500000 < card_id < 600000
+        
+            key = event.key()
+            if QApplication.keyboardModifiers() == Qt.AltModifier and key == Qt.Key_P:
+                eventbus.eventbus.post(PushCardEvent(card_id, False))
+                return
+            if QApplication.keyboardModifiers() == Qt.ControlModifier and key == Qt.Key_P:
+                eventbus.eventbus.post(PushCardEvent(card_id, True))
+                return
+        super().keyPressEvent(event)
+
 class CustomView:
     def __init__(self):
         self.widget = QGroupBox()
@@ -28,7 +72,6 @@ class CustomView:
     def setup(self):
         self.widget.setTitle("Custom Cards")
         
-        self.initialize_custom_card_list()
         self._fetch_leader()
         self._fetch_skill()
         
@@ -74,29 +117,7 @@ class CustomView:
     
     def set_calculator_view(self, calculator_view):
         self.calculator_view = calculator_view
-    
-    def initialize_custom_card_list(self):
-        db.cachedb.execute("""
-            CREATE TABLE IF NOT EXISTS custom_card (
-                id INTEGER PRIMARY KEY UNIQUE,
-                rarity INTEGER,
-                image_id INTEGER,
-                vocal INTEGER,
-                dance INTEGER,
-                visual INTEGER,
-                life INTEGER,
-                leader_skill_id INTEGER,
-                skill_type INTEGER,
-                condition INTEGER,
-                available_time_type INTEGER,
-                probability_type INTEGER,
-                value INTEGER,
-                value_2 INTEGER,
-                value_3 INTEGER
-            )
-        """)
-        #FOREIGN KEY (image_id) REFERENCES card_data_cache(id)
-    
+        
     def _fetch_leader(self):
         rarity = [8, 6, 4]
         self.leader_list = []
@@ -178,6 +199,7 @@ class CustomView:
         
         self.card_image = QLabel()
         card_pixmap = QPixmap(124, 124)
+        card_pixmap.fill(QColor(255, 255, 255, 255))
         self.card_image.setPixmap(card_pixmap)
         self.card_painter = QPainter(self.card_image.pixmap())
         
@@ -322,7 +344,7 @@ class CustomView:
         self.reset_button = QPushButton("Reset")
         self.reset_button.pressed.connect(lambda: self.reset_settings())
         
-        self.load_id_edit = QLineEdit()
+        self.load_id_edit = CustomIdInputWidget()
         self.load_id_edit.setPlaceholderText("Input custom card ID")
         self.load_id_edit.setValidator(QIntValidator(1, 99999, None))
         
@@ -692,8 +714,8 @@ class CustomView:
         card_id = int("5" + str(custom_id).zfill(5))
         
         self.unit_view.remove_deleted_custom_card(card_id)
-        self.calculator_view.views[0].remove_unit_with_deleted_custom_card(card_id)
-        self.calculator_view.views[1].remove_unit_with_deleted_custom_card(card_id)
+        self.calculator_view.views[0].remove_deleted_custom_card(card_id)
+        self.calculator_view.views[1].remove_deleted_custom_card(card_id)
         
         db.cachedb.execute("DELETE from custom_card WHERE id = ?", [custom_id])
         db.cachedb.commit()

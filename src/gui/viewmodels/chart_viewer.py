@@ -15,7 +15,7 @@ from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent
 from static.judgement import Judgement
-from static.skill import SKILL_BASE, SKILL_INACTIVATION_REASON, get_skill_description
+from static.skill import SKILL_BASE, SKILL_INACTIVATION_REASON
 
 class ChartViewer:
     def __init__(self, parent, *args, **kwargs):
@@ -301,11 +301,7 @@ class ChartViewer:
         self.info_widget.skill_type_line.setText(SKILL_BASE[skill_type]['name'])
         self.info_widget.skill_time_line.setText(time)
         self.info_widget.skill_prob_line.setText("{:.2%}".format(self.skill_probability[card_idx]))
-        card_id = (self.cards[card_idx].card_id + 1) // 2 * 2 - 1
-        if str(card_id)[0] == "5":
-            self.info_widget.skill_description_line.setText("")
-        else:
-            self.info_widget.skill_description_line.setText(get_skill_description(card_id))
+        self.info_widget.skill_description_line.setText(self.cards[card_idx].sk.get_skill_description())
         
         if self.perfect_detail == None:
             return

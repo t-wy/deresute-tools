@@ -26,7 +26,10 @@ class CustomDB(object):
         result = self._db_cur.fetchone()
         if out_dict:
             description = self._db_cur.description
-            res = OrderedDict({key[0]: value for key, value in zip(description, result)})
+            if result is None:
+                res = None
+            else:
+                res = OrderedDict({key[0]: value for key, value in zip(description, result)})
         else:
             res = result
         mutex.release()
