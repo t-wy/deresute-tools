@@ -315,12 +315,13 @@ class MainModel(QObject):
     @pyqtSlot(BaseSimulationResultWithUuid)
     def process_results(self, payload: BaseSimulationResultWithUuid):
         eventbus.eventbus.post(DisplaySimulationResultEvent(payload))
-        eventbus.eventbus.post(HookSimResultToChartViewerEvent(payload.results.perfect_detail), asynchronous=False)
+        eventbus.eventbus.post(HookSimResultToChartViewerEvent(payload.live.score_id, payload.live.difficulty,
+                                                               payload.results.perfect_detail), asynchronous=False)
         if payload.abuse_load:
             if not isinstance(payload.results, SimulationResult):
                 return
-            eventbus.eventbus.post(HookAbuseToChartViewerEvent(payload.cards,
-                                                               payload.results.abuse_data),
+            eventbus.eventbus.post(HookAbuseToChartViewerEvent(payload.live.score_id, payload.live.difficulty,
+                                                               payload.cards, payload.results.abuse_data),
                                    asynchronous=False)
 
     @subscribe(SimulationEvent)
@@ -359,7 +360,7 @@ class MainModel(QObject):
                                   perfect_only=not event.allow_great,
                                   output=event.theoretical_simulation)
         self.process_simulation_results_signal.emit(
-            BaseSimulationResultWithUuid(event.uuid, event.unit.all_cards(), result, event.abuse_load))
+            BaseSimulationResultWithUuid(event.uuid, event.unit.all_cards(), result, event.abuse_load, event.live))
 
     @subscribe(CustomSimulationEvent)
     def handle_custom_simulation(self, custom_event: CustomSimulationEvent):
@@ -378,7 +379,7 @@ class MainModel(QObject):
                               abuse=True, perfect_only=False, output=False,
                               inactive_skill=custom_event.skill_inactive_list
                               )
-        eventbus.eventbus.post(CustomSimulationResultEvent(result))
+        eventbus.eventbus.post(CustomSimulationResultEvent(result, event.live))
 
     def handle_yoink_button(self):
         _, _, live_detail_id, song_name, diff_name = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())

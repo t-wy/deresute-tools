@@ -101,14 +101,21 @@ class ChartViewer:
     def hook_simulation_result(self, event: HookSimResultToChartViewerEvent):
         if self.generator is None:
             return
-        
+        if event.song_id != self.song_id or event.difficulty.value != self.difficulty:
+            return
         self.perfect_detail = event.perfect_detail
         self._handle_simulation_result()
         
-        self.info_widget.mode_custom_button.setCheckable(True)
+        if self.info_widget.mode_perfect_button.isCheckable():
+            self.info_widget.mode_custom_button.setCheckable(True)  
+        
+        if self.chart_mode > 0:
+            self.generator.draw_perfect_chart()
     
     @subscribe(CustomSimulationResultEvent)
     def display_custom_simulation_result(self, event: CustomSimulationResultEvent):
+        if event.live.score_id != self.song_id or event.live.difficulty.value != self.difficulty:
+            return
         self.info_widget.custom_total_line.setText(str(event.result[0]))
         self.info_widget.custom_theoretic_line.setText(str(int(event.result[2])))
         self.info_widget.custom_skill_prob_line.setText("{:.2%}".format(event.result[4]))
@@ -165,8 +172,12 @@ class ChartViewer:
         unit_changed = self.generator.hook_cards(event.cards)
         self.info_widget.mode_perfect_button.setCheckable(True)
         self.perfect_detail = None
-        if self.chart_mode == 1 and unit_changed:
-            self.generator.draw_perfect_chart()
+        self.info_widget.mode_custom_button.setCheckable(False)
+        if unit_changed:
+            if self.chart_mode == 1:
+                self.generator.draw_perfect_chart()
+            elif self.chart_mode > 1:
+                self.info_widget.mode_perfect_button.setChecked(True)
 
     @subscribe(ToggleMirrorEvent)
     def toggle_mirror(self, event: ToggleMirrorEvent):
@@ -300,7 +311,8 @@ class ChartViewer:
         self.set_stacked_widget_index(self.info_widget.detail_widget, 2)
         self.info_widget.skill_type_line.setText(SKILL_BASE[skill_type]['name'])
         self.info_widget.skill_time_line.setText(time)
-        self.info_widget.skill_prob_line.setText("{:.2%}".format(self.skill_probability[card_idx]))
+        if self.skill_probability is not None:
+            self.info_widget.skill_prob_line.setText("{:.2%}".format(self.skill_probability[card_idx]))
         self.info_widget.skill_description_line.setText(self.cards[card_idx].sk.get_skill_description())
         
         if self.perfect_detail == None:

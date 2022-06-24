@@ -115,5 +115,6 @@ class CustomSimulationEvent:
 
 
 class CustomSimulationResultEvent:
-    def __init__(self, result):
+    def __init__(self, result, live = None):
         self.result = result
+        self.live = live
