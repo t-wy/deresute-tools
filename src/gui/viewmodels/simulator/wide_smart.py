@@ -12,7 +12,7 @@ from gui.events.calculator_view_events import GetAllCardsEvent, SimulationEvent,
     TurnOffRunningLabelFromUuidGrandEvent, CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
 from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent, HookSimResultToChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
-from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent
+from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent, CustomCardUpdatedEvent
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.utils.wrappers import BaseSimulationResultWithUuid, YoinkResults
@@ -398,6 +398,7 @@ class MainModel(QObject):
             else:
                 self.view.views[0].add_unit(payload.cards)
             eventbus.eventbus.post(PostYoinkEvent(payload.support))
+            eventbus.eventbus.post(CustomCardUpdatedEvent())
         self.view.yoink_button.setText("Yoink #1 Unit")
         self.view.yoink_button.setEnabled(True)
 

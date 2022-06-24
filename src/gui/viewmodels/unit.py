@@ -291,13 +291,13 @@ class UnitView:
         self.widget.takeItem(row)
         self.copy.widget.takeItem(row)
 
-    def remove_deleted_custom_card(self, custom_card_id):
+    def replace_changed_custom_card(self, custom_card_id, new_custom_card = None):
         for row in range(self.widget.count()):
             unit_item = self.widget.item(row)
             unit_widget = self.widget.itemWidget(unit_item)
             for idx, card in enumerate(unit_widget.cards_internal):
                 if card is not None and card.card_id == custom_card_id:
-                    unit_widget.set_card(idx, None)
+                    unit_widget.set_card(idx, new_custom_card)
                     self.copy.copy_unit(self)
 
     def handle_lost_mime(self, mime_text):

@@ -212,6 +212,7 @@ class ProfileManager:
                                                          probability_type, value, value_2, value_3)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, list(map(int, row)))
+        custom_card.refresh_custom_card_images()
 
     def _write_custom_csv(self):
         custom_cards = db.cachedb.execute_and_fetchall("SELECT * FROM custom_card", out_dict=True)

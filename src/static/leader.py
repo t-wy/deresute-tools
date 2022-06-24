@@ -124,6 +124,9 @@ SKILL_BASE = {0: "",
               126: "Passion Duet Step&Make",
               127: "Passion Duet Make&Voice",
               }
+_ = list(SKILL_BASE.keys())
+for l in _:
+    SKILL_BASE[5000 + l] = SKILL_BASE[l]
 
 logger.debug("Creating chihiro.leader_keywords...")
 

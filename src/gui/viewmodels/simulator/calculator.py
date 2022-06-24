@@ -522,11 +522,11 @@ class CalculatorView:
             self.widget.cellWidget(r, 0).display_chart_name(diff_name, song_name)
         eventbus.eventbus.post(HookUnitToUnitDetailsEvent())
 
-    def remove_deleted_custom_card(self, custom_card_id):
+    def replace_changed_custom_card(self, custom_card_id, new_custom_card = None):
         for row in range(self.widget.rowCount()-1, -1, -1):
             for idx, card in enumerate(self.widget.cellWidget(row, 0).cards_internal):
                 if card is not None and card.card_id == custom_card_id:
-                    self.widget.cellWidget(row, 0).set_card(idx, None)
+                    self.widget.cellWidget(row, 0).set_card(idx, new_custom_card)
     
     def backup(self):
         logger.info("{} backing up unit for next session...".format(type(self).__name__))

@@ -8,7 +8,9 @@ from PIL import Image
 
 from db import db
 from gui.events.calculator_view_events import PushCardEvent
+from gui.events.state_change_events import CustomCardUpdatedEvent
 from gui.events.utils import eventbus
+from gui.events.utils.eventbus import subscribe
 from gui.viewmodels.mime_headers import CARD
 from gui.viewmodels.utils import NumericalTableWidgetItem
 from network import meta_updater
@@ -20,6 +22,9 @@ from utils import storage
 INTERVAL_LIST = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18]
 DURATION_LIST = [(3, "一瞬の間 "), (4.5, "わずかな間"), (6, "少しの間"), (7.5, "しばらくの間"), (9, "かなりの間")]
 PROBABILITY_LIST = ["High probability", "Middle probability", "Low probability"]
+
+frame_list = ["myssrcu", "myssrco", "myssrpa", "mysr", "myr", "myncu", "mynco", "mynpa"]
+attr_list = ["mycu", "myco", "mypa"]
 
 def initialize_custom_card_list():
     db.cachedb.execute("DROP TABLE IF EXISTS custom_card")
@@ -44,22 +49,82 @@ def initialize_custom_card_list():
     """)
     db.cachedb.commit()
 
+def calculate_appeal_life(rarity, point, appeal):
+    appeal_text = {0 : "hp", 1 : "vocal", 2 : "dance", 3 : "visual"}[appeal]
+    appeal_text_ = {0 : "life", 1 : "vocal", 2 : "dance", 3 : "visual"}[appeal]
+    
+    value = sum(db.masterdb.execute_and_fetchone("SELECT {}_max, bonus_{} FROM card_data WHERE id = ?".format(appeal_text, appeal_text),
+                                                 [500000 + rarity]))
+    if point > 0: 
+        value += db.masterdb.execute_and_fetchone("SELECT add_{} FROM card_data_custom_growth_param WHERE point = ?".format(appeal_text_),
+                                                  [point])[0]
+    return value
+
+def refresh_custom_card_images():
+    paths = [IMAGE_PATH, IMAGE_PATH32, IMAGE_PATH64]
+    for path in paths:
+        images = os.listdir(str(path))
+        for image in images:
+            try:
+                card_id = int(image[:-4])
+                if 500000 < card_id < 600000:
+                    os.remove(str(path / image))
+            except:
+                pass
+    custom_cards = db.cachedb.execute_and_fetchall("SELECT id, rarity, image_id FROM custom_card")
+    for card in custom_cards:
+        generate_custom_card_image(card[0], card[1], card[2])
+
+def generate_custom_card_image(custom_id, custom_rarity, custom_image_id):
+    image_id = custom_image_id
+    attribute = int(str(custom_image_id)[0])
+    rarity = 8 - custom_rarity
+    frame_index = [0, 3, 4, 5][rarity // 2]
+    if frame_index in [0, 5]:
+        frame_index += attribute - 1
+    
+    image = Image.open(str(IMAGE_PATH / "{}.png".format(image_id)))
+    frame = Image.open(str(MY_IMAGE_PATH / (frame_list[frame_index] + ".png")))
+    my = Image.open(str(MY_IMAGE_PATH / "my1.png"))
+    attr_icon = Image.open(str(MY_IMAGE_PATH / (attr_list[attribute-1] + ".png")))
+    
+    frame_ = Image.new('RGBA', (124, 124), color=(0, 0, 0, 0))
+    frame_.paste(frame, (0, 0))
+    my_ = Image.new('RGBA', (124, 124), color=(0, 0, 0, 0))
+    my_.paste(my, (82, 2))
+    attr_icon_ = Image.new('RGBA', (124, 124), color=(0, 0, 0, 0))
+    attr_icon_.paste(attr_icon, (2, 99))
+    
+    custom_image = Image.new('RGBA', (124, 124))
+    custom_image.alpha_composite(image)
+    custom_image.alpha_composite(frame_)
+    custom_image.alpha_composite(my_)
+    custom_image.alpha_composite(attr_icon_)
+    custom_image.save(str(IMAGE_PATH / "{}.png".format(500000 + custom_id)), "PNG")
+    _ = Image.new('RGBA', (124, 124), color=(255, 255, 255, 255))
+    _.alpha_composite(custom_image)
+    custom_image64 = _.convert('RGB').resize((64, 64))
+    custom_image64.save(str(IMAGE_PATH64 / "{}.jpg".format(500000 + custom_id)), "JPEG")
+    custom_image32 = _.convert('RGB').resize((32, 32))
+    custom_image32.save(str(IMAGE_PATH32 / "{}.jpg".format(500000 + custom_id)), "JPEG")
+    
+
 class CustomIdInputWidget(QLineEdit):
     def __init__(self, *__args):
         super().__init__(*__args)
 
     def keyPressEvent(self, event):
         if self.text() != "":
-            card_id = 500000 + int(self.text())
-        
-            assert 500000 < card_id < 600000
-        
             key = event.key()
             if QApplication.keyboardModifiers() == Qt.AltModifier and key == Qt.Key_P:
-                eventbus.eventbus.post(PushCardEvent(card_id, False))
+                card_id = 500000 + int(self.text())
+                if 500000 < card_id < 600000:
+                    eventbus.eventbus.post(PushCardEvent(card_id, False))
                 return
             if QApplication.keyboardModifiers() == Qt.ControlModifier and key == Qt.Key_P:
-                eventbus.eventbus.post(PushCardEvent(card_id, True))
+                card_id = 500000 + int(self.text())
+                if 500000 < card_id < 600000:
+                    eventbus.eventbus.post(PushCardEvent(card_id, True))
                 return
         super().keyPressEvent(event)
 
@@ -68,6 +133,7 @@ class CustomView:
         self.widget = QGroupBox()
         self.layout = QVBoxLayout(self.widget)
         self.unit_view = None
+        eventbus.eventbus.register(self)
     
     def setup(self):
         self.widget.setTitle("Custom Cards")
@@ -367,10 +433,7 @@ class CustomView:
         self.save_layout.addWidget(self.save_button)
         self.save_layout.addWidget(self.create_button)
         
-    def update_image(self):
-        frame_list = ["myssrcu", "myssrco", "myssrpa", "mysr", "myr", "myncu", "mynco", "mynpa"]
-        attr_list = ["mycu", "myco", "mypa"]
-        
+    def update_image(self): #TODO
         image_id = self.card_image_id_edit.text()
         if image_id == "" or int(image_id) < 100000:
             return
@@ -419,36 +482,11 @@ class CustomView:
         visual_point = self.visual_spinbox.value()
         life_point = self.life_spinbox.value()
         
-        self.vocal_text.setText(str(self._calculate_appeal_life(rarity, vocal_point, True)))
-        self.dance_text.setText(str(self._calculate_appeal_life(rarity, dance_point, True)))
-        self.visual_text.setText(str(self._calculate_appeal_life(rarity, visual_point, True)))
-        self.life_text.setText(str(self._calculate_appeal_life(rarity, life_point, False)))
-    
-    def _calculate_appeal_life(self, rarity, point, isAppeal):
-        appeal_base = 1600
-        appeal_rarity = 200
-        appeal_point = [200, 115]
-        appeal_point_threshold = 10
-        life_base = [21, 22, 27, 29, 37, 39, 42, 44]
-        life_point = [4, 2]
-        life_point_threshold = 10
-        
-        if isAppeal:
-            value = appeal_base + appeal_rarity * (7 - rarity)
-            if point < appeal_point_threshold + 1:
-                value += appeal_point[0] * point
-            else:
-                value += appeal_point[0] * appeal_point_threshold + appeal_point[1] * (point - appeal_point_threshold)
-            return value
-            
-        else:
-            value = life_base[7 - rarity]
-            if point < life_point_threshold + 1:
-                value += life_point[0] * point
-            else:
-                value += life_point[0] * life_point_threshold + life_point[1] * (point - life_point_threshold)
-            return value
-    
+        self.vocal_text.setText(str(calculate_appeal_life(8 - rarity, vocal_point, 1)))
+        self.dance_text.setText(str(calculate_appeal_life(8 - rarity, dance_point, 2)))
+        self.visual_text.setText(str(calculate_appeal_life(8 - rarity, visual_point, 3)))
+        self.life_text.setText(str(calculate_appeal_life(8 - rarity, life_point, 0)))
+
     def update_leader(self):
         self.leader_type.clear()
         self.leader_type.addItems(self.leader_name_list[self.leader_grade.currentIndex()])
@@ -599,15 +637,7 @@ class CustomView:
         
         custom_id = db.cachedb.execute_and_fetchone("SELECT last_insert_rowid()")[0]
         
-        p = "{}".format("5" + str(custom_id).zfill(5))
-        path = IMAGE_PATH / (p + ".png")
-        path32 = IMAGE_PATH32 / (p + ".jpg")
-        path64 = IMAGE_PATH64 / (p + ".jpg")
-        storage.exists(path)
-        self.card_image.pixmap().save(str(path))
-        img = Image.open(str(path)).convert('RGB')
-        img.resize((32, 32), Image.ANTIALIAS).save(str(path32), format='JPEG')
-        img.resize((64, 64), Image.ANTIALIAS).save(str(path64), format='JPEG')
+        generate_custom_card_image(int(custom_id), _[0], _[1])
         
         self.list_widget.load_custom_cards()
     
@@ -618,6 +648,7 @@ class CustomView:
         if not self._is_setting_valid():
             return
         custom_id = self.load_id_edit.text()
+        card_id = int("5" + str(custom_id).zfill(5))
         
         query = """
                 UPDATE custom_card
@@ -631,17 +662,13 @@ class CustomView:
         db.cachedb.execute(query, _)
         db.cachedb.commit()
         
-        p = "{}".format("5" + str(custom_id).zfill(5))
-        path = IMAGE_PATH / (p + ".png")
-        path32 = IMAGE_PATH32 / (p + ".jpg")
-        path64 = IMAGE_PATH64 / (p + ".jpg")
-        storage.exists(path)
-        self.card_image.pixmap().save(str(path))
-        img = Image.open(str(path)).convert('RGB')
-        img.resize((32, 32), Image.ANTIALIAS).save(str(path32), format='JPEG')
-        img.resize((64, 64), Image.ANTIALIAS).save(str(path64), format='JPEG')
+        generate_custom_card_image(int(custom_id), _[0], _[1])
         
         self.list_widget.load_custom_cards()
+        
+        self.unit_view.replace_changed_custom_card(card_id, card_id)
+        self.calculator_view.views[0].replace_changed_custom_card(card_id, card_id)
+        self.calculator_view.views[1].replace_changed_custom_card(card_id, card_id)
     
     def load_card(self):
         if self.load_id_edit.text() == "":
@@ -713,16 +740,31 @@ class CustomView:
         custom_id = int(self.load_id_edit.text())
         card_id = int("5" + str(custom_id).zfill(5))
         
-        self.unit_view.remove_deleted_custom_card(card_id)
-        self.calculator_view.views[0].remove_deleted_custom_card(card_id)
-        self.calculator_view.views[1].remove_deleted_custom_card(card_id)
+        self.unit_view.replace_changed_custom_card(card_id)
+        self.calculator_view.views[0].replace_changed_custom_card(card_id)
+        self.calculator_view.views[1].replace_changed_custom_card(card_id)
         
         db.cachedb.execute("DELETE from custom_card WHERE id = ?", [custom_id])
         db.cachedb.commit()
         
         self.list_widget.load_custom_cards()
-    
+        
+        try:
+            os.remove(str(IMAGE_PATH / "{}.png".format(card_id)))
+        except OSError:
+            pass
+        try:
+            os.remove(str(IMAGE_PATH32 / "{}.jpg".format(card_id)))
+        except OSError:
+            pass
+        try:
+            os.remove(str(IMAGE_PATH64 / "{}.jpg".format(card_id)))
+        except OSError:
+            pass
+        
     def _find_index_from_id(self, skill_list, skill_id):
+        if skill_list == self.leader_list and skill_id > 5000:
+            skill_id -= 5000
         for r_idx, l in enumerate(skill_list):
             for s_idx, s in enumerate(l):
                 if s == skill_id:
@@ -748,6 +790,10 @@ class CustomView:
                 return False
             
         return True
+
+    @subscribe(CustomCardUpdatedEvent)
+    def _handle_yoink_custom_card(self, event):
+        self.list_widget.load_custom_cards()
 
 
 class CustomListWidget(QTableWidget):
