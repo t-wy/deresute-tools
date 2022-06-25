@@ -372,10 +372,10 @@ class MainModel(QObject):
         self.view.yoink_button2.setEnabled(False)
         self.view.yoink_button.setText("Yoinking...")
         self.view.yoink_button2.setText("Yoinking...")
-        if id is None:
-            eventbus.eventbus.post(InjectTextEvent("Yoinking the team of {} for {} - {}".format(id, song_name, diff_name)))
-        else:
+        if player_id is None:
             eventbus.eventbus.post(InjectTextEvent("Yoinking team #{} for {} - {}".format(rank, song_name, diff_name)))
+        else:
+            eventbus.eventbus.post(InjectTextEvent("Yoinking the team of {} for {} - {}".format(player_id, song_name, diff_name)))
         eventbus.eventbus.post(YoinkUnitEvent(live_detail_id, rank, player_id), asynchronous=True)
 
     @pyqtSlot(YoinkResults)
