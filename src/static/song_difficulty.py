@@ -43,6 +43,34 @@ NONFLICK_DRAIN = {
     Difficulty.LEGACY: 20,
     Difficulty.PIANO: 10,
     Difficulty.FORTE: 10,
+}           
+
+BAD_TAP_RANGE = {
+    Difficulty.LIGHT: 180000,
+    Difficulty.TRICK: 140000,
+    Difficulty.DEBUT: 180000,
+    Difficulty.REGULAR: 180000,
+    Difficulty.PRO: 140000,
+    Difficulty.MASTER: 130000,
+    Difficulty.MPLUS: 130000,
+    Difficulty.WITCH: 130000,
+    Difficulty.LEGACY: 130000,
+    Difficulty.PIANO: 130000,
+    Difficulty.FORTE: 130000,
+}
+
+NICE_TAP_RANGE = {
+    Difficulty.LIGHT: 150000,
+    Difficulty.TRICK: 110000,
+    Difficulty.DEBUT: 150000,
+    Difficulty.REGULAR: 150000,
+    Difficulty.PRO: 110000,
+    Difficulty.MASTER: 100000,
+    Difficulty.MPLUS: 100000,
+    Difficulty.WITCH: 100000,
+    Difficulty.LEGACY: 100000,
+    Difficulty.PIANO: 100000,
+    Difficulty.FORTE: 100000,
 }
 
 GREAT_TAP_RANGE = {

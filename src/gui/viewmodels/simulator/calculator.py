@@ -31,7 +31,7 @@ from simulator import SimulationResult, AutoSimulationResult
 from utils.storage import get_writer, get_reader
 
 UNIVERSAL_HEADERS = ["Unit", "Appeals", "Life"]
-NORMAL_SIM_HEADERS = ["Perfect", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%", "Theo. Max", "Full Roll Chance (%)"]
+NORMAL_SIM_HEADERS = ["Perfect", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%", "Theo. Max", "Full Roll Chance (%)", "CC Full Roll", "CC GREAT", "CC Mean"]
 AUTOPLAY_SIM_HEADERS = ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time (s)",
                         "All Skills 100%?"]
 ALL_HEADERS = UNIVERSAL_HEADERS + NORMAL_SIM_HEADERS + AUTOPLAY_SIM_HEADERS
@@ -289,6 +289,10 @@ class DroppableCalculatorWidget(QTableWidget):
             self.calculator_view.duplicate_unit(True)
         elif QApplication.keyboardModifiers() == Qt.ControlModifier and event.key() == Qt.Key_D:
             self.calculator_view.duplicate_unit(False)
+        if QApplication.keyboardModifiers() == Qt.ControlModifier and event.key() == Qt.Key_Up:
+            self.calculator_view.swap_unit(True)
+        if QApplication.keyboardModifiers() == Qt.ControlModifier and event.key() == Qt.Key_Down:
+            self.calculator_view.swap_unit(False)
         else:
             super().keyPressEvent(event)
 
@@ -355,7 +359,7 @@ class CalculatorView:
         self.widget.setColumnWidth(0, 40 * 6)
         self.widget.horizontalHeader().resizeSections(3)  # Auto fit
         self.widget.horizontalHeader().setSectionResizeMode(0, 2)
-        self.widget.horizontalHeader().setMinimumSectionSize(55)
+        self.widget.horizontalHeader().setMinimumSectionSize(65)
         self.widget.horizontalHeader().setMinimumSectionSize(0)
         self.widget.setColumnWidth(2, 30)
         self.toggle_auto(False)
@@ -379,15 +383,17 @@ class CalculatorView:
         self.model = model
         self._restore_from_backup()
 
-    def insert_unit(self):
-        self.widget.insertRow(self.widget.rowCount())
-        self.widget.setVerticalHeaderItem(self.widget.rowCount() - 1, QTableWidgetItem(""))
+    def insert_unit(self, row=None):
+        if row is None:
+            row = self.widget.rowCount()
+        self.widget.insertRow(row)
+        self.widget.setVerticalHeaderItem(row, QTableWidgetItem(""))
         self.widget.verticalHeader().setFixedWidth(25)
         simulator_unit_widget = CalculatorUnitWidget(self, None, size=32)
-        self.widget.setCellWidget(self.widget.rowCount() - 1, 0, simulator_unit_widget)
+        self.widget.setCellWidget(row, 0, simulator_unit_widget)
         logger.debug("Inserted empty unit at {}".format(self.widget.rowCount()))
         self.widget.setColumnWidth(0, 40 * 6)
-        self.widget.setRowHeight(self.widget.rowCount() - 1, 300)
+        self.widget.setRowHeight(row, 300)
 
     def delete_unit(self):
         if len(self.widget.selectionModel().selectedRows()) == 0:
@@ -412,6 +418,42 @@ class CalculatorView:
                 if card is None:
                     continue
                 card.refresh_values()
+    
+    def swap_unit(self, dir_up):
+        selected_row = self.widget.selectionModel().selectedRows()[0].row()
+        cell_widget = self.widget.cellWidget(selected_row, 0)
+        card_ids = cell_widget.card_ids
+        
+        if (dir_up and selected_row == 0) or (not dir_up and selected_row == self.widget.rowCount() - 1):
+            return
+        if dir_up:
+            self.insert_unit(selected_row - 1)
+            self.set_unit(card_ids, selected_row - 1)
+            self.swap_unit_int(selected_row - 1)
+            self.widget.removeRow(selected_row + 1)
+            self.widget.setCurrentCell(selected_row, 0)
+        else:
+            self.insert_unit(selected_row + 2)
+            self.set_unit(card_ids, selected_row + 2)
+            self.swap_unit_int(selected_row + 2)
+            self.widget.removeRow(selected_row)
+            self.widget.setCurrentCell(selected_row + 1, 0)
+    
+    def swap_unit_int(self, row):
+        selected_row = self.widget.selectionModel().selectedRows()[0].row()
+        cell_widget = self.widget.cellWidget(selected_row, 0)
+        
+        cloned_card_internals = cell_widget.clone_internal()
+        new_unit = self.widget.cellWidget(row, 0)
+        new_unit.cards_internal = cloned_card_internals
+        new_unit.clone_extended_cards_data(cell_widget.extended_cards_data)
+        new_unit.lock_chart_checkbox.setChecked(cell_widget.lock_chart_checkbox.isChecked())
+        new_unit.lock_unit_checkbox.setChecked(cell_widget.lock_unit_checkbox.isChecked())
+        new_unit.clone_label(cell_widget.song_name_label)
+        for card in cloned_card_internals:
+            if card is None:
+                continue
+            card.refresh_values()
 
     def set_unit(self, cards, row=None):
         if row is None:
@@ -480,6 +522,12 @@ class CalculatorView:
             self.widget.cellWidget(r, 0).display_chart_name(diff_name, song_name)
         eventbus.eventbus.post(HookUnitToUnitDetailsEvent())
 
+    def replace_changed_custom_card(self, custom_card_id, new_custom_card = None):
+        for row in range(self.widget.rowCount()-1, -1, -1):
+            for idx, card in enumerate(self.widget.cellWidget(row, 0).cards_internal):
+                if card is not None and card.card_id == custom_card_id:
+                    self.widget.cellWidget(row, 0).set_card(idx, new_custom_card)
+    
     def backup(self):
         logger.info("{} backing up unit for next session...".format(type(self).__name__))
         try:
@@ -634,6 +682,10 @@ class CalculatorModel:
         if results.abuse_data is not None:
             self.view.fill_column(False, 10, row, int(results.abuse_score))
         self.view.fill_column(False, 11, row, float(int(results.full_roll_chance * 10000) / 100))
+        if results.cc_great_num > 0:
+            self.view.fill_column(False, 12, row, results.cc_fr_base)
+            self.view.fill_column(False, 13, row, results.cc_great_num)
+            self.view.fill_column(False, 14, row, results.cc_base)
 
     def _process_auto_results(self, results: AutoSimulationResult, row=None):
         # ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time", "All Skills 100%?"]

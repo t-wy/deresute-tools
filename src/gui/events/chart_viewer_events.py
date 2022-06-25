@@ -4,9 +4,18 @@ class HookUnitToChartViewerEvent:
 
 
 class HookAbuseToChartViewerEvent:
-    def __init__(self, cards, abuse_df):
+    def __init__(self, song_id, difficulty, cards, abuse_df):
+        self.song_id = song_id
+        self.difficulty = difficulty
         self.cards = cards
         self.abuse_df = abuse_df
+
+
+class HookSimResultToChartViewerEvent:
+    def __init__(self, song_id, difficulty, perfect_detail):
+        self.song_id = song_id
+        self.difficulty = difficulty
+        self.perfect_detail = perfect_detail
 
 
 class SendMusicEvent:

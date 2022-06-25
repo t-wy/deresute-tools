@@ -53,7 +53,7 @@ def get_score_color(score_id):
     return Color(color - 1)
 
 
-def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, skip_load_notes=False):
+def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, skip_load_notes=False, skip_damage_notes=True):
     assert base_difficulty in Difficulty
     difficulty = base_difficulty.value
 
@@ -107,7 +107,11 @@ def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, sk
     notes_data = pd.read_csv(io.StringIO(row_data[1].decode()))
     duration = notes_data.iloc[-1]['sec']
     if difficulty == 6:
-        notes_data = notes_data[(notes_data["type"] < 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+        if skip_damage_notes:
+            notes_data = notes_data[(notes_data["type"] < 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+        else:
+            notes_data = notes_data[(notes_data["type"] <= 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+        
     else:
         notes_data = notes_data[notes_data["type"] < 8].reset_index(drop=True)
     notes_data = notes_data.drop(["id"], axis=1)

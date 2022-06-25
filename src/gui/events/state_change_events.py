@@ -32,3 +32,8 @@ class ShutdownTriggeredEvent:
 class BackupFlagsEvent:
     def __init__(self):
         pass
+
+
+class CustomCardUpdatedEvent:
+    def __init__(self):
+        pass

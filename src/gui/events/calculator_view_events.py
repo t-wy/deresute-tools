@@ -14,7 +14,8 @@ class SimulationEvent:
                  force_encore_amr_cache_to_encore_unit=False,
                  force_encore_magic_to_encore_unit=False,
                  allow_encore_magic_to_escape_max_agg=True,
-                 allow_great=False
+                 allow_great=False,
+                 cc_great=0
                  ):
         self.uuid = uuid
         self.short_uuid = short_uuid
@@ -41,6 +42,7 @@ class SimulationEvent:
         self.force_encore_magic_to_encore_unit = force_encore_magic_to_encore_unit
         self.allow_encore_magic_to_escape_max_agg = allow_encore_magic_to_escape_max_agg
         self.allow_great = allow_great
+        self.cc_great = cc_great
 
 
 class DisplaySimulationResultEvent:
@@ -93,6 +95,28 @@ class TurnOffRunningLabelFromUuidEvent:
         self.uuid = uuid
 
 
+class TurnOffRunningLabelFromUuidGrandEvent:
+    def __init__(self, uuid):
+        self.uuid = uuid
+
+
 class ToggleUnitLockingOptionsVisibilityEvent:
     def __init__(self):
         pass
+
+
+class CacheSimulationEvent:
+    def __init__(self, event):
+        self.event = event
+        
+
+class CustomSimulationEvent:
+    def __init__(self, simulation_event, skill_inactive_list):
+        self.simulation_event = simulation_event
+        self.skill_inactive_list = skill_inactive_list
+
+
+class CustomSimulationResultEvent:
+    def __init__(self, result, live = None):
+        self.result = result
+        self.live = live

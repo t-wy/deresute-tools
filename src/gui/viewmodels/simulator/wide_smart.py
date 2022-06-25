@@ -8,22 +8,23 @@ from PyQt5.QtWidgets import QSizePolicy, QTabWidget
 import customlogger as logger
 from exceptions import InvalidUnit
 from gui.events.calculator_view_events import GetAllCardsEvent, SimulationEvent, DisplaySimulationResultEvent, \
-    AddEmptyUnitEvent, YoinkUnitEvent, PushCardEvent, ContextAwarePushCardEvent, TurnOffRunningLabelFromUuidEvent
-from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent
+    AddEmptyUnitEvent, YoinkUnitEvent, PushCardEvent, ContextAwarePushCardEvent, TurnOffRunningLabelFromUuidEvent, \
+    TurnOffRunningLabelFromUuidGrandEvent, CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
+from gui.events.chart_viewer_events import HookAbuseToChartViewerEvent, HookSimResultToChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
-from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent
+from gui.events.state_change_events import PostYoinkEvent, InjectTextEvent, CustomCardUpdatedEvent
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.utils.wrappers import BaseSimulationResultWithUuid, YoinkResults
 from gui.events.value_accessor_events import GetAutoplayOffsetEvent, GetAutoplayFlagEvent, GetDoublelifeFlagEvent, \
     GetSupportEvent, GetAppealsEvent, GetCustomPotsEvent, GetPerfectPlayFlagEvent, GetMirrorFlagEvent, \
     GetCustomBonusEvent, GetGrooveSongColor, GetSkillBoundaryEvent, GetTheoreticalMaxFlagEvent, GetEncoreAMRFlagEvent, \
-    GetEncoreMagicUnitFlagEvent, GetEncoreMagicMaxAggEvent, GetAllowGreatEvent
+    GetEncoreMagicUnitFlagEvent, GetEncoreMagicMaxAggEvent, GetAllowGreatEvent, GetCcGreatEvent
 from gui.viewmodels.simulator.calculator import CalculatorModel, CalculatorView, CardsWithUnitUuidAndExtraData
 from gui.viewmodels.simulator.custom_bonus import CustomBonusView, CustomBonusModel
 from gui.viewmodels.simulator.custom_card import CustomCardView, CustomCardModel
 from gui.viewmodels.simulator.custom_settings import CustomSettingsView, CustomSettingsModel
-from gui.viewmodels.simulator.grandcalculator import GrandCalculatorView
+from gui.viewmodels.simulator.grandcalculator import GrandCalculatorView, GrandCalculatorModel
 from gui.viewmodels.simulator.support import SupportView, SupportModel
 from gui.viewmodels.simulator.unit_details import UnitDetailsView, UnitDetailsModel
 from logic.grandlive import GrandLive
@@ -75,7 +76,7 @@ class MainView:
         self._setup_custom_card()
         self._setup_unit_details()
         self.custom_card_and_support_widget.addTab(self.support_view.widget, "Support Team")
-        self.custom_card_and_support_widget.addTab(self.custom_card_view.widget, "Custom Card")
+        self.custom_card_and_support_widget.addTab(self.custom_card_view.widget, "Edit Card")
         self.custom_card_and_support_widget.addTab(self.unit_details_view.widget, "Unit Details")
         self.custom_appeal_and_support_layout.addWidget(self.custom_card_and_support_widget)
 
@@ -100,7 +101,7 @@ class MainView:
         view_wide = CalculatorView(self.widget, self)
         view_grand = GrandCalculatorView(self.widget, self)
         model_wide = CalculatorModel(view_wide)
-        model_grand = CalculatorModel(view_grand)
+        model_grand = GrandCalculatorModel(view_grand)
         view_wide.set_model(model_wide)
         view_grand.set_model(model_grand)
         self.views = [view_wide, view_grand]
@@ -133,7 +134,7 @@ class MainView:
         self.yoink_button2 = QtWidgets.QPushButton("Yoink ID", self.widget)
         self.permute_button = QtWidgets.QPushButton("Permute Units", self.widget)
         self.times_text = QtWidgets.QLineEdit(self.widget)
-        self.times_text.setValidator(QIntValidator(0, 100, None))  # Only number allowed
+        self.times_text.setValidator(QIntValidator(0, 1000, None))  # Only number allowed
         self.times_text.setText("10")
         self.rank_text = QtWidgets.QLineEdit(self.widget)
         self.rank_text.setValidator(QIntValidator(1, 100, None))  # Only number allowed
@@ -198,6 +199,7 @@ class MainView:
         force_encore_magic_to_encore_unit = eventbus.eventbus.post_and_get_first(GetEncoreMagicUnitFlagEvent())
         allow_encore_magic_to_escape_max_agg = eventbus.eventbus.post_and_get_first(GetEncoreMagicMaxAggEvent())
         allow_great = eventbus.eventbus.post_and_get_first(GetAllowGreatEvent())
+        cc_great = eventbus.eventbus.post_and_get_first(GetCcGreatEvent())
 
         self.model.simulate_internal(
             perfect_play=perfect_play,
@@ -212,6 +214,7 @@ class MainView:
             force_encore_magic_to_encore_unit=force_encore_magic_to_encore_unit,
             allow_encore_magic_to_escape_max_agg=allow_encore_magic_to_escape_max_agg,
             allow_great=allow_great,
+            cc_great=cc_great,
             row=row
         )
 
@@ -238,6 +241,7 @@ class MainModel(QObject):
                           force_encore_magic_to_encore_unit,
                           allow_encore_magic_to_escape_max_agg,
                           allow_great,
+                          cc_great,
                           row=None):
         """
         :type all_cards: List[CardsWithUnitUuidAndExtraData]
@@ -267,14 +271,20 @@ class MainModel(QObject):
                 if extended_cards_data.score_id is None:
                     # Lock chart but no music found
                     results.append(None)
-                    eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
+                    if len(cards) == 15:
+                        eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidGrandEvent(extended_cards_data.uuid))
+                    else:
+                        eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
                     continue
                 live.set_music(score_id=extended_cards_data.score_id, difficulty=extended_cards_data.diff_id)
                 groove_song_color = extended_cards_data.groove_song_color
             elif diff_id is not None:
                 live.set_music(score_id=score_id, difficulty=diff_id)
             else:
-                eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
+                if len(cards) == 15:
+                    eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidGrandEvent(extended_cards_data.uuid))
+                else:
+                    eventbus.eventbus.post_and_get_first(TurnOffRunningLabelFromUuidEvent(extended_cards_data.uuid))
                 continue
 
             # Negate custom_pots + load preset appeal bonus if defined, else ignore
@@ -314,22 +324,26 @@ class MainModel(QObject):
                                 force_encore_amr_cache_to_encore_unit,
                                 force_encore_magic_to_encore_unit,
                                 allow_encore_magic_to_escape_max_agg,
-                                allow_great
+                                allow_great,
+                                cc_great
                                 ),
                 high_priority=True, asynchronous=True)
 
     @pyqtSlot(BaseSimulationResultWithUuid)
     def process_results(self, payload: BaseSimulationResultWithUuid):
         eventbus.eventbus.post(DisplaySimulationResultEvent(payload))
+        eventbus.eventbus.post(HookSimResultToChartViewerEvent(payload.live.score_id, payload.live.difficulty,
+                                                               payload.results.perfect_detail), asynchronous=False)
         if payload.abuse_load:
             if not isinstance(payload.results, SimulationResult):
                 return
-            eventbus.eventbus.post(HookAbuseToChartViewerEvent(payload.cards,
-                                                               payload.results.abuse_data),
+            eventbus.eventbus.post(HookAbuseToChartViewerEvent(payload.live.score_id, payload.live.difficulty,
+                                                               payload.cards, payload.results.abuse_data),
                                    asynchronous=False)
 
     @subscribe(SimulationEvent)
     def handle_simulation_request(self, event: SimulationEvent):
+        eventbus.eventbus.post(CacheSimulationEvent(event))
         event.live.set_unit(event.unit)
         if event.autoplay:
             logger.info("Simulation mode: Autoplay - {} - {}".format(event.short_uuid, event.unit))
@@ -337,6 +351,7 @@ class MainModel(QObject):
                             force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
                             force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
                             allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                            cc_great=event.cc_great
                             )
             result = sim.simulate(appeals=event.appeals, extra_bonus=event.extra_bonus, support=event.support,
                                   special_option=event.special_option, special_value=event.special_value,
@@ -352,6 +367,7 @@ class MainModel(QObject):
                             force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
                             force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
                             allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                            cc_great=event.cc_great
                             )
             result = sim.simulate(perfect_play=event.perfect_play,
                                   times=event.times, appeals=event.appeals, extra_bonus=event.extra_bonus,
@@ -361,7 +377,26 @@ class MainModel(QObject):
                                   perfect_only=not event.allow_great,
                                   output=event.theoretical_simulation)
         self.process_simulation_results_signal.emit(
-            BaseSimulationResultWithUuid(event.uuid, event.unit.all_cards(), result, event.abuse_load))
+            BaseSimulationResultWithUuid(event.uuid, event.unit.all_cards(), result, event.abuse_load, event.live))
+
+    @subscribe(CustomSimulationEvent)
+    def handle_custom_simulation(self, custom_event: CustomSimulationEvent):
+        event = custom_event.simulation_event
+        event.live.set_unit(event.unit)
+        
+        sim = Simulator(event.live, left_inclusive=event.left_inclusive, right_inclusive=event.right_inclusive,
+                        force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
+                        force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
+                        allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                        cc_great=0
+                        )
+        result = sim.simulate(perfect_play=True, times=1, appeals=event.appeals, support=event.support,
+                              extra_bonus=event.extra_bonus, special_option=event.special_option,
+                              special_value=event.special_value, doublelife=event.doublelife,
+                              abuse=True, perfect_only=False, output=False,
+                              inactive_skill=custom_event.skill_inactive_list
+                              )
+        eventbus.eventbus.post(CustomSimulationResultEvent(result, event.live))
 
     def handle_yoink_button(self, rank=1, player_id=None):
         _, _, live_detail_id, song_name, diff_name = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())
@@ -372,10 +407,10 @@ class MainModel(QObject):
         self.view.yoink_button2.setEnabled(False)
         self.view.yoink_button.setText("Yoinking...")
         self.view.yoink_button2.setText("Yoinking...")
-        if id is None:
-            eventbus.eventbus.post(InjectTextEvent("Yoinking the team of {} for {} - {}".format(id, song_name, diff_name)))
-        else:
+        if player_id is None:
             eventbus.eventbus.post(InjectTextEvent("Yoinking team #{} for {} - {}".format(rank, song_name, diff_name)))
+        else:
+            eventbus.eventbus.post(InjectTextEvent("Yoinking the team of {} for {} - {}".format(player_id, song_name, diff_name)))
         eventbus.eventbus.post(YoinkUnitEvent(live_detail_id, rank, player_id), asynchronous=True)
 
     @pyqtSlot(YoinkResults)
@@ -386,6 +421,7 @@ class MainModel(QObject):
             else:
                 self.view.views[0].add_unit(payload.cards)
             eventbus.eventbus.post(PostYoinkEvent(payload.support))
+            eventbus.eventbus.post(CustomCardUpdatedEvent())
         self.view.yoink_button.setText("Yoink #")
         self.view.yoink_button2.setText("Yoink ID")
         self.view.yoink_button.setEnabled(True)

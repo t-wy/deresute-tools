@@ -7,6 +7,7 @@ from collections import defaultdict
 
 import customlogger as logger
 from db import db
+from gui.viewmodels import custom_card
 from logic.profile import card_storage, potential
 from logic.profile import unit_storage
 from logic.search import card_query
@@ -15,7 +16,9 @@ from settings import PROFILE_PATH
 from utils import storage
 
 keys = ["chara_id", "vo", "vi", "da", "li", "sk"]
-
+custom_keys = ["id", "rarity", "image_id", "vocal", "dance", "visual", "life",
+               "leader_skill_id", "skill_type", "condition", "available_time_type", "probability_type",
+               "value", "value_2", "value_3"]
 
 def import_from_gameid(game_id):
     try:
@@ -69,6 +72,7 @@ class ProfileManager:
         self._load_cards()
         self._load_potentials()
         self._load_units()
+        self._load_custom()
         return True
 
     def add_profile(self, profile_name):
@@ -87,6 +91,8 @@ class ProfileManager:
             (PROFILE_PATH / "{}.ptl".format(profile_name)).unlink()
         if (PROFILE_PATH / "{}.unt".format(profile_name)).exists():
             (PROFILE_PATH / "{}.unt".format(profile_name)).unlink()
+        if (PROFILE_PATH / "{}.cst".format(profile_name)).exists():
+            (PROFILE_PATH / "{}.cst".format(profile_name)).unlink()
         self.switch_profile('main')
 
     def _initialize_owned_cards_csv(self):
@@ -188,7 +194,35 @@ class ProfileManager:
             for data in potentials:
                 fw.write(",".join(map(str, data.values())) + "\n")
 
+    def _initialize_custom_csv(self):
+        if not (PROFILE_PATH / "{}.cst".format(self.profile)).exists():
+            with storage.get_writer(PROFILE_PATH / "{}.cst".format(self.profile), 'w') as fw:
+                fw.write("id,rarity,image_id,vocal,dance,visual,life,leader_skill_id,skill_type,condition,available_time_type,probability_type,value,value_2,value_3\n")
+
+    def _load_custom(self):
+        custom_card.initialize_custom_card_list()
+        self._initialize_custom_csv()
+        with storage.get_reader(PROFILE_PATH / "{}.cst".format(self.profile), 'r') as fr:
+            csv_reader = csv.reader(fr)
+            next(csv_reader)  # Skip headers
+            for row in csv_reader:
+                db.cachedb.execute("""
+                    INSERT OR REPLACE INTO custom_card (id, rarity, image_id, vocal, dance, visual, life,
+                                                         leader_skill_id, skill_type, condition, available_time_type,
+                                                         probability_type, value, value_2, value_3)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, list(map(int, row)))
+        custom_card.refresh_custom_card_images()
+
+    def _write_custom_csv(self):
+        custom_cards = db.cachedb.execute_and_fetchall("SELECT * FROM custom_card", out_dict=True)
+        with storage.get_writer(PROFILE_PATH / "{}.cst".format(self.profile), 'w') as fw:
+            fw.write(",".join(custom_keys) + "\n")
+            for data in custom_cards:
+                fw.write(",".join(map(str, data.values())) + "\n")
+
     def cleanup(self):
+        self._write_custom_csv()
         self._write_potentials_csv()
         self._write_owned_cards()
         self._write_units()

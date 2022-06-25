@@ -25,10 +25,11 @@ if platform.system() == "Darwin": # Mac
     TOOL_EXE = STATIC_PATH / "tool_mac"
 elif platform.system() == "Linux": # Mac
     TOOL_EXE = STATIC_PATH / "tool_linux"
-    
+
 TEMP_PATH = STATIC_PATH / "temppp"
 
 RHYTHM_ICONS_PATH = ROOT_DIR / "img"
+MY_IMAGE_PATH = RHYTHM_ICONS_PATH / "my"
 
 INDEX_PATH = DATA_PATH / "index"
 

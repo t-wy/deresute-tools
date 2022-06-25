@@ -1,7 +1,8 @@
 import customlogger as logger
 from db import db
 
-SKILL_BASE = {1: "Cute Voice",
+SKILL_BASE = {0: "",
+              1: "Cute Voice",
               2: "Cute Step",
               3: "Cute Makeup",
               4: "Cute Brilliance",
@@ -123,6 +124,9 @@ SKILL_BASE = {1: "Cute Voice",
               126: "Passion Duet Step&Make",
               127: "Passion Duet Make&Voice",
               }
+_ = list(SKILL_BASE.keys())
+for l in _:
+    SKILL_BASE[5000 + l] = SKILL_BASE[l]
 
 logger.debug("Creating chihiro.leader_keywords...")
 

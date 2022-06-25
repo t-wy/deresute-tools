@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QMetaObject, QCoreApplication, Qt
-from PyQt5.QtGui import QIntValidator, QIcon
+from PyQt5.QtGui import QIcon, QIntValidator, QFontMetrics
 from PyQt5.QtWidgets import QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QTabWidget, QPushButton, QApplication, \
-    QMainWindow, QLineEdit, QCheckBox
+    QMainWindow, QCheckBox, QScrollArea, QLineEdit, QSizePolicy
 
 import customlogger as logger
 from chihiro import ROOT_DIR
@@ -11,6 +11,8 @@ from gui.events.service.tips_refresher_service import kill_tip_refresher_service
 from gui.events.state_change_events import ShutdownTriggeredEvent, BackupFlagsEvent
 from gui.events.utils import eventbus
 from gui.viewmodels.card import CardView, CardModel, IconLoaderView, IconLoaderModel
+from gui.viewmodels.custom_card import CustomView
+from gui.viewmodels.chart_viewer import ChartViewer
 from gui.viewmodels.potential import PotentialView, PotentialModel
 from gui.viewmodels.quicksearch import QuickSearchView, QuickSearchModel, SongQuickSearchView, SongQuickSearchModel
 from gui.viewmodels.simulator.wide_smart import MainView, MainModel
@@ -22,8 +24,9 @@ from logic.search import indexer, search_engine
 
 
 class CustomMainWindow(QMainWindow):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, app: QApplication, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.app = app
 
     def setui(self, ui):
         self.ui = ui
@@ -41,8 +44,8 @@ class CustomMainWindow(QMainWindow):
             eventbus.eventbus.post(ShutdownTriggeredEvent())
             eventbus.eventbus.post(BackupFlagsEvent())
             unit_storage.clean_all_units(grand=False)
-            for r_idx in range(self.ui.unit_view.widget.count()):
-                widget = self.ui.unit_view.widget.itemWidget(self.ui.unit_view.widget.item(r_idx))
+            for r_idx in range(self.ui.user_unit_view1.widget.count()):
+                widget = self.ui.user_unit_view1.widget.itemWidget(self.ui.user_unit_view1.widget.item(r_idx))
                 widget.update_unit()
             profile_manager.cleanup()
 
@@ -58,11 +61,16 @@ class UiMainWindow:
 
     def setup_ui(self):
         logger.info("Initializing UI")
-        self.main.resize(1850, 1000)
+        self.main.resize(1920, 1010)
+        qr = self.main.frameGeometry()
+        cp = self.main.app.primaryScreen().availableGeometry().topLeft()
+        qr.moveTopLeft(cp)
+        self.main.move(qr.topLeft())
         self.setup_base()
-        self.setup_calculator_song_layout()
-        self.setup_card_unit_layout()
-        self.setup_tip_view()
+        self.setup_unit_layout()
+        self.setup_simulator_layout()
+        self.simulation_calculator_view.setUserID(self.import_text)
+        #self.setup_tip_view()
         self.main.setCentralWidget(self.central_widget)
         self.retranslate_ui(self.main)
         QMetaObject.connectSlotsByName(self.main)
@@ -72,76 +80,65 @@ class UiMainWindow:
 
         self.central_widget = QWidget(self.main)
         self.grid_layout = QGridLayout(self.central_widget)
-        self.main_layout = QVBoxLayout()
-
+        self.main_layout = QHBoxLayout()
+    
+    '''
     def setup_tip_view(self):
         self.tip_view = TipView()
         self.grid_layout.addWidget(self.tip_view, 1, 0, 1, 1)
+    '''
+    
+    def setup_unit_layout(self):
+        logger.info("Setting up unit layouts")
+        
+        self.simulator_layout = QVBoxLayout()
+        self.simulator = QTabWidget(self.central_widget)
+        
+        self.unit_widget = QWidget()
+        self.unit_layout = QHBoxLayout(self.unit_widget)
+        
+        self.unit_left_layout = QVBoxLayout()
+        
+        self.unit_user_unit_custom_layout = QHBoxLayout()
+        
+        self.user_unit_layout = QVBoxLayout()
+        self.user_unit_view1 = UnitView(self.central_widget)
+        self.user_unit_view2 = UnitView(self.central_widget)
+        self.user_unit_view1.set_copy(self.user_unit_view2)
+        self.user_unit_view2.set_copy(self.user_unit_view1)
+        self.user_unit_model = UnitModel(self.user_unit_view1, self.user_unit_view2)
+        self.user_unit_view1.set_model(self.user_unit_model)
+        self.user_unit_view2.set_model(self.user_unit_model)
+        self.user_unit_model.initialize_units()
+        self.user_unit_layout.addWidget(self.user_unit_view1.widget)
+        
+        self.add_unit_button = QPushButton()
+        self.add_unit_button.setText("Add unit")
+        self.add_unit_button.setToolTip(
+            "Add an untitled unit. Untitled units are not saved upon exit!\n"
+            "Make sure to give your units a name. Unit names must be different.\n"
+            "First/Red card is the leader, last/blue card is the guest.")
+        self.add_unit_button.clicked.connect(lambda: self.user_unit_view1.add_empty_widget())
+        self.add_unit_button.clicked.connect(lambda: self.user_unit_view2.add_empty_widget())
+        self.user_unit_layout.addWidget(self.add_unit_button)
+        
+        self.unit_user_unit_custom_layout.addLayout(self.user_unit_layout, 2)
+        
+        self.custom_view = CustomView()
+        self.custom_view.setup()
+        self.custom_view.set_unit_view(self.user_unit_view1)
+        self.unit_user_unit_custom_layout.addWidget(self.custom_view.widget, 3)
+        self.unit_left_layout.addLayout(self.unit_user_unit_custom_layout)
 
-    def setup_calculator_song_layout(self):
-        logger.info("Setting up calculator and song layouts")
-
-        self.calculator_song_layout = QHBoxLayout()
-        self.calculator = QTabWidget(self.central_widget)
-        self.calculator_view = MainView()
-        self.calculator_model = MainModel(self.calculator_view)
-        self.calculator_view.set_model(self.calculator_model)
-        self.calculator_view.setup()
-        self.potential_view = PotentialView()
-        self.potential_model = PotentialModel(self.potential_view)
-        self.potential_view.set_model(self.potential_model)
-        self.potential_model.initialize_data()
-        self.calculator.addTab(self.calculator_view.widget, "Simulator")
-        self.calculator.addTab(self.potential_view.widget, "Potentials")
-        self.calculator_song_layout.addWidget(self.calculator)
-        self.song_layout = QVBoxLayout()
-
-        self.import_layout = QHBoxLayout()
-        self.import_text = QLineEdit(self.main)
-        self.import_text.setPlaceholderText("Input user ID (9 digits, e.g. 123456789)")
-        self.import_text.setValidator(QIntValidator(0, 999999999, None))  # Only number allowed
-        self.calculator_view.setUserID(self.import_text)
-        self.import_button = QPushButton("Import from ID", self.main)
-        self.import_button.pressed.connect(lambda: self.import_from_id(self.import_text.text()))
-        self.import_layout.addWidget(self.import_text)
-        self.import_layout.addWidget(self.import_button)
-        self.song_layout.addLayout(self.import_layout)
-
-        self.song_view = SongView(self.central_widget)
-        self.song_model = SongModel(self.song_view)
-        self.song_model.initialize_data()
-        self.song_view.set_model(self.song_model)
-        self.song_layout.addWidget(self.song_view.widget)
-        self.songsearch_view = SongQuickSearchView(self.central_widget)
-        self.songsearch_model = SongQuickSearchModel(self.songsearch_view, self.song_view)
-        self.songsearch_view.set_model(self.songsearch_model)
-        hl = QHBoxLayout()
-        hl.addWidget(self.songsearch_view.widget)
-        chart_viewer_button = QPushButton("Popup Chart Viewer")
-        hl.addWidget(chart_viewer_button)
-        chart_viewer_button.pressed.connect(lambda: eventbus.eventbus.post(PopupChartViewerEvent(look_for_chart=True)))
-        self.song_layout.addLayout(hl)
-
-        self.calculator_song_layout.addLayout(self.song_layout)
-        self.calculator_song_layout.setStretch(0, 3)
-        self.calculator_song_layout.setStretch(1, 2)
-        self.main_layout.addLayout(self.calculator_song_layout)
-        self.calculator.setCurrentIndex(0)
-
-    def setup_card_unit_layout(self):
-        logger.info("Setting up card and unit layouts")
-
-        self.card_unit_layout = QHBoxLayout()
         self.card_layout = QVBoxLayout()
         self.card_quicksearch_layout = QHBoxLayout()
-
         self.quicksearch_layout = QHBoxLayout()
 
         # Set up card MV first
         self.card_view = CardView(self.central_widget)
         self.card_model = CardModel(self.card_view)
         self.card_view.set_model(self.card_model)
-        self.card_model.initialize_cards()
+        self.card_model.initialize_cards(potential=False)
         self.card_view.initialize_pics()
         self.card_view.connect_cell_change()
         self.card_layout.addWidget(self.card_view.widget)
@@ -165,32 +162,70 @@ class UiMainWindow:
         self.icon_loader_view.widget.setToolTip("Larger icons require more RAM to run.")
         self.icon_loader_model.load_image(0)
         self.card_quicksearch_layout.addWidget(self.icon_loader_view.widget)
+        
+        self.import_layout = QHBoxLayout()
+        self.import_text = QLineEdit(self.main)
+        txt = "999999999"
+        self.import_text.setPlaceholderText("User ID")
+        self.import_text.setValidator(QIntValidator(0, 999999999, None))  # Only number allowed
+        fm = QFontMetrics(self.import_text.font())
+        self.import_text.setFixedWidth(fm.width(txt) + 10)
+        self.import_button = QPushButton("Import from ID", self.main)
+        self.import_button.pressed.connect(lambda: self.import_from_id(self.import_text.text()))
+        self.import_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.import_layout.addWidget(self.import_text)
+        self.import_layout.addWidget(self.import_button)
+        self.card_quicksearch_layout.addLayout(self.import_layout)
+        
         self.card_layout.addLayout(self.card_quicksearch_layout)
-
         self.card_layout.setStretch(1, 1)
-
-        self.unit_layout = QVBoxLayout()
-        self.unit_view = UnitView(self.central_widget)
-        self.unit_model = UnitModel(self.unit_view)
-        self.unit_view.set_model(self.unit_model)
-        self.unit_model.initialize_units()
-        self.unit_layout.addWidget(self.unit_view.widget)
-
-        self.card_unit_layout.addLayout(self.unit_layout)
-        self.card_unit_layout.addLayout(self.card_layout)
-
-        self.add_unit_button = QPushButton()
-        self.add_unit_button.setText("Add unit")
-        self.add_unit_button.setToolTip(
-            "Add an untitled unit. Untitled units are not saved upon exit!\n"
-            "Make sure to give your units a name. Unit names must be different.\n"
-            "First/Red card is the leader, last/blue card is the guest.")
-        self.add_unit_button.clicked.connect(lambda: self.unit_view.add_empty_widget())
-        self.unit_layout.addWidget(self.add_unit_button)
-
-        self.card_unit_layout.setStretch(0, 1)
-        self.card_unit_layout.setStretch(1, 2)
-        self.main_layout.addLayout(self.card_unit_layout)
+        
+        self.unit_left_layout.addLayout(self.card_layout)
+        self.unit_layout.addLayout(self.unit_left_layout, 3)
+        
+        self.unit_potential_view = PotentialView()
+        self.unit_potential_model = PotentialModel(self.unit_potential_view)
+        self.unit_potential_view.set_model(self.unit_potential_model)
+        self.unit_potential_model.initialize_data()
+        self.unit_layout.addWidget(self.unit_potential_view.widget, 1)
+        
+        self.simulator.addTab(self.unit_widget, "Unit")
+    
+    def setup_simulator_layout(self):
+        logger.info("Setting up simulator layouts")
+        
+        self.simulation_widget = QWidget()
+        self.simulation_layout = QGridLayout(self.simulation_widget)
+        
+        self.simulation_calculator_view = MainView()
+        self.simulation_calculator_model = MainModel(self.simulation_calculator_view)
+        self.simulation_calculator_view.set_model(self.simulation_calculator_model)
+        self.simulation_calculator_view.setup()
+        self.simulation_layout.addWidget(self.simulation_calculator_view.widget, 0, 0, 1, 1)
+        self.custom_view.set_calculator_view(self.simulation_calculator_view)
+        
+        self.simulation_bottom_layout = QHBoxLayout()
+        self.simulation_bottom_layout.addWidget(self.user_unit_view2.widget, 4)
+        
+        self.simulation_song_layout = QVBoxLayout()
+        self.simulation_song_view = SongView(self.central_widget)
+        self.simulation_song_model = SongModel(self.simulation_song_view)
+        self.simulation_song_model.initialize_data()
+        self.simulation_song_view.set_model(self.simulation_song_model)
+        self.simulation_song_layout.addWidget(self.simulation_song_view.widget)
+        self.simulation_songsearch_view = SongQuickSearchView(self.central_widget)
+        self.simulation_songsearch_model = SongQuickSearchModel(self.simulation_songsearch_view, self.simulation_song_view)
+        self.simulation_songsearch_view.set_model(self.simulation_songsearch_model)
+        self.simulation_song_layout.addWidget(self.simulation_songsearch_view.widget)
+        self.simulation_bottom_layout.addLayout(self.simulation_song_layout, 7)
+        self.simulation_layout.addLayout(self.simulation_bottom_layout, 1, 0, 1, 1)
+        
+        self.simulation_chart_viewer = ChartViewer(self.main)
+        self.simulation_layout.addWidget(self.simulation_chart_viewer.widget, 0, 1, 2, 1)
+        
+        self.simulator.addTab(self.simulation_widget, "Simulation")
+        self.simulator_layout.addWidget(self.simulator)
+        self.main_layout.addLayout(self.simulator_layout)
         self.grid_layout.addLayout(self.main_layout, 0, 0, 1, 1)
 
     def import_from_id(self, game_id):
@@ -224,10 +259,9 @@ def setup_gui(*args):
     icon = QIcon(str(ROOT_DIR / 'icon.png'))
     app.setWindowIcon(icon)
     app.lastWindowClosed.connect(lambda: cleanup())
-    MainWindow = CustomMainWindow()
+    MainWindow = CustomMainWindow(app)
     ui = UiMainWindow(MainWindow)
     MainWindow.setui(ui)
     ui.setup_ui()
-    ui.disable_auto_resize()
     logger.info("GUI setup successfully")
     return app, MainWindow

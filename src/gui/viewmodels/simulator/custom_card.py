@@ -1,4 +1,5 @@
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QAbstractItemView
 
 from gui.viewmodels.utils import ValidatableNumericalTableWidgetItem
@@ -101,6 +102,9 @@ class CustomCardModel:
                 self.card.sk_pots,
                 self.card.star
             ])
+            for _ in range(7):
+                item = self.view.widget.item(_, 0)
+                item.setFlags(item.flags() ^ Qt.ItemIsEditable)
 
     def handle_cell_change(self, r_idx):
         v = self.view.widget.item(r_idx, 0).text()
@@ -108,13 +112,13 @@ class CustomCardModel:
             self.card.color = Color(int(v))
             self.card.skill.color = Color(int(v))
         elif r_idx == 1:
-            self.card.base_vo = float(v)
+            self.card.base_vo = int(float(v))
         elif r_idx == 2:
-            self.card.base_da = float(v)
+            self.card.base_da = int(float(v))
         elif r_idx == 3:
-            self.card.base_vi = float(v)
+            self.card.base_vi = int(float(v))
         elif r_idx == 4:
-            self.card.base_li = float(v)
+            self.card.base_li = int(float(v))
         elif r_idx == 5:
             self.card.skill.duration = float(v)
         elif r_idx == 6:

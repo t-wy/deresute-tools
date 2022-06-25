@@ -1,12 +1,12 @@
+import math
 import os
 import sys
 from abc import abstractmethod, ABC
 from collections import defaultdict
-from math import ceil
 
 from PyQt5.QtCore import Qt, QPoint, QRectF, QRect
-from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont, QBrush, QPainterPath, qRgba, QPolygonF
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QScrollArea
+from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont, QBrush, QPainterPath, qRgba, QPolygon, QPolygonF
+from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QScrollArea, QVBoxLayout, QWidget
 
 from exceptions import InvalidUnit
 from logic.grandunit import GrandUnit
@@ -27,22 +27,33 @@ def QFont():
     qf.setStyleHint(_QFont.SansSerif)
     return qf
 
-SEC_HEIGHT = 500
-X_MARGIN = 100
-Y_MARGIN = 70
-RIGHT_MARGIN = 0
+X_MARGIN = 110
 LEFT_MARGIN = 50
-MAX_Y = 5000
-MAX_SECS_PER_GROUP = (MAX_Y - Y_MARGIN * 2) // SEC_HEIGHT
-
 LANE_DISTANCE = 70
 SKILL_PAINT_WIDTH = 60
+SEC_OFFSET_X = 105
+SEC_OFFSET_Y = 17
+SEC_FONT = 36
 
+X_MARGIN_GRAND = 75
 LANE_DISTANCE_GRAND = 25
 SKILL_PAINT_WIDTH_GRAND = 22
+SEC_OFFSET_X_GRAND = 86
+SEC_OFFSET_Y_GRAND = 15
+SEC_FONT_GRAND = 32
 
-WINDOW_HEIGHT = 800
-MAX_WINDOW_WIDTH = 1700
+SEC_HEIGHT = 500
+Y_MARGIN = 70
+MAX_LABEL_Y = 5000
+MAX_SECS_PER_LABEL = MAX_LABEL_Y // SEC_HEIGHT
+
+WINDOW_WIDTH = 500
+SCROLL_WIDTH = 19
+
+ICON_HEIGHT = 45
+
+IMAGE_HEIGHT = 5000
+IMAGE_Y_MARGIN = 70
 
 NOTE_PICS = {
     filename: QImage(str(RHYTHM_ICONS_PATH / filename))
@@ -53,8 +64,9 @@ CACHED_GRAND_NOTE_PICS = dict()
 
 
 class ChartPicNote:
-    def __init__(self, sec, note_type, lane, sync, qgroup, group_id, delta, early, late, right_flick=False,
+    def __init__(self, num, sec, note_type, lane, sync, qgroup, group_id, delta, early, late, right_flick=False,
                  grand=False, span=0, great=False):
+        self.num = num
         self.sec = sec
         self.lane = int(lane)
         self.sync = sync
@@ -143,30 +155,39 @@ class DraggableQScrollArea(QScrollArea):
         delta = event.pos() - self.drag_start_position
         if delta.manhattanLength() < QApplication.startDragDistance():
             return
-        self.verticalScrollBar().setValue(self.original_y - delta.y() * 1.5)
-        self.horizontalScrollBar().setValue(self.original_x - delta.x() * 1.5)
+        self.verticalScrollBar().setValue(self.original_y - delta.y())
+        self.horizontalScrollBar().setValue(self.original_x - delta.x())
 
 
 class BaseChartPicGenerator(ABC):
+    X_MARGIN = X_MARGIN
+    LEFT_MARGIN = LEFT_MARGIN
     LANE_DISTANCE = LANE_DISTANCE
     SKILL_PAINT_WIDTH = SKILL_PAINT_WIDTH
+    SEC_OFFSET_X = SEC_OFFSET_X
+    SEC_OFFSET_Y = SEC_OFFSET_Y
+    SEC_FONT = SEC_FONT
 
     unit = None
 
-    def __init__(self, song_id, difficulty, main_window, grand, reset_main=True, mirrored=False):
+    def __init__(self, song_id, difficulty, parent, grand, reset_main=True, mirrored=False):
         self.song_id = song_id
         self.difficulty = difficulty
-        self.main = main_window
+        self.viewer = parent
         self.grand = grand
         if grand:
             self.lane_count = 15
         else:
             self.lane_count = 5
 
-        self.notes = fetch_chart(None, song_id, difficulty, event=False, skip_load_notes=False)[0]
+        self.notes = fetch_chart(None, song_id, difficulty, event=False, skip_load_notes=False, skip_damage_notes=False)[0]
         if self.notes is None:
             self.notes = fetch_chart(None, song_id, difficulty, event=True, skip_load_notes=False)[0]
+        self.damage_notes = self.notes[self.notes['note_type'] == NoteType.DAMAGE].reset_index()
+        self.notes = self.notes[self.notes['note_type'] != NoteType.DAMAGE].reset_index()
         self.notes['finishPos'] -= 1
+        self.damage_notes['finishPos'] -= 1
+        self.notes_offset = [0] * len(self.notes)
         self.mirrored = mirrored
         if mirrored:
             if not grand:
@@ -175,20 +196,29 @@ class BaseChartPicGenerator(ABC):
                 self.notes['finishPos'] = 15 - (self.notes['finishPos'] + self.notes['status'])
         self.notes_into_group()
         self.generate_note_objects()
+        
+        self.selected_note = -1
+        self.selected_damage_note = -1
+        
+        self.skill_inactive_list = [[] for _ in range(15)]
+        self.selected_skill = (-1, -1)
+        self.skills = []
 
         self.initialize_ui()
-        if reset_main:
-            self.main.setGeometry(200, 200, self.x_max, self.y_max)
 
-        self.p = QPainter(self.label.pixmap())
-        self.p.setRenderHint(QPainter.Antialiasing)
+        self.p = list()        
+        for _ in range(self.n_label):        
+            self.p.append(QPainter(self.label[_].pixmap()))
+            self.p[_].setRenderHint(QPainter.Antialiasing)
+        
+        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
         self.draw()
-        self.label.repaint()
+        for l in self.label: l.repaint()
 
     def mirror_generator(self, mirrored):
         if self.mirrored == mirrored:
             return self
-        return BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self.main, reset_main=False,
+        return BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self.viewer, reset_main=False,
                                                    mirrored=mirrored)
 
     @classmethod
@@ -221,47 +251,80 @@ class BaseChartPicGenerator(ABC):
             self.notes.loc[pair[1][0], 'groupId'] = group_id
 
     def initialize_ui(self):
-        self.y_total = MAX_SECS_PER_GROUP * SEC_HEIGHT + 2 * Y_MARGIN
-        self.x_total = LEFT_MARGIN + (2 * X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE) * self.n_groups + RIGHT_MARGIN
+        self.y_total = self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN
+        self.x_total = self.LEFT_MARGIN + (2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE)
+        self.chart_label = QWidget()
+        self.chart_label_layout = QVBoxLayout(self.chart_label)
+        self.chart_label_layout.setSpacing(0)
+        self.chart_label_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.label = list()
+        for _ in range(self.n_label):
+            self.label.append(QLabel())
+            self.label[_].setAlignment(Qt.AlignBottom)
+            label_y = MAX_LABEL_Y
+            if _ == self.n_label - 1:
+                label_y = self.y_total - MAX_LABEL_Y * _
+            self.label[_].setFixedSize(self.x_total, label_y)
+            
+            canvas = QPixmap(self.x_total, label_y)
+            self.label[_].setPixmap(canvas)
+            
+        for _ in range(self.n_label): self.chart_label_layout.addWidget(self.label[self.n_label - 1 - _])
 
-        self.label = QLabel()
-        self.label.setAlignment(Qt.AlignBottom)
-        self.label.setFixedSize(self.x_total, self.y_total)
-
-        canvas = QPixmap(self.x_total, self.y_total)
-        self.label.setPixmap(canvas)
-
+        self.pixmap_cache = [None] * self.n_label
         scroll = DraggableQScrollArea()
-        scroll.setWidget(self.label)
+        scroll.setWidget(self.chart_label)
+        scroll.note_clickable_areas = []
+        scroll.damage_note_clickable_areas = []
+        scroll.skill_clickable_areas = []
+        scroll.mousePressEvent = self.mouse_pressed
         # Scroll to bottom
         vbar = scroll.verticalScrollBar()
         vbar.setValue(vbar.maximum())
-        self.main.setCentralWidget(scroll)
-        self.y_max = WINDOW_HEIGHT
-        self.x_max = min(MAX_WINDOW_WIDTH, self.x_total + 20)
+        self.viewer.widget.layout.replaceWidget(self.viewer.chart_widget, scroll)
+        self.viewer.chart_widget.deleteLater()
+        self.viewer.chart_widget = scroll
+        self.viewer.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
+        self.viewer.chart_widget.skill_clickable_areas = []
 
-    def get_x(self, lane, group):
-        return LEFT_MARGIN + X_MARGIN + lane * self.LANE_DISTANCE + (
-                2 * X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE) * group
+    def get_x(self, lane):
+        return self.X_MARGIN + lane * self.LANE_DISTANCE
 
-    def get_y(self, sec, group=None, offset_group=0):
-        if group is not None:
-            return self.y_total - Y_MARGIN - (sec - group * MAX_SECS_PER_GROUP) * SEC_HEIGHT
-        else:
-            return self.y_total - Y_MARGIN - (
-                    sec - (sec // MAX_SECS_PER_GROUP + offset_group) * MAX_SECS_PER_GROUP) * SEC_HEIGHT
-
+    def get_y(self, sec, label):
+        y = (label + 1) * (MAX_LABEL_Y + 1) - Y_MARGIN - sec * SEC_HEIGHT
+        if label == self.y_total // MAX_LABEL_Y:
+            y -= MAX_LABEL_Y - self.y_total % MAX_LABEL_Y
+        return y
+    
+    def get_note_from_index(self, idx):
+        notes = sum(self.note_labels , [])
+        double_drawn_num = 0
+        for i in range(idx):
+            if self._is_double_drawn_note(notes[i], 1):
+                double_drawn_num += 1
+        return notes[idx + double_drawn_num]
+    
+    def get_damage_note_from_index(self, idx):
+        notes = sum(self.damage_note_labels , [])
+        double_drawn_num = 0
+        for i in range(idx):
+            if self._is_double_drawn_note(notes[i], 1):
+                double_drawn_num += 1
+        return notes[idx + double_drawn_num]
+    
     # Lanes start from 0
     def generate_note_objects(self, abuse_data: AbuseData = None):
-        # Number of groups = ceil(last sec // MAX_SECS_PER_GROUP)
         self.last_sec_float = self.notes.sec.iloc[-1]
         self.last_sec = int(self.last_sec_float) + 1
-        self.n_groups = ceil(self.last_sec / MAX_SECS_PER_GROUP)
-        self.note_groups = list()
-        for n in range(self.n_groups):
+        
+        self.n_label = (self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN) // MAX_LABEL_Y + 1
+        self.note_labels = list()
+        self.damage_note_labels = list()
+        for n in range(self.n_label):
             group = list()
-            df_slice = self.notes[(n * MAX_SECS_PER_GROUP - Y_MARGIN / SEC_HEIGHT <= self.notes['sec']) &
-                                  (self.notes['sec'] <= (n + 1) * MAX_SECS_PER_GROUP + Y_MARGIN / SEC_HEIGHT)]
+            df_slice = self.notes[(n * MAX_SECS_PER_LABEL - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= self.notes['sec']) &
+                                  (self.notes['sec'] <= (n + 1) * MAX_SECS_PER_LABEL + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT)]
             for _, row in df_slice.iterrows():
                 right_flick = row['note_type'] == NoteType.FLICK and (row['status'] == 2 and not self.grand) or (
                         row['type'] == 7 and self.grand)
@@ -277,54 +340,73 @@ class BaseChartPicGenerator(ABC):
                     early = 0
                     late = 0
                     great = False
-                note_object = ChartPicNote(sec=row['sec'], note_type=row['note_type'], lane=row['finishPos'],
+                note_object = ChartPicNote(num=_+1, sec=row['sec'], note_type=row['note_type'], lane=row['finishPos'],
                                            sync=row['sync'], qgroup=n, group_id=row['groupId'],
                                            delta=delta, early=early, late=late, right_flick=right_flick,
                                            grand=self.grand, span=row['status'] - 1 if self.grand else 0,
                                            great=great)
                 group.append(note_object)
-            self.note_groups.append(group)
+            self.note_labels.append(group)
+            group = list()
+            df_slice = self.damage_notes[(n * MAX_SECS_PER_LABEL - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= self.damage_notes['sec']) &
+                                         (self.damage_notes['sec'] <= (n + 1) * MAX_SECS_PER_LABEL + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT)]
+            for _, row in df_slice.iterrows():
+                note_object = ChartPicNote(num=_+1, sec=row['sec'], note_type=row['note_type'], lane=row['finishPos'],
+                                           sync=0, qgroup=n, group_id=0, delta=0, early=0, late=0, right_flick=False,
+                                           grand=False, span=0, great=False)
+                group.append(note_object)
+            self.damage_note_labels.append(group)
+            
 
-    def draw(self):
-        self.draw_grid_and_secs()
-        self.draw_sync_lines()
-        self.draw_group_lines()
-        self.draw_notes()
+    def draw(self, *draw_label):
+        if len(draw_label) > 0:
+            self.draw_grid_and_secs(draw_label[0])
+            self.draw_sync_lines(draw_label[0])
+            self.draw_group_lines(draw_label[0])
+            self.draw_notes(draw_label[0])
+        else:
+            self.draw_grid_and_secs()
+            self.draw_sync_lines()
+            self.draw_group_lines()
+            self.draw_notes()
 
-    def hook_cards(self, all_cards, redraw=True):
+    def hook_cards(self, all_cards):
         try:
             if len(all_cards) == 15:
                 unit = GrandUnit.from_list(all_cards)
             else:
                 unit = Unit.from_list(cards=all_cards[:5])
         except InvalidUnit:
-            return
+            return False
         # Skip drawing if same unit else reset drawing
         if not self.grand and isinstance(unit, GrandUnit):
             unit = unit.ua
         if unit == self.unit:
-            return
-        self.p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+            return False
         self.unit = unit
-        self.paint_skill()
-        self.draw()
-        if redraw:
-            self.label.repaint()
+        return True
 
-    def paint_skill(self):
+    def paint_skill(self, *draw_label):
+        if len(draw_label) == 0:
+            self.skills = []
+            self.viewer.chart_widget.skill_clickable_areas.clear()
         for card_idx, card in enumerate(self.unit.all_cards()):
             skill = card.sk
             interval = skill.interval
             duration = skill.duration
             skill_times = int((self.last_sec_float - 3) // interval)
             skill_time = 1
-            group = 0
-            while group < self.n_groups:
+            label = 0
+            self.skills.append({'type' : skill.skill_type, 'time' : []})
+            if len(self.viewer.chart_widget.skill_clickable_areas) - 1 < card_idx:
+                self.viewer.chart_widget.skill_clickable_areas.append([])
+            while label < self.n_label:
                 left = skill_time * interval
                 right = skill_time * interval + duration
-                #  Do not paint if skill entirely outside group
-                if left > (group + 1) * MAX_SECS_PER_GROUP + Y_MARGIN / SEC_HEIGHT:
-                    group += 1
+                
+                #  Do not paint if skill entirely outside label
+                if left > ((label + 1) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT:
+                    label += 1
                     skill_time -= 1
                     continue
                 if self.grand and (skill_time - 1) % 3 != skill.offset:
@@ -335,70 +417,119 @@ class BaseChartPicGenerator(ABC):
                 if skill.skill_type is None:
                     skill_time += 1
                     continue
-                skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
-                self.p.setPen(QPen())
-                self.p.setBrush(skill_brush)
+                if self.viewer.perfect_detail is not None and \
+                    not self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
+                    skill_time - 1 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                elif self.viewer.perfect_detail is not None and \
+                    self.grand and card_idx in self.viewer.perfect_detail.skill_inactivation_reason and \
+                    (skill_time - 1) // 3 in self.viewer.perfect_detail.skill_inactivation_reason[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.Dense6Pattern)
+                elif not self.grand and skill_time - 1 in self.skill_inactive_list[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.DiagCrossPattern)
+                elif self.grand and (skill_time - 1) // 3 in self.skill_inactive_list[card_idx]:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100), Qt.DiagCrossPattern)
+                else:
+                    skill_brush = QBrush(QColor(*SKILL_BASE[skill.skill_type]['color'], 100))
+                skill_time += 1
+                if len(draw_label) > 0 and label not in draw_label[0]:
+                    continue
+                self.p[label].setPen(QPen())
+                self.p[label].setBrush(skill_brush)
                 # Need to convert grand lane
+                card_idx_converter = [2, 1, 3, 0, 4]
                 draw_card_idx = card_idx
                 if self.grand:
                     if card_idx < 5:
                         draw_card_idx += 5
                     elif 5 <= card_idx < 10:
                         draw_card_idx -= 5
-                x = self.get_x(draw_card_idx, group)
-                y = self.get_y(right, group)
-                self.p.drawRect(x - self.SKILL_PAINT_WIDTH // 2,
+                draw_card_idx = 5 * (draw_card_idx // 5) + card_idx_converter[draw_card_idx % 5]
+                x = self.get_x(draw_card_idx)
+                y = self.get_y(right, label)
+                self.p[label].drawRect(x - self.SKILL_PAINT_WIDTH // 2,
                                 y,
                                 self.SKILL_PAINT_WIDTH,
                                 duration * SEC_HEIGHT)
-                skill_time += 1
+                
+                if (left, right) in self.skills[card_idx]['time'] or left == 0:
+                    continue
+                self.skills[card_idx]['time'].append((left, right))
+                
+                y_scroll = self.y_total + (label + 1) - (Y_MARGIN + right * SEC_HEIGHT)
+                polygon = QPolygonF()
+                polygon.append(QPoint(x - self.SKILL_PAINT_WIDTH // 2, y_scroll))
+                polygon.append(QPoint(x - self.SKILL_PAINT_WIDTH // 2, y_scroll + duration * SEC_HEIGHT))
+                polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll + duration * SEC_HEIGHT))
+                polygon.append(QPoint(x + self.SKILL_PAINT_WIDTH // 2, y_scroll))
+                self.viewer.chart_widget.skill_clickable_areas[card_idx].append(polygon)
 
-    def draw_grid_and_secs(self):
+    def draw_grid_and_secs(self, *draw_label):
+        draw_p = self.p
+        if len(draw_label) > 0:
+            draw_p = [self.p[i] for i in draw_label[0]]
+        
         font = QFont()
-        font.setPixelSize(36)
-        self.p.setFont(font)
+        font.setPixelSize(self.SEC_FONT)
+        for p in draw_p: p.setFont(font)
 
         vertical_grid_pen = QPen(QColor(80, 80, 80))
         vertical_grid_pen.setWidth(5)
-        self.p.setPen(vertical_grid_pen)
-        for group in range(self.n_groups):
-            for lane in range(self.lane_count):
-                x = self.get_x(lane, group)
-                self.p.drawLine(x, 0, x, self.y_total)
-
+        for p in draw_p: p.setPen(vertical_grid_pen)
+        for lane in range(self.lane_count):
+            x = self.get_x(lane)
+            for p in draw_p: p.drawLine(x, 0, x, MAX_LABEL_Y)
+            
         horizontal_grid_bold_pen = QPen(QColor(120, 120, 120))
         horizontal_grid_bold_pen.setWidth(5)
         horizontal_grid_light_pen = QPen(QColor(80, 80, 80))
         horizontal_grid_light_pen.setWidth(3)
-        for group in range(self.n_groups):
-            for sec in range(MAX_SECS_PER_GROUP + 1):
-                if (sec + group * MAX_SECS_PER_GROUP) % 5 == 0:
-                    self.p.setPen(horizontal_grid_bold_pen)
+        for label in range(self.n_label):
+            if len(draw_label) > 0 and label not in draw_label[0]:
+                continue
+            for sec in range(MAX_LABEL_Y // SEC_HEIGHT + 1):
+                if (sec + MAX_LABEL_Y * label // SEC_HEIGHT) % 5 == 0:
+                    self.p[label].setPen(horizontal_grid_bold_pen)
                 else:
-                    self.p.setPen(horizontal_grid_light_pen)
-                y = self.get_y(sec, group=0)
-                self.p.drawLine(self.get_x(0, group), y, self.get_x(self.lane_count - 1, group), y)
-                tm = sec + MAX_SECS_PER_GROUP * group
-                self.p.drawText(QRect(self.get_x(0, group) - 111, y - 25, 70, 100), Qt.AlignRight,
+                    self.p[label].setPen(horizontal_grid_light_pen)
+                y = self.get_y(sec + MAX_LABEL_Y * label // SEC_HEIGHT, label)
+                self.p[label].drawLine(self.get_x(0), y, self.get_x(self.lane_count - 1), y)
+                tm = sec + MAX_LABEL_Y * label // SEC_HEIGHT
+                self.p[label].drawText(QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 100), Qt.AlignRight,
                                 "{}:{:0>2}\n{}".format(tm // 60, tm % 60, self.notes[self.notes['sec'] <= tm].shape[0]))
 
     @abstractmethod
-    def draw_notes(self):
+    def draw_notes(self, *draw_label):
         pass
 
-    def _is_double_drawn_note(self, note: ChartPicNote):
-        for _ in range(self.n_groups):
-            if MAX_SECS_PER_GROUP * _ - Y_MARGIN / SEC_HEIGHT <= note.sec <= MAX_SECS_PER_GROUP * _ + Y_MARGIN / SEC_HEIGHT:
-                return True
+    def _is_double_drawn_note(self, note: ChartPicNote, direction = 0):
+        assert direction in [-1, 0, 1]
+        for _ in range(self.n_label):
+            if MAX_SECS_PER_LABEL * _ - (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT <= note.sec <= MAX_SECS_PER_LABEL * _ + (Y_MARGIN + ICON_HEIGHT) / SEC_HEIGHT:
+                if direction == 0:
+                    return True
+                elif direction == 1:
+                    if note.qgroup == _ + 1:
+                        return True
+                else:
+                    if note.qgroup == _:
+                        return True
         return False
 
-    def draw_sync_lines(self):
+    def draw_sync_lines(self, *draw_label):
+        draw_p = self.p
+        if len(draw_label) > 0:
+            draw_p = [self.p[i] for i in draw_label[0]]
+        
         sync_line_pen = QPen(QColor(250, 250, 240))
         sync_line_pen.setWidth(3)
-        self.p.setPen(sync_line_pen)
-        for group_idx, qt_group in enumerate(self.note_groups):
+        for p in draw_p : p.setPen(sync_line_pen)
+        for label_idx, qt_label in enumerate(self.note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
+            
             sync_pairs = defaultdict(lambda: list())
-            for note in qt_group:
+            for note in qt_label:
                 if note.sync == 0:
                     continue
                 sync_pairs[note.sec].append(note)
@@ -409,15 +540,17 @@ class BaseChartPicGenerator(ABC):
                 l = min(values[0].lane, values[1].lane)
                 r = max(values[0].lane, values[1].lane)
                 sec = values[0].sec
-                y = self.get_y(sec, group_idx)
-                self.p.drawLine(self.get_x(l, group_idx), y, self.get_x(r, group_idx), y)
+                y = self.get_y(sec, label_idx)
+                self.p[label_idx].drawLine(self.get_x(l), y, self.get_x(r), y)
 
     @abstractmethod
     def _draw_group_line(self, note1, note2, group):
         pass
 
-    def draw_group_lines(self):
-        for group_idx, qt_group in enumerate(self.note_groups):
+    def draw_group_lines(self, *draw_label):
+        for group_idx, qt_group in enumerate(self.note_labels):
+            if len(draw_label) > 0 and group_idx not in draw_label[0]:
+                continue
             group_ids = set()
             for note in qt_group:
                 if note.group_id == 0:
@@ -430,34 +563,30 @@ class BaseChartPicGenerator(ABC):
                     self._draw_group_line(l, r, group_idx)
 
     def hook_abuse(self, all_cards, abuse_data):
-        self.hook_cards(all_cards, False)
+        self.hook_cards(all_cards)
 
         self.generate_note_objects(abuse_data)
-        for group_idx, qt_group in enumerate(self.note_groups):
-            for note in qt_group:
-                self.draw_abuse(note, group_idx)
-        self.label.repaint()
 
-    def draw_abuse(self, note: ChartPicNote, group):
+    def draw_abuse(self, note: ChartPicNote, label):
         if note.delta == 0:
             return
 
-        x_note = self.get_x(note.lane + note.span / 2, group) - note.note_pic_smol.width() // 2
-        y_early = self.get_y(note.sec + note.early / 1000, group)
+        x_note = self.get_x(note.lane + note.span / 2) - note.note_pic_smol.width() // 2
+        y_early = self.get_y(note.sec + note.early / 1000, label)
         shifted_y_early = y_early - note.note_pic_smol.height() // 2
-        y_late = self.get_y(note.sec + note.late / 1000, group)
+        y_late = self.get_y(note.sec + note.late / 1000, label)
         shifted_y_late = y_late - note.note_pic_smol.height() // 2
-        self.p.drawImage(QPoint(x_note, shifted_y_early), note.note_pic_smol)
-        self.p.drawImage(QPoint(x_note, shifted_y_late), note.note_pic_smol)
-        lane_l = self.get_x(0, group)
-        lane_r = self.get_x(self.lane_count - 1, group)
-        self.p.setPen(QPen(Qt.green))
-        self.p.drawLine(lane_l, y_early, lane_r, y_early)
-        self.p.setPen(QPen(Qt.red))
-        self.p.drawLine(lane_l, y_late, lane_r, y_late)
+        self.p[label].drawImage(QPoint(x_note, shifted_y_early), note.note_pic_smol)
+        self.p[label].drawImage(QPoint(x_note, shifted_y_late), note.note_pic_smol)
+        lane_l = self.get_x(0)
+        lane_r = self.get_x(self.lane_count - 1)
+        self.p[label].setPen(QPen(Qt.green))
+        self.p[label].drawLine(lane_l, y_early, lane_r, y_early)
+        self.p[label].setPen(QPen(Qt.red))
+        self.p[label].drawLine(lane_l, y_late, lane_r, y_late)
 
-        x = self.get_x(note.lane + note.span / 2, group) - note.note_pic.width() // 2
-        y = self.get_y(note.sec, group) + note.note_pic.height()
+        x = self.get_x(note.lane + note.span / 2) - note.note_pic.width() // 2
+        y = self.get_y(note.sec, label) + note.note_pic.height()
         font = QFont()
         font.setBold(True)
         font.setPixelSize(30)
@@ -470,69 +599,393 @@ class BaseChartPicGenerator(ABC):
             brush = QBrush(Qt.black)
         path = QPainterPath()
         path.addText(x, y, font, str(note.delta))
-        self.p.setFont(font)
-        self.p.setPen(pen)
-        self.p.setBrush(brush)
-        self.p.drawPath(path)
+        self.p[label].setFont(font)
+        self.p[label].setPen(pen)
+        self.p[label].setBrush(brush)
+        self.p[label].drawPath(path)
         font.setPixelSize(24)
         path = QPainterPath()
         path.addText(x, y + 40, font, "{} {}".format(note.early, note.late))
-        self.p.drawPath(path)
+        self.p[label].drawPath(path)
+
+    def draw_offset(self):
+        for label_idx, label in enumerate(self.note_labels):
+            for note in label:
+                if self.notes_offset[note.num-1] == 0:
+                    continue
+                x = self.get_x(note.lane + note.span / 2) - note.note_pic_smol.width() // 2
+                y = self.get_y(note.sec + self.notes_offset[note.num-1] / 1000, label_idx)
+                self.p[label_idx].drawImage(QPoint(x, y), note.note_pic_smol)
 
     def save_image(self):
-        path = CHART_PICS_PATH / "{}-{}.png".format(self.song_id, self.difficulty)
+        path = CHART_PICS_PATH / "{}-{}.png".format(self.song_id, str(self.difficulty)[11:])
+        uniq = 1
+        while os.path.exists(path):
+          path = CHART_PICS_PATH / "{}-{}({}).png".format(self.song_id, str(self.difficulty)[11:], uniq)
+          uniq += 1
         storage.exists(path)
-        self.label.pixmap().save(str(path))
+        group_num = self.y_total // (IMAGE_HEIGHT - IMAGE_Y_MARGIN) + 1
+        self.saved_image = QImage(WINDOW_WIDTH * group_num, IMAGE_HEIGHT, QImage.Format_ARGB32)
+        self.saved_image.fill(qRgba(0, 0, 0, 255))
+        painter = QPainter(self.saved_image)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceAtop)
+        group = 0
+        y_current = 0
+        while y_current < self.y_total:
+            for n in range(self.n_label):
+                if n * MAX_LABEL_Y <= y_current and y_current + IMAGE_HEIGHT <= (n+1) * MAX_LABEL_Y: # label is totally inside the group
+                    if y_current + IMAGE_HEIGHT > self.y_total: #Final part of the chart
+                        h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
+                        painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
+                    else:
+                        y = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y) - IMAGE_HEIGHT
+                        painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, IMAGE_HEIGHT))
+                    break
+                else:
+                    if n * MAX_LABEL_Y <= y_current + IMAGE_HEIGHT <= (n+1) * MAX_LABEL_Y: 
+                        if y_current + IMAGE_HEIGHT > self.y_total:
+                            h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
+                            painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
+                        else:
+                            y = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y) - IMAGE_HEIGHT
+                            h = self.label[n].pixmap().height() - y
+                            painter.drawPixmap(group * WINDOW_WIDTH, 0, self.label[n].pixmap().copy(0, y, WINDOW_WIDTH, h))
+                    if n * MAX_LABEL_Y <= y_current < (n+1) * MAX_LABEL_Y:
+                        h = self.label[n].pixmap().height() - (y_current - n * MAX_LABEL_Y)
+                        painter.drawPixmap(group * WINDOW_WIDTH, IMAGE_HEIGHT - h, self.label[n].pixmap().copy(0, 0, WINDOW_WIDTH, h))
+            y_current += IMAGE_HEIGHT - IMAGE_Y_MARGIN     
+            group += 1
+        self.saved_image.save(str(path))
+
+    def draw_default_chart(self):
+        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.draw()
+        for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
+    
+    def draw_perfect_chart(self):
+        for p in self.p: p.fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.paint_skill()
+        self.draw()
+        for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
+    
+    def draw_abuse_chart(self): # This draws only abuse detail
+        for group_idx, qt_group in enumerate(self.note_labels):
+            for note in qt_group:
+                self.draw_abuse(note, group_idx)
+        for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
+    
+    def mouse_pressed(self, event):
+        scroll = self.viewer.chart_widget
+        super(DraggableQScrollArea, scroll).mousePressEvent(event)
+        if event.button() == Qt.LeftButton:
+            scroll.drag_start_position = event.pos()
+            scroll.original_y = scroll.verticalScrollBar().value()
+            scroll.original_x = scroll.horizontalScrollBar().value()
+            
+        pos = event.pos() + QPoint(scroll.original_x, scroll.original_y)
+        for idx, area in enumerate(scroll.note_clickable_areas):
+            if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                note = self.get_note_from_index(idx)
+                self.selected_note = note.num - 1
+                self.selected_damage_note = -1
+                self.draw_selected_note(idx)
+                self.viewer.show_detail_nothing()
+                self.viewer.show_detail_note_info(str(note.num), "{:.3f}".format(note.sec), str(note.note_type)[9:])
+                return
+        for idx, area in enumerate(scroll.damage_note_clickable_areas):
+            if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                note = self.get_damage_note_from_index(idx)
+                self.selected_note = -1
+                self.selected_damage_note = note.num - 1
+                self.draw_selected_damage_note(idx)
+                self.viewer.show_detail_nothing()
+                self.viewer.show_detail_note_info("-", "{:.3f}".format(note.sec), str(note.note_type)[9:])
+                return
+        
+        if self.viewer.chart_mode != 0:
+            for card_idx, card in enumerate(scroll.skill_clickable_areas):
+                for idx, area in enumerate(card):
+                    if area.containsPoint(pos, Qt.FillRule.OddEvenFill):
+                        self.selected_skill = (card_idx, idx)
+                        skill_type = self.skills[card_idx]['type']
+                        skill_time = self.skills[card_idx]['time'][idx]
+                        skill_time_text = "{:.1f} ~ {:.1f}".format(skill_time[0], skill_time[1])
+                        self.draw_selected_skill(card_idx, idx)
+                        self.viewer.show_detail_nothing()
+                        self.viewer.show_detail_skill_info(skill_type, skill_time_text)
+                        return
+        self.selected_note = -1
+        self.selected_damage_note = -1
+        self.selected_skill = (-1, -1)
+        self.draw_nothing_selected()
+        self.viewer.show_detail_nothing()
+
+    def draw_nothing_selected(self):
+        for label_idx, label in enumerate(self.note_labels):
+            if self.pixmap_cache[label_idx] is not None:
+                self.p[label_idx].drawImage(QPoint(0, 0), self.pixmap_cache[label_idx].toImage())
+                self.pixmap_cache[label_idx] = None
+        for l in self.label: l.repaint()
+    
+    def draw_selected_note(self, idx):
+        if self.selected_note == -1:
+            return
+        
+        self.draw_nothing_selected()
+        num = self.get_note_from_index(idx).num
+        for label_idx, label in enumerate(self.note_labels):
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
+            
+            for note in label:
+                if note.num == num:
+                    self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+                    w = note.note_pic.width() + 4
+                    h = note.note_pic.height() + 4
+                    x = self.get_x(note.lane + note.span / 2)
+                    y = self.get_y(note.sec, label_idx)
+                    self.p[label_idx].drawRoundedRect(x - w // 2, y - h // 2, w, h, 2, 2)
+        for l in self.label: l.repaint()
+    
+    def draw_selected_damage_note(self, idx):
+        if self.selected_damage_note == -1:
+            return
+        
+        self.draw_nothing_selected()
+        num = self.get_damage_note_from_index(idx).num
+        for label_idx, label in enumerate(self.damage_note_labels):
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
+            for note in label:
+                if note.num == num:
+                    self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+                    w = note.note_pic.width() + 4
+                    h = note.note_pic.height() + 4
+                    x = self.get_x(note.lane + note.span / 2)
+                    y = self.get_y(note.sec, label_idx)
+                    self.p[label_idx].drawRoundedRect(x - w // 2, y - h // 2, w, h, 2, 2)
+        for l in self.label: l.repaint()
+    
+    def get_label_of_skill(self, card_idx, idx):
+        draw_label = []
+        for label_idx, label in enumerate(self.note_labels):
+            left = self.skills[card_idx]['time'][idx][0]
+            right = self.skills[card_idx]['time'][idx][1]
+            if left > ((label_idx + 1) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT + 3:
+                continue
+            if right < ((label_idx) * MAX_LABEL_Y - Y_MARGIN) / SEC_HEIGHT - 3:
+                continue
+            self.pixmap_cache[label_idx] = self.label[label_idx].pixmap().copy()
+            draw_label.append(label_idx)
+        return draw_label
+    
+    def draw_selected_skill(self, card_idx, idx):
+        if card_idx == -1 and idx == -1:
+            return
+        
+        self.draw_nothing_selected()
+        
+        draw_label = self.get_label_of_skill(card_idx, idx)
+        left = self.skills[card_idx]['time'][idx][0]
+        right = self.skills[card_idx]['time'][idx][1]
+        duration = right - left
+        
+        for p_idx in draw_label: self.p[p_idx].fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.paint_skill(draw_label)
+        
+        for label_idx in draw_label:
+            pen = QPen(QColor(255, 128, 0, 255))
+            pen.setWidth(2)
+            self.p[label_idx].setPen(pen)
+            group_line_brush = QBrush(QColor(0, 0, 0, 0))
+            self.p[label_idx].setBrush(group_line_brush)
+            
+            card_idx_converter = [2, 1, 3, 0, 4]
+            draw_card_idx = card_idx
+            if self.grand:
+                if card_idx < 5:
+                    draw_card_idx += 5
+                elif 5 <= card_idx < 10:
+                    draw_card_idx -= 5
+            draw_card_idx = 5 * (draw_card_idx // 5) + card_idx_converter[draw_card_idx % 5]
+            x = self.get_x(draw_card_idx)
+            y = self.get_y(right, label_idx)
+            w = self.SKILL_PAINT_WIDTH + 2
+            h = duration * SEC_HEIGHT
+            self.p[label_idx].drawRoundedRect(x - w // 2, y - 1, w, h, 2, 2)
+        
+        self.draw(draw_label)
+        if self.viewer.chart_mode == 2 or (self.viewer.chart_mode == 3 and self.viewer.custom_abuse == 1):
+            for label_idx in draw_label:
+                for note in self.note_labels[label_idx]:
+                    self.draw_abuse(note, label_idx)
+        for l in self.label: l.repaint()
+        
+    def draw_perfect_chart_skill_part(self, card_idx, idx):
+        draw_label = self.get_label_of_skill(card_idx, idx)
+        
+        for p_idx in draw_label: self.p[p_idx].fillRect(0, 0, self.x_total, self.y_total, Qt.black)
+        self.paint_skill(draw_label)
+        self.draw(draw_label)
+        for l in self.label: l.repaint()
+        self.pixmap_cache = [None] * self.n_label
 
 
 class BasicChartPicGenerator(BaseChartPicGenerator):
-    def _draw_group_line(self, note1, note2, group):
+    def _draw_group_line(self, note1, note2, label):
         group_line_pen = QPen(QColor(180, 180, 180))
         group_line_pen.setWidth(20)
-        self.p.setPen(group_line_pen)
-        x1 = self.get_x(note1['finishPos'], group)
-        x2 = self.get_x(note2['finishPos'], group)
-        y1 = self.get_y(note1['sec'], group)
-        y2 = self.get_y(note2['sec'], group)
-        self.p.drawLine(x1, y1, x2, y2)
+        self.p[label].setPen(group_line_pen)
+        x1 = self.get_x(note1['finishPos'])
+        x2 = self.get_x(note2['finishPos'])
+        y1 = self.get_y(note1['sec'], label)
+        y2 = self.get_y(note2['sec'], label)
+        self.p[label].drawLine(x1, y1, x2, y2)
 
-    def draw_notes(self):
-        for group_idx, group in enumerate(self.note_groups):
-            for note in group:
-                x = self.get_x(note.lane, group_idx) - note.note_pic.width() // 2
-                y = self.get_y(note.sec, group_idx) - note.note_pic.height() // 2
-                self.p.drawImage(QPoint(x, y), note.note_pic)
+    def draw_notes(self, *draw_label):
+        for label_idx, label in enumerate(self.note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
+            for note in label:
+                w = note.note_pic.width()
+                h = note.note_pic.height()
+                x = self.get_x(note.lane)
+                y = self.get_y(note.sec, label_idx)
+                self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
+                
+                polygon = QPolygonF()
+                y_scroll = self.y_total + (label_idx + 1) - (Y_MARGIN + note.sec * SEC_HEIGHT) 
+                if note.note_type == NoteType.FLICK:
+                    if note.right_flick:
+                        for theta in range(60, 301, 30):
+                            px = x - w // 10 + h // 2 * math.cos(math.pi * (theta / 180))
+                            py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                            polygon.append(QPoint(px, py))
+                        vertex = QPoint(x + w // 2, y_scroll)
+                        polygon.append(QPoint(px + (vertex.x() - px) // 2, vertex.y() + (py - vertex.y()) // 2 + h // 12))
+                        polygon.append(vertex)
+                        polygon.append(QPoint(px + (vertex.x() - px) // 2, vertex.y() - (py - vertex.y()) // 2 - h // 12))
+                    else:
+                        for theta in range(240, 481, 30):
+                            px = x + w // 10 + h // 2 * math.cos(math.pi * (theta / 180))
+                            py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                            polygon.append(QPoint(px, py))
+                        vertex = QPoint(x - w // 2, y_scroll)
+                        polygon.append(QPoint(vertex.x() + (px - vertex.x()) // 2, vertex.y() - (vertex.y() - py) // 2 - h // 12))
+                        polygon.append(vertex)
+                        polygon.append(QPoint(vertex.x() + (px - vertex.x()) // 2, vertex.y() + (vertex.y() - py) // 2 + h // 12))
+                else:
+                    for theta in range(0, 360, 30):
+                        px = x + w // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                self.viewer.chart_widget.note_clickable_areas.append(polygon)
+        for label_idx, label in enumerate(self.damage_note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
+            for note in label:
+                w = note.note_pic.width()
+                h = note.note_pic.height()
+                x = self.get_x(note.lane)
+                y = self.get_y(note.sec, label_idx)
+                self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
+                
+                polygon = QPolygonF()
+                y_scroll = self.y_total + (label_idx + 1) - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                for theta in range(0, 360, 90):
+                    px = x + w // 2 * math.cos(math.pi * (theta / 180))
+                    py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                    polygon.append(QPoint(px, py))
+                self.viewer.chart_widget.damage_note_clickable_areas.append(polygon)
 
 
 class GrandChartPicGenerator(BaseChartPicGenerator):
+    X_MARGIN = X_MARGIN_GRAND
     LANE_DISTANCE = LANE_DISTANCE_GRAND
     SKILL_PAINT_WIDTH = SKILL_PAINT_WIDTH_GRAND
+    SEC_OFFSET_X = SEC_OFFSET_X_GRAND
+    SEC_OFFSET_Y = SEC_OFFSET_Y_GRAND
+    SEC_FONT = SEC_FONT_GRAND
 
-    def _draw_group_line(self, note1, note2, group):
+    def _draw_group_line(self, note1, note2, label):
         group_line_pen = QPen(QColor(0, 0, 0, 0))
         group_line_pen.setWidth(0)
-        self.p.setPen(group_line_pen)
+        self.p[label].setPen(group_line_pen)
         group_line_brush = QBrush(QColor(180, 180, 180, 150))
-        self.p.setBrush(group_line_brush)
+        self.p[label].setBrush(group_line_brush)
         polygon = QPolygonF()
-        x1l = self.get_x(note1['finishPos'], group)
-        x1r = self.get_x(note1['finishPos'] + note1['status'] - 1, group)
-        x2l = self.get_x(note2['finishPos'], group)
-        x2r = self.get_x(note2['finishPos'] + note2['status'] - 1, group)
-        y1 = self.get_y(note1['sec'], group)
-        y2 = self.get_y(note2['sec'], group)
+        x1l = self.get_x(note1['finishPos'])
+        x1r = self.get_x(note1['finishPos'] + note1['status'] - 1)
+        x2l = self.get_x(note2['finishPos'])
+        x2r = self.get_x(note2['finishPos'] + note2['status'] - 1)
+        y1 = self.get_y(note1['sec'], label)
+        y2 = self.get_y(note2['sec'], label)
         polygon.append(QPoint(x1l, y1))
         polygon.append(QPoint(x1r, y1))
         polygon.append(QPoint(x2r, y2))
         polygon.append(QPoint(x2l, y2))
-        self.p.drawConvexPolygon(polygon)
+        self.p[label].drawConvexPolygon(polygon)
 
-    def draw_notes(self):
-        for group_idx, group in enumerate(self.note_groups):
-            for note in group:
-                x = self.get_x(note.lane + note.span / 2, group_idx) - note.note_pic.width() // 2
-                y = self.get_y(note.sec, group_idx) - note.note_pic.height() // 2
-                self.p.drawImage(QPoint(x, y), note.note_pic)
+    def draw_notes(self, *draw_label):
+        for label_idx, label in enumerate(self.note_labels):
+            if len(draw_label) > 0 and label_idx not in draw_label[0]:
+                continue
+            for note in label:
+                w = note.note_pic.width()
+                h = note.note_pic.height()
+                x = self.get_x(note.lane + note.span / 2)
+                y = self.get_y(note.sec, label_idx)
+                self.p[label_idx].drawImage(QPoint(x - w // 2, y - h // 2), note.note_pic)
+            
+                polygon = QPolygonF()
+                y_scroll = self.y_total + (label_idx + 1) - (Y_MARGIN + note.sec * SEC_HEIGHT)
+                if note.note_type == NoteType.FLICK:
+                    if note.right_flick:
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 23, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll + h // 2))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 21, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 11, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane) - 21, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 5, y_scroll - h // 2))
+                    else:
+                        polygon.append(QPoint(self.get_x(note.lane) - 23, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll + h // 2))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 21, y_scroll + h // 2 - 4))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 11, y_scroll))
+                        polygon.append(QPoint(self.get_x(note.lane + note.span) + 21, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll - h // 2 + 4))
+                        polygon.append(QPoint(self.get_x(note.lane) - 5, y_scroll - h // 2))
+                elif note.note_type == NoteType.TAP:
+                    for theta in range(90, 271, 30):
+                        px = self.get_x(note.lane) + 1 + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                    for theta in range(270, 451, 30):
+                        px = self.get_x(note.lane + note.span) - 1   + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                elif note.note_type == NoteType.SLIDE:
+                    for theta in range(90, 271, 30):
+                        px = self.get_x(note.lane) - 2 + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                    for theta in range(270, 451, 30):
+                        px = self.get_x(note.lane + note.span) + 2 + h // 2 * math.cos(math.pi * (theta / 180))
+                        py = y_scroll - h // 2 * math.sin(math.pi * (theta / 180))
+                        polygon.append(QPoint(px, py))
+                self.viewer.chart_widget.note_clickable_areas.append(polygon)
 
 
 if __name__ == '__main__':

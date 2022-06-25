@@ -36,7 +36,8 @@ class BaseSimulationResult:
 class SimulationResult(BaseSimulationResult):
     def __init__(self, total_appeal, perfect_score, perfect_score_array, base, deltas, total_life, fans,
                  full_roll_chance,
-                 abuse_score, abuse_data: AbuseData):
+                 abuse_score, abuse_data: AbuseData, cc_fr_base, cc_great_num, cc_base,
+                 perfect_detail = None):
         super().__init__()
         self.total_appeal = total_appeal
         self.perfect_score = perfect_score
@@ -48,6 +49,10 @@ class SimulationResult(BaseSimulationResult):
         self.full_roll_chance = full_roll_chance
         self.abuse_score = abuse_score
         self.abuse_data = abuse_data
+        self.cc_fr_base = cc_fr_base
+        self.cc_great_num = cc_great_num
+        self.cc_base = cc_base
+        self.perfect_detail = perfect_detail
 
 
 class AutoSimulationResult(BaseSimulationResult):
@@ -65,17 +70,42 @@ class AutoSimulationResult(BaseSimulationResult):
         self.all_100 = all_100
 
 
+class LiveDetail():
+    def __init__(self, skill_probability, note_number, checkpoint, note_offset, judgement, skill_inactive,
+                 life, combo, weight, score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list,
+                 encore_skill, amr_bonus, magic_bonus, skill_inactivation_reason):
+        self.skill_probability = skill_probability
+        self.note_number = note_number
+        self.checkpoint = checkpoint
+        self.note_offset = note_offset
+        self.judgement = judgement
+        self.skill_inactive = skill_inactive
+        self.life = life
+        self.combo = combo
+        self.weight = weight
+        self.score_bonus_skill = score_bonus_skill
+        self.score_great_bonus_skill = score_great_bonus_skill
+        self.combo_bonus_skill = combo_bonus_skill
+        self.note_score_list = note_score_list
+        self.encore_skill = encore_skill
+        self.amr_bonus = amr_bonus
+        self.magic_bonus = magic_bonus
+        self.skill_inactivation_reason = skill_inactivation_reason
+
+
 class Simulator:
     def __init__(self, live=None, special_offset=None, left_inclusive=False, right_inclusive=True,
                  force_encore_amr_cache_to_encore_unit=False,
                  force_encore_magic_to_encore_unit=False,
-                 allow_encore_magic_to_escape_max_agg=True):
+                 allow_encore_magic_to_escape_max_agg=True,
+                 cc_great=0):
         self.live = live
         self.left_inclusive = left_inclusive
         self.right_inclusive = right_inclusive
         self.force_encore_amr_cache_to_encore_unit = force_encore_amr_cache_to_encore_unit
         self.force_encore_magic_to_encore_unit = force_encore_magic_to_encore_unit
         self.allow_encore_magic_to_escape_max_agg = allow_encore_magic_to_escape_max_agg
+        self.cc_great = cc_great
         if special_offset is None:
             self.special_offset = 0
         else:
@@ -128,21 +158,29 @@ class Simulator:
         self.notes_data['checkpoints'] = False
         self.notes_data.loc[self.notes_data['note_type'] == NoteType.SLIDE, 'checkpoints'] = True
         for group_id in self.notes_data[self.notes_data['note_type'] == NoteType.SLIDE].groupId.unique():
-            group = self.notes_data[
-                (self.notes_data['groupId'] != 0) & (self.notes_data['groupId'] == group_id)]
+            group = self.notes_data[(self.notes_data['groupId'] == group_id)]
             self.notes_data.loc[group.iloc[-1].name, 'checkpoints'] = False
             self.notes_data.loc[group.iloc[0].name, 'checkpoints'] = False
 
     def simulate(self, times=100, appeals=None, extra_bonus=None, support=None, perfect_play=False,
                  chara_bonus_set=None, chara_bonus_value=0, special_option=None, special_value=None,
                  doublelife=False, perfect_only=True, abuse=False, output=False, auto=False, mirror=False,
-                 time_offset=0):
+                 time_offset=0, inactive_skill=None, note_offset=None, note_miss=None):
         start = time.time()
         logger.debug("Unit: {}".format(self.live.unit))
         logger.debug("Song: {} - {} - Lv {}".format(self.live.music_name, self.live.difficulty, self.live.level))
         if perfect_play or auto:
             times = 1
             logger.debug("Only need 1 simulation for perfect play or auto.")
+        
+        if inactive_skill is not None or note_offset is not None or note_miss is not None :
+            res = self._simulate_custom(appeals=appeals, extra_bonus=extra_bonus, support=support,
+                                         chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
+                                         special_option=special_option, special_value=special_value,
+                                         doublelife=doublelife, inactive_skill=inactive_skill,
+                                         note_offset=note_offset, note_miss=note_miss)
+            return res
+        
         if not auto:
             res = self._simulate(times, appeals=appeals, extra_bonus=extra_bonus, support=support,
                                  perfect_play=perfect_play,
@@ -209,11 +247,33 @@ class Simulator:
                               special_option=special_option, special_value=special_value)
         grand = self.live.is_grand
 
+        if self.cc_great > 0:
+            cc_fr_results = self._simulate_internal(times=times, grand=grand, fail_simulate=False,
+                                              doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
+            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num_list, _ = cc_fr_results
+            
+            cc_results = self._simulate_internal(times=times, grand=grand, fail_simulate=True,
+                                              doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
+            _, _, cc_random_simulation_results, _, _, _, _, _ = cc_results
+                        
+            cc_fr_array = np.array([_[0] for _ in cc_fr_random_simulation_results])
+            cc_fr_num_score_list = [(cc_great_num_list[_], cc_fr_array[_]) for _ in range(len(cc_great_num_list))]
+            cc_fr_num_score_list.sort()
+            if len(cc_fr_num_score_list) % 2 == 0:
+                cc_fr_num_score_list = cc_fr_num_score_list[:-1]
+            m = cc_fr_num_score_list[len(cc_fr_num_score_list)//2]
+            cc_great_num = m[0]
+            cc_fr_base = int(m[1])
+            cc_array = np.array([_[0] for _ in cc_random_simulation_results])
+            cc_base = int(np.median(cc_array))
+        else:
+            cc_fr_base, cc_great_num, cc_base = 0, 0, 0
+        
         results = self._simulate_internal(times=times, grand=grand, fail_simulate=not perfect_play,
-                                          doublelife=doublelife, perfect_only=perfect_only, abuse=abuse)
-
-        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data = results
-
+                                          doublelife=doublelife, perfect_only=perfect_only, abuse=abuse, cc_great=0)
+        
+        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data, _, perfect_detail = results
+        
         if perfect_play:
             base = perfect_score
             deltas = np.zeros(1)
@@ -250,11 +310,32 @@ class Simulator:
             full_roll_chance=full_roll_chance,
             fans=total_fans,
             abuse_score=int(abuse_score),
-            abuse_data=abuse_data
+            abuse_data=abuse_data,
+            cc_fr_base=cc_fr_base,
+            cc_great_num=cc_great_num,
+            cc_base=cc_base,
+            perfect_detail=LiveDetail(perfect_detail['skill_probability'],
+                                      perfect_detail['note_number'],
+                                      perfect_detail['checkpoint'],
+                                      perfect_detail['note_offset'],
+                                      perfect_detail['judgement'],
+                                      perfect_detail['skill_inactive'],
+                                      perfect_detail['life'],
+                                      perfect_detail['combo'],
+                                      perfect_detail['weight'],
+                                      perfect_detail['score_bonus_skill'],
+                                      perfect_detail['score_great_bonus_skill'],
+                                      perfect_detail['combo_bonus_skill'],
+                                      perfect_detail['score_list'],
+                                      perfect_detail['encore_skill'],
+                                      perfect_detail['amr_bonus'],
+                                      perfect_detail['magic_bonus'],
+                                      perfect_detail['skill_inactivation_reason']
+                                      )
         )
 
     def _simulate_internal(self, grand, times, fail_simulate=False, doublelife=False, perfect_only=True, abuse=False,
-                           auto=False, time_offset=0):
+                           auto=False, time_offset=0, cc_great=0):
         impl = StateMachine(
             grand=grand,
             difficulty=self.live.difficulty,
@@ -268,7 +349,8 @@ class Simulator:
             weights=self.weight_range,
             force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
             force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
-            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg
+            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
+            cc_great=cc_great
         )
 
         if auto:
@@ -276,16 +358,28 @@ class Simulator:
             return impl.simulate_impl_auto()
 
         impl.reset_machine(perfect_play=True, perfect_only=True)
-        perfect_score, perfect_score_array = impl.simulate_impl()
+        perfect_score, perfect_score_array, perfect_detail = impl.simulate_impl()
         logger.debug("Perfect scores: " + " ".join(map(str, impl.get_note_scores())))
         full_roll_chance = impl.get_full_roll_chance()
 
         scores = list()
-        if fail_simulate:
+        if cc_great == 0 and fail_simulate:
             for _ in range(times):
                 impl.reset_machine(perfect_play=False, perfect_only=perfect_only)
-                scores.append(impl.simulate_impl())
+                scores.append(impl.simulate_impl()[0:2])
 
+        cc_great_num = list()
+        if cc_great > 0:
+            if not fail_simulate: #fr
+                for _ in range(times):
+                    impl.reset_machine(perfect_play=True, perfect_only=True)
+                    scores.append(impl.simulate_impl()[0:2])
+                    cc_great_num.append(impl.get_cc_great_num())
+            else: #not fr
+                for _ in range(times):
+                    impl.reset_machine(perfect_play=False, perfect_only=True)
+                    scores.append(impl.simulate_impl()[0:2])
+                    
         abuse_result_score = 0
         abuse_data: AbuseData = None
         if abuse:
@@ -293,7 +387,76 @@ class Simulator:
             abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
             logger.debug("Total abuse: {}".format(int(abuse_result_score)))
             logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
-        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data
+        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, \
+            cc_great_num, perfect_detail
+
+    def _simulate_custom(self,
+                  appeals=None,
+                  extra_bonus=None,
+                  support=None,
+                  chara_bonus_set=None,
+                  chara_bonus_value=0,
+                  special_option=None,
+                  special_value=None,
+                  doublelife=False,
+                  inactive_skill=[],
+                  note_offset={},
+                  note_miss=[]
+                  ):
+        self._setup_simulator(appeals=appeals, support=support, extra_bonus=extra_bonus,
+                              chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
+                              special_option=special_option, special_value=special_value)
+        grand = self.live.is_grand
+        
+        impl = StateMachine(
+            grand=grand,
+            difficulty=self.live.difficulty,
+            doublelife=doublelife,
+            live=self.live,
+            notes_data=self.notes_data,
+            left_inclusive=self.left_inclusive,
+            right_inclusive=self.right_inclusive,
+            base_score=self.base_score,
+            helen_base_score=self.helen_base_score,
+            weights=self.weight_range,
+            force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
+            force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
+            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
+            cc_great=0,
+            custom_inactive_skill=inactive_skill,
+            custom_note_offset=note_offset,
+            custom_note_miss=note_miss
+        )
+        impl.reset_machine(perfect_play=True, perfect_only=True)
+        score, _, detail = impl.simulate_impl()
+        
+        score_detail = LiveDetail(detail['skill_probability'],
+                                  detail['note_number'],
+                                  detail['checkpoint'],
+                                  detail['note_offset'],
+                                  detail['judgement'],
+                                  detail['skill_inactive'],
+                                  detail['life'],
+                                  detail['combo'],
+                                  detail['weight'],
+                                  detail['score_bonus_skill'],
+                                  detail['score_great_bonus_skill'],
+                                  detail['combo_bonus_skill'],
+                                  detail['score_list'],
+                                  detail['encore_skill'],
+                                  detail['amr_bonus'],
+                                  detail['magic_bonus'],
+                                  detail['skill_inactivation_reason']
+                                )
+        
+        abuse_result_score = 0
+        abuse_data: AbuseData = None
+        impl.reset_machine(perfect_play=True, abuse=True, perfect_only=False)
+        abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
+        logger.debug("Total abuse: {}".format(int(abuse_result_score)))
+        logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
+        
+        return (score, score_detail, abuse_result_score, abuse_data, impl.full_roll_chance)
 
     def _simulate_auto(self,
                        appeals=None,

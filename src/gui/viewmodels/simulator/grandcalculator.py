@@ -5,9 +5,10 @@ from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QApplication, QSizePolicy, QTableWidgetItem
 
 import customlogger as logger
-from gui.events.calculator_view_events import AddEmptyUnitEvent
+from gui.events.calculator_view_events import AddEmptyUnitEvent, TurnOffRunningLabelFromUuidGrandEvent
+from gui.events.utils.eventbus import subscribe
 from gui.viewmodels.mime_headers import CALCULATOR_GRANDUNIT
-from gui.viewmodels.simulator.calculator import CalculatorView, DroppableCalculatorWidget, \
+from gui.viewmodels.simulator.calculator import CalculatorView, CalculatorModel, DroppableCalculatorWidget, \
     CalculatorUnitWidgetWithExtraData
 from gui.viewmodels.unit import UnitCard
 from gui.viewmodels.utils import UniversalUniqueIdentifiable
@@ -146,3 +147,13 @@ class GrandCalculatorView(CalculatorView):
                     continue
                 self.add_unit(unit_internal)
                 all_units_card_ids.append(unit_card_ids)
+
+
+class GrandCalculatorModel(CalculatorModel):
+    
+    @subscribe(TurnOffRunningLabelFromUuidGrandEvent)
+    def turn_off_running_label_from_uuid_grand(self, event):
+        row_to_change = self.get_row_from_uuid(event.uuid)
+        if row_to_change == -1:
+            return
+        self.view.widget.cellWidget(row_to_change, 0).toggle_running_simulation(False)
