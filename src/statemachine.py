@@ -55,6 +55,12 @@ class UnitCacheBonus:
         self.slide = 0
         self.great = 0
         self.combo = 0
+        self.tap_update = (-1, 0, 0.0)
+        self.flick_update = (-1, 0, 0.0)
+        self.longg_update = (-1, 0, 0.0)
+        self.slide_update = (-1, 0, 0.0)
+        self.great_update = (-1, 0, 0.0)
+        self.combo_update = (-1, 0, 0.0)
         self.ref_tap = {}
         self.ref_flick = {}
         self.ref_long = {}
@@ -69,46 +75,68 @@ class UnitCacheBonus:
         self.alt_combo = {}
         
 
-    def update(self, skill: Skill):
+    def update(self, skill: Skill, skill_time):
         # Cache alternate and mutual penalty if no other skills have been activated
         if skill.is_alternate:
             if self.combo == 0:
+                self.combo_update = (skill.card_idx, skill.skill_type, skill_time)
                 self.combo = skill.values[2]
         if skill.is_mutual:
             if self.tap == 0:
+                self.tap_update = (skill.card_idx, skill.skill_type, skill_time)
+                self.flick_update = (skill.card_idx, skill.skill_type, skill_time)
+                self.longg_update = (skill.card_idx, skill.skill_type, skill_time)
+                self.slide_update = (skill.card_idx, skill.skill_type, skill_time)
                 self.tap = skill.values[0]
                 self.flick = skill.values[0]
                 self.longg = skill.values[0]
                 self.slide = skill.values[0]
             if self.great == 0:
+                self.great_update = (skill.card_idx, skill.skill_type, skill_time)
                 self.great = skill.values[1]
         
         # Do not update on alternate, mutual, refrain, boosters
         if skill.is_alternate or skill.is_mutual or skill.is_refrain or skill.boost:
             return
         if skill.act is not None:
+            self.tap_update = (skill.card_idx, skill.skill_type, skill_time) if self.tap < skill.values[0] else self.tap_update
             self.tap = max(self.tap, skill.values[0])
             if skill.act is NoteType.LONG:
+                self.flick_update = (skill.card_idx, skill.skill_type, skill_time) if self.flick < skill.values[1] else self.flick_update
+                self.longg_update = (skill.card_idx, skill.skill_type, skill_time) if self.longg < skill.values[0] else self.longg_update
+                self.slide_update = (skill.card_idx, skill.skill_type, skill_time) if self.slide < skill.values[0] else self.slide_update
                 self.longg = max(self.longg, skill.values[1])
                 self.flick = max(self.flick, skill.values[0])
                 self.slide = max(self.slide, skill.values[0])
             elif skill.act is NoteType.FLICK:
+                self.flick_update = (skill.card_idx, skill.skill_type, skill_time) if self.flick < skill.values[0] else self.flick_update
+                self.longg_update = (skill.card_idx, skill.skill_type, skill_time) if self.longg < skill.values[1] else self.longg_update
+                self.slide_update = (skill.card_idx, skill.skill_type, skill_time) if self.slide < skill.values[0] else self.slide_update
                 self.longg = max(self.longg, skill.values[0])
                 self.flick = max(self.flick, skill.values[1])
                 self.slide = max(self.slide, skill.values[0])
             elif skill.act is NoteType.SLIDE:
+                self.flick_update = (skill.card_idx, skill.skill_type, skill_time) if self.flick < skill.values[0] else self.flick_update
+                self.longg_update = (skill.card_idx, skill.skill_type, skill_time) if self.longg < skill.values[0] else self.longg_update
+                self.slide_update = (skill.card_idx, skill.skill_type, skill_time) if self.slide < skill.values[1] else self.slide_update
                 self.longg = max(self.longg, skill.values[0])
                 self.flick = max(self.flick, skill.values[0])
                 self.slide = max(self.slide, skill.values[1])
             return
         if skill.v0 is not None and skill.v0 > 100:
+            self.tap_update = (skill.card_idx, skill.skill_type, skill_time) if self.tap < skill.v0 else self.tap_update
+            self.flick_update = (skill.card_idx, skill.skill_type, skill_time) if self.flick < skill.v0 else self.flick_update
+            self.longg_update = (skill.card_idx, skill.skill_type, skill_time) if self.longg < skill.v0 else self.longg_update
+            self.slide_update = (skill.card_idx, skill.skill_type, skill_time) if self.slide < skill.v0 else self.slide_update
             self.tap = max(self.tap, skill.v0)
             self.flick = max(self.flick, skill.v0)
             self.longg = max(self.longg, skill.v0)
             self.slide = max(self.slide, skill.v0)
             if skill.is_scorePG or skill.is_overload:
+                self.great_update = (skill.card_idx, skill.skill_type, skill_time) if self.tap < skill.v0 else self.great_update
                 self.great = max(self.great, skill.v0)
         if skill.v2 is not None and skill.v2 > 100:
+            self.combo_update = (skill.card_idx, skill.skill_type, skill_time) if self.combo < skill.v2 else self.combo_update
             self.combo = max(self.combo, skill.v2)
 
     def update_AMR(self, skill: Skill):
@@ -743,7 +771,23 @@ class StateMachine:
                             skill[3][boost_idx] = (boost[0], 16, boost[2])
                 if skill[0] in encore_idx:
                     self.combo_bonus_skills[note_idx][skill_idx] = (skill[0], 16, skill[2], skill[3])
-        
+        encore_temp = copy.deepcopy(self.encore_skills)
+        intervals = []
+        for unit in self.live.unit.all_units:
+            for card in unit.all_cards():
+                intervals.append(card.sk.interval)
+        for lane in encore_temp.keys():
+            for num in encore_temp[lane].keys():
+                _ = encore_temp[lane][num]
+                encore_temp[lane][num] = (_[0], _[1], float(intervals[lane] * (1 + num * len(self.unit_caches) + lane // 5)))
+        for lane in self.amr_bonuses.keys():
+            for num in self.amr_bonuses[lane].keys():
+                for note_idx, note in enumerate(self.amr_bonuses[lane][num]):
+                    for enc_lane in encore_temp.keys():
+                        for enc_num in encore_temp[enc_lane].keys():
+                            if note[-3:] == encore_temp[enc_lane][enc_num]:
+                                self.amr_bonuses[lane][num][note_idx] = note[:-3] + (enc_lane, 16, encore_temp[enc_lane][enc_num][-1])
+           
         detail = {'skill_probability' : self.probabilities,
                   'note_number' : self.note_numbers,
                   'checkpoint' : self.checkpoints,
@@ -1919,18 +1963,21 @@ class StateMachine:
                 unit = self.unit_caches[unit_idx]
                 idx = self.skill_indices[0] - 1
                 num = (int(self.skill_times[0] / 1E6 / skill.interval) - 1) // len(self.unit_caches)
+                unit_update = (unit.tap_update, unit.longg_update, unit.flick_update,
+                               unit.slide_update,unit.great_update, unit.combo_update)
                 if skill.is_refrain:
                     ref = (unit.ref_tap, unit.ref_long, unit.ref_flick, unit.ref_slide, unit.ref_great, unit.ref_combo)
-                    _ = [0, 0, 0, 0, 0, 0]
-                    for i, note in enumerate(ref):
-                        if idx in note:
-                            _[i] = note[idx]
+                    _ = [(0, 0, 0, 0)] * 6
+                    for i in range(6):
+                        if idx in ref[i]:
+                            _[i] = tuple([ref[i][idx]] + list(unit_update[i]))
                 else:
                     alt = (unit.alt_tap, unit.alt_long, unit.alt_flick, unit.alt_slide, unit.alt_great, unit.alt_combo)
-                    _ = [0, 0, 0, 0, 0, 0]
-                    for i, note in enumerate(alt):
-                        if idx in note:
-                            _[i] = note[idx]
+                    alt_ = (unit.tap, unit.longg, unit.flick, unit.slide, unit.great, unit.combo)
+                    _ = [(0, 0, 0, 0, 0)] * 6
+                    for i in range(6):
+                        if idx in alt[i]:
+                            _[i] = tuple([alt[i][idx], alt_[i] - 100] + list(unit_update[i]))
                 if idx not in self.amr_bonuses:
                     self.amr_bonuses[idx] = dict()
                 self.amr_bonuses[idx][num] = _
@@ -2060,7 +2107,7 @@ class StateMachine:
         skills_to_check = self._helper_get_current_skills()
         unit_idx = (self.skill_indices[0] - 1) // 5
         for skill in skills_to_check:
-            self.unit_caches[unit_idx].update(skill)
+            self.unit_caches[unit_idx].update(skill, self.skill_times[0] / 1E6)
 
     def _handle_skill_activation(self):
         def update_last_activated_skill(replace, skill_time):
