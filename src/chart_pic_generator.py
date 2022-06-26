@@ -27,15 +27,14 @@ def QFont():
     qf.setStyleHint(_QFont.SansSerif)
     return qf
 
-X_MARGIN = 110
-LEFT_MARGIN = 50
+X_MARGIN = 125
 LANE_DISTANCE = 70
 SKILL_PAINT_WIDTH = 60
 SEC_OFFSET_X = 105
 SEC_OFFSET_Y = 17
 SEC_FONT = 36
 
-X_MARGIN_GRAND = 75
+X_MARGIN_GRAND = 90
 LANE_DISTANCE_GRAND = 25
 SKILL_PAINT_WIDTH_GRAND = 22
 SEC_OFFSET_X_GRAND = 86
@@ -161,7 +160,6 @@ class DraggableQScrollArea(QScrollArea):
 
 class BaseChartPicGenerator(ABC):
     X_MARGIN = X_MARGIN
-    LEFT_MARGIN = LEFT_MARGIN
     LANE_DISTANCE = LANE_DISTANCE
     SKILL_PAINT_WIDTH = SKILL_PAINT_WIDTH
     SEC_OFFSET_X = SEC_OFFSET_X
@@ -252,7 +250,7 @@ class BaseChartPicGenerator(ABC):
 
     def initialize_ui(self):
         self.y_total = self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN
-        self.x_total = self.LEFT_MARGIN + (2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE)
+        self.x_total = 2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE
         self.chart_label = QWidget()
         self.chart_label_layout = QVBoxLayout(self.chart_label)
         self.chart_label_layout.setSpacing(0)

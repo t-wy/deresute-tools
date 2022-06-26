@@ -36,5 +36,5 @@ INDEX_PATH = DATA_PATH / "index"
 ABUSE_CHARTS_PATH = ROOT_DIR / "abuse"
 CHART_PICS_PATH = ROOT_DIR / "charts"
 
-REMOTE_CACHE_SCORES_URL = "https://raw.githubusercontent.com/deresute-tools/chihiro-static/master/live_detail_cache.csv"
-REMOTE_TRANSLATED_SONG_URL = "https://raw.githubusercontent.com/deresute-tools/chihiro-static/master/translated.csv"
+REMOTE_CACHE_SCORES_URL = "https://raw.githubusercontent.com/oayimikagakat/chihiro-static/master/live_detail_cache.csv"
+REMOTE_TRANSLATED_SONG_URL = "https://raw.githubusercontent.com/oayimikagakat/chihiro-static/master/translated.csv"

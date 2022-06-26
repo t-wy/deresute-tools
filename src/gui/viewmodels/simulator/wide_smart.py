@@ -398,6 +398,25 @@ class MainModel(QObject):
                               )
         eventbus.eventbus.post(CustomSimulationResultEvent(result, event.live))
 
+    @subscribe(CustomSimulationEvent)
+    def handle_custom_simulation(self, custom_event: CustomSimulationEvent):
+        event = custom_event.simulation_event
+        event.live.set_unit(event.unit)
+        
+        sim = Simulator(event.live, left_inclusive=event.left_inclusive, right_inclusive=event.right_inclusive,
+                        force_encore_amr_cache_to_encore_unit=event.force_encore_amr_cache_to_encore_unit,
+                        force_encore_magic_to_encore_unit=event.force_encore_magic_to_encore_unit,
+                        allow_encore_magic_to_escape_max_agg=event.allow_encore_magic_to_escape_max_agg,
+                        cc_great=0
+                        )
+        result = sim.simulate(perfect_play=True, times=1, appeals=event.appeals, support=event.support,
+                              extra_bonus=event.extra_bonus, special_option=event.special_option,
+                              special_value=event.special_value, doublelife=event.doublelife,
+                              abuse=True, perfect_only=False, output=False,
+                              inactive_skill=custom_event.skill_inactive_list
+                              )
+        eventbus.eventbus.post(CustomSimulationResultEvent(result, event.live))
+
     def handle_yoink_button(self, rank=1, player_id=None):
         _, _, live_detail_id, song_name, diff_name = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())
         if live_detail_id is None:
