@@ -315,8 +315,9 @@ class MainModel(QObject):
     @pyqtSlot(BaseSimulationResultWithUuid)
     def process_results(self, payload: BaseSimulationResultWithUuid):
         eventbus.eventbus.post(DisplaySimulationResultEvent(payload))
-        eventbus.eventbus.post(HookSimResultToChartViewerEvent(payload.live.score_id, payload.live.difficulty,
-                                                               payload.results.perfect_detail), asynchronous=False)
+        if isinstance(payload.results, SimulationResult):
+            eventbus.eventbus.post(HookSimResultToChartViewerEvent(payload.live.score_id, payload.live.difficulty,
+                                                                   payload.results.perfect_detail), asynchronous=False)
         if payload.abuse_load:
             if not isinstance(payload.results, SimulationResult):
                 return

@@ -1059,9 +1059,6 @@ class StateMachine:
             self.skill_queue.pop(-self.skill_indices[0])
             self.skill_indices.pop(0)
             self.skill_times.pop(0)
-        logger.debug(self.skill_queue)
-        logger.debug(self.skill_indices)
-        logger.debug(self.skill_times)
 
     def handle_note(self):
         if self.abuse:
