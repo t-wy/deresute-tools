@@ -185,8 +185,10 @@ class Skill:
     @classmethod
     def _handle_skill_type(cls, skill_type, skill_values):
         assert len(skill_values) == 3
-        values = [0, 0, 0, 0, 0] #Score(Perfect), Score(Great), Combo, Heal, Support
-        if skill_type in SUPPORT_TYPES:
+        values = [0, 0, 0, 0, 0] # Score(Perfect), Score(Great), Combo, Heal, Support
+        if skill_type in (9, 12): # Damage guard, combo support
+            pass
+        elif skill_type in SUPPORT_TYPES:
             values[4] = skill_type - 4
         elif skill_type in ACT_TYPES: # Act : Score(Other notes), Score(Special notes), Combo, Heal, Support
             values[0] = skill_values[0]

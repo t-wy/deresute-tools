@@ -46,7 +46,8 @@ class CustomMainWindow(QMainWindow):
             unit_storage.clean_all_units(grand=False)
             for r_idx in range(self.ui.user_unit_view1.widget.count()):
                 widget = self.ui.user_unit_view1.widget.itemWidget(self.ui.user_unit_view1.widget.item(r_idx))
-                widget.update_unit()
+                if widget is not None:
+                    widget.update_unit()
             profile_manager.cleanup()
 
     def closeEvent(self, event):

@@ -909,9 +909,12 @@ class StateMachine:
 
     def _handle_long_break(self, neg_finish_pos, is_long_start=False):
         if neg_finish_pos in self.being_held or is_long_start:
-            for idx, check_note_idx in enumerate(self.note_idx_stack):
+            note_idx_stack = self.note_idx_stack.copy()
+            note_idx_stack.sort()
+            for idx, check_note_idx in enumerate(note_idx_stack):
                 if self.finish_pos[check_note_idx] == -neg_finish_pos:
                     break
+            idx = self.note_idx_stack.index(check_note_idx)
             self.note_idx_stack.pop(idx)
             self.note_time_stack.pop(idx)
             self.delayed.pop(idx)
@@ -929,8 +932,7 @@ class StateMachine:
         status = self.status[note_idx]
 
         checkpoint_bug = \
-            (not self.grand and finish_pos == 3 and is_checkpoint) \
-            or (self.grand and finish_pos < 10 and finish_pos + status > 6 and is_checkpoint)
+            (self.grand and finish_pos < 10 and finish_pos + status > 6 and is_checkpoint)
 
         # If not checkpoint bug, delay note for evaluation later
         if not checkpoint_bug and not delayed:
@@ -1496,7 +1498,7 @@ class StateMachine:
                 if skill.boost:
                     continue
                 color = int(self.live.unit.get_card(magic_idx).color.value)
-                if skill.v3 == 0 and skill.v4 == 0:
+                if not skill.is_guard and skill.v3 == 0 and skill.v4 == 0:
                     continue
                 if skill.v3 > 0:
                     temp_life_results[magic_idx] = max(temp_life_results[magic_idx],
@@ -1504,6 +1506,8 @@ class StateMachine:
                 if skill.v4 > 0:
                     temp_support_results[magic_idx] = max(temp_support_results[magic_idx],
                                                           ceil(skill.v4 + boost_dict[color][4]))
+                if skill.is_guard:
+                    temp_life_results[magic_idx] = max(temp_life_results[magic_idx], ceil(boost_dict[color][4]))
         for non_magic_idx, skills in non_magics.items():
             assert len(skills) == 1 \
                    or self.reference_skills[non_magic_idx].is_encore \
@@ -1515,12 +1519,14 @@ class StateMachine:
                 color = int(self.live.unit.get_card(non_magic_idx).color.value)
                 unit_idx = non_magic_idx // 5
                 boost_dict = sum_boosts if self.live.unit.all_units[unit_idx].resonance else max_boosts
-                if skill.v3 == 0 and skill.v4 == 0:
+                if not skill.is_guard and skill.v3 == 0 and skill.v4 == 0:
                     continue
                 if skill.v3 > 0:
                     temp_life_results[non_magic_idx] = ceil(skill.v3 * boost_dict[color][3])
                 if skill.v4 > 0:
                     temp_support_results[non_magic_idx] = ceil(skill.v4 + boost_dict[color][4])
+                if skill.is_guard:
+                    temp_life_results[non_magic_idx] = ceil(boost_dict[color][4])
 
         unit_life_bonuses = list()
         unit_support_bonuses = list()
@@ -1680,7 +1686,8 @@ class StateMachine:
                     if magic_idx in temp_score_results:
                         if unified_magic_score is None:
                             unified_magic_score_skill = (magic_idx, temp_score_skills[magic_idx].skill_type,
-                                                         temp_score_results[magic_idx], temp_score_boosts[magic_idx])
+                                                         temp_score_results[magic_idx], temp_score_boosts[magic_idx]) \
+                                                        if temp_score_skills[magic_idx] is not None else None
                             unified_magic_score = temp_score_results[magic_idx]
                         else:
                             if unified_magic_score < temp_score_results[magic_idx]:
@@ -1691,7 +1698,8 @@ class StateMachine:
                     if magic_idx in temp_score_great_results:
                         if unified_magic_score_great is None:
                             unified_magic_score_great_skill = (magic_idx, temp_score_great_skills[magic_idx].skill_type,
-                                                               temp_score_great_results[magic_idx], temp_score_great_boosts[magic_idx])
+                                                               temp_score_great_results[magic_idx], temp_score_great_boosts[magic_idx]) \
+                                                              if temp_score_great_skills[magic_idx] is not None else None
                             unified_magic_score_great = temp_score_great_results[magic_idx]
                         else:
                             if unified_magic_score_great < temp_score_great_results[magic_idx]:
@@ -1701,7 +1709,8 @@ class StateMachine:
                     if magic_idx in temp_combo_results:
                         if unified_magic_combo is None:
                             unified_magic_combo_skill = (magic_idx, temp_combo_skills[magic_idx].skill_type,
-                                                         temp_combo_results[magic_idx], temp_combo_boosts[magic_idx])
+                                                         temp_combo_results[magic_idx], temp_combo_boosts[magic_idx]) \
+                                                        if temp_combo_skills[magic_idx] is not None else None
                             unified_magic_combo = temp_combo_results[magic_idx]
                         else:
                             if unified_magic_combo < temp_combo_results[magic_idx]:
