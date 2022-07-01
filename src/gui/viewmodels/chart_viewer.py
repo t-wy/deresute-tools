@@ -4,7 +4,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QPainter, QFont, QFontMetrics, QIntValidator
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget, QLineEdit, QHBoxLayout, QGridLayout, \
     QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QCheckBox, QPushButton, QSpinBox, QTextEdit, \
-    QSpacerItem, QCheckBox
+    QSpacerItem
 
 from chart_pic_generator import BaseChartPicGenerator, WINDOW_WIDTH, SCROLL_WIDTH, MAX_LABEL_Y
 from db import db
@@ -16,6 +16,20 @@ from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent
 from static.judgement import Judgement
 from static.skill import SKILL_BASE, SKILL_INACTIVATION_REASON
+
+class ChartInfoWidget(QWidget):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.chart_viewer = None
+    
+    def set_chart_viewer(self, chart_viewer):
+        self.chart_viewer = chart_viewer
+    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        delta = event.oldSize().height() - self.height()
+        chart_widget = self.chart_viewer.chart_widget
+        chart_widget.verticalScrollBar().setValue(chart_widget.verticalScrollBar().value() - delta)
 
 class ChartViewer:
     def __init__(self, parent, *args, **kwargs):
@@ -38,8 +52,9 @@ class ChartViewer:
         
         self.widget = QWidget(parent)
         self.widget.layout = QVBoxLayout(self.widget)
-        self.info_widget = QWidget()
+        self.info_widget = ChartInfoWidget()
         self.chart_widget = QScrollArea()
+        self.info_widget.set_chart_viewer(self)
         self.info_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
         self.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
         self.widget.layout.addWidget(self.info_widget)
@@ -201,6 +216,7 @@ class ChartViewer:
             elif mode == 3:
                 self.generator.draw_perfect_chart()
                 self.set_stacked_widget_index(self.info_widget.custom_widget, 1)
+                self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
                 self.simulate_custom()
             
             if mode != 3:
@@ -211,15 +227,12 @@ class ChartViewer:
             self.generator.pixmap_cache = [None] * self.generator.n_label
 
     def set_stacked_widget_index(self, widget, idx):
-        h = self.info_widget.height()
         self._resize_stacked_widget(widget, idx)
         widget.setCurrentIndex(idx)
         if idx == 0:
             widget.hide()
         else:
             widget.show()
-        delta = self.info_widget.height() - h
-        self.chart_widget.verticalScrollBar().setValue(self.chart_widget.verticalScrollBar().value() + delta)
 
     def _resize_stacked_widget(self, widget, idx):
         for i in range(widget.count()):
@@ -1480,7 +1493,6 @@ class ChartViewer:
         
         self.info_widget.custom_skill_widget = QWidget()
         self.info_widget.custom_skill_layout = QHBoxLayout(self.info_widget.custom_skill_widget)
-        
         self.info_widget.custom_skill_active_line = QLineEdit()
         self.info_widget.custom_skill_active_line.setReadOnly(True)
         self.info_widget.custom_skill_active_line.setAlignment(Qt.AlignCenter)
