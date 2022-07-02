@@ -43,7 +43,35 @@ NONFLICK_DRAIN = {
     Difficulty.LEGACY: 20,
     Difficulty.PIANO: 10,
     Difficulty.FORTE: 10,
-}           
+}
+
+FLICK_BAD_DRAIN = {
+    Difficulty.LIGHT: 0,
+    Difficulty.TRICK: 5,
+    Difficulty.DEBUT: 0,
+    Difficulty.REGULAR: 0,
+    Difficulty.PRO: 5,
+    Difficulty.MASTER: 6,
+    Difficulty.MPLUS: 6,
+    Difficulty.WITCH: 6,
+    Difficulty.LEGACY: 6,
+    Difficulty.PIANO: 6,
+    Difficulty.FORTE: 6,
+}
+
+NONFLICK_BAD_DRAIN = {
+    Difficulty.LIGHT: 6,
+    Difficulty.TRICK: 9,
+    Difficulty.DEBUT: 6,
+    Difficulty.REGULAR: 7,
+    Difficulty.PRO: 9,
+    Difficulty.MASTER: 12,
+    Difficulty.MPLUS: 12,
+    Difficulty.WITCH: 12,
+    Difficulty.LEGACY: 12,
+    Difficulty.PIANO: 6,
+    Difficulty.FORTE: 6,
+}
 
 BAD_TAP_RANGE = {
     Difficulty.LIGHT: 180000,

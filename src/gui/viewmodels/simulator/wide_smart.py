@@ -378,7 +378,8 @@ class MainModel(QObject):
                               extra_bonus=event.extra_bonus, special_option=event.special_option,
                               special_value=event.special_value, doublelife=event.doublelife,
                               abuse=True, perfect_only=False, output=False,
-                              inactive_skill=custom_event.skill_inactive_list
+                              inactive_skill=custom_event.skill_inactive_list,
+                              note_offset=custom_event.note_offset_dict
                               )
         eventbus.eventbus.post(CustomSimulationResultEvent(result, event.live))
 

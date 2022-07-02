@@ -15,7 +15,13 @@ from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent
 from static.judgement import Judgement
+from static.song_difficulty import Difficulty, PERFECT_TAP_RANGE, GREAT_TAP_RANGE, NICE_TAP_RANGE, BAD_TAP_RANGE
 from static.skill import SKILL_BASE, SKILL_INACTIVATION_REASON
+
+PERFECT_NONTAP_RANGE = 150000
+GREAT_NONTAP_RANGE = 180000
+NICE_NONTAP_RANGE = 190000
+BAD_NONTAP_RANGE = 200000
 
 class ChartInfoWidget(QWidget):
     def __init__(self, *args):
@@ -105,7 +111,9 @@ class ChartViewer:
         self.generator.hook_abuse(event.cards, event.abuse_df)
         self.info_widget.mode_abuse_button.setCheckable(True)
         
-        self.info_widget.custom_abuse_button.setDisabled(False)
+        if (len(self.custom_offset_cache) == 0 or not any(self.custom_offset_cache.values())) \
+            and (len(self.generator.note_offset_dict) == 0 or not any(self.generator.note_offset_dict.values())):
+            self.info_widget.custom_abuse_button.setDisabled(False)
         self.custom_abuse = 0
     
     @subscribe(CacheSimulationEvent)
@@ -146,6 +154,12 @@ class ChartViewer:
         self.generator.draw_perfect_chart()
         if self.custom_abuse == 1:
             self.generator.draw_abuse_chart()
+        self.set_stacked_widget_index(self.info_widget.detail_widget, 0)
+        self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
+        
+        if (len(self.custom_offset_cache) == 0 or not any(self.custom_offset_cache.values())) \
+            and (len(self.generator.note_offset_dict) == 0 or not any(self.generator.note_offset_dict.values())):
+            self.info_widget.custom_abuse_button.setDisabled(False)
     
     def _handle_simulation_result(self):
         numbers = self.perfect_detail.note_number
@@ -153,6 +167,8 @@ class ChartViewer:
         self.skill_probability = self.perfect_detail.skill_probability
         self.perfect_detail.judgement = [self.perfect_detail.judgement[numbers.index(_ + 1)] for _ in range(length)]
         self.perfect_detail.life = [int(self.perfect_detail.life[numbers.index(_ + 1)]) for _ in range(length)]
+        self.perfect_detail.combo = [self.perfect_detail.combo[numbers.index(_ + 1)] for _ in range(length)]
+        self.perfect_detail.weight = [self.perfect_detail.weight[numbers.index(_ + 1)] for _ in range(length)]
         self.perfect_detail.score_bonus_skill = [self.perfect_detail.score_bonus_skill[numbers.index(_ + 1)]
                                                  for _ in range(length)]
         self.perfect_detail.score_great_bonus_skill = [self.perfect_detail.score_great_bonus_skill[numbers.index(_ + 1)]
@@ -162,8 +178,9 @@ class ChartViewer:
         self.perfect_detail.note_score_list = [int(self.perfect_detail.note_score_list[numbers.index(_ + 1)])
                                                  for _ in range(length)]
         total_score = 0
-        self.perfect_detail.cumulative_score_list = [total_score := total_score + score
-                                                     for score in self.perfect_detail.note_score_list]
+        cumulative_score_list = [total_score := total_score + self.perfect_detail.note_score_list[idx - 1]
+                                                     for idx in numbers]
+        self.perfect_detail.cumulative_score_list = [cumulative_score_list[numbers.index(_ + 1)] for _ in range(len(numbers))]
         for note in self.perfect_detail.score_bonus_skill:
             note.sort(key = lambda _: _[0])
             for skill in note:
@@ -259,6 +276,38 @@ class ChartViewer:
         if self.chart_mode in (1, 3) and note_type != "DAMAGE" and self.perfect_detail != None:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 1)
             idx = int(num) - 1
+            if self.chart_mode == 3:
+                self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 2)
+                self.info_widget.custom_note_offset_spinbox.valueChanged.disconnect()
+                miss_offset = 450
+                if note_type == "TAP":
+                    _ = BAD_TAP_RANGE[Difficulty(self.difficulty)] // 1000
+                    self.info_widget.custom_note_offset_spinbox.setRange(-_, _ + miss_offset)
+                elif note_type in ("LONG", "FLICK"):
+                    _ = BAD_NONTAP_RANGE // 1000
+                    self.info_widget.custom_note_offset_spinbox.setRange(-_, _ + miss_offset)
+                elif note_type == "SLIDE":
+                    if self.perfect_detail.checkpoint[idx]:
+                        self.info_widget.custom_note_offset_spinbox.setRange(0, 200 + miss_offset)
+                    else:
+                        self.info_widget.custom_note_offset_spinbox.setRange(-200, 200 + miss_offset)
+                if self.generator.selected_note in self.generator.note_offset_dict:
+                    offset = self.generator.note_offset_dict[self.generator.selected_note]
+                else:
+                    offset = 0
+                self.info_widget.custom_note_offset_spinbox.setValue(offset)
+                self.info_widget.custom_note_offset_spinbox.valueChanged.connect(lambda: self.change_note_offset())
+                
+                if self.generator.selected_note in self.custom_offset_cache:
+                    if offset == self.custom_offset_cache[self.generator.selected_note]:
+                        self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
+                    else:
+                        self.info_widget.custom_note_judgement_line.setText("-")
+                else:
+                    if offset == 0:
+                        self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
+                    else:
+                        self.info_widget.custom_note_judgement_line.setText("-") 
             self._show_detail_note_score_info(idx)
         else:
             self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
@@ -318,7 +367,7 @@ class ChartViewer:
                 item_boost = QTreeWidgetItem(item_skill)
                 item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
                                                             "{:+}%".format(round((boost[2] - 1000) / 10))))
-    
+          
     def show_detail_skill_info(self, skill_type, time):
         card_idx, idx = self.generator.selected_skill
         self.set_stacked_widget_index(self.info_widget.detail_widget, 2)
@@ -385,10 +434,15 @@ class ChartViewer:
                 self.info_widget.skill_detail_alt_slide_line.setText("{:+}% ({:+}%)".format(alt_bonus[3][0], alt_bonus[3][1]) if alt_bonus[3][0] != 0 else "+0%")
                 self.info_widget.skill_detail_alt_great_line.setText("{:+}% ({:+}%)".format(alt_bonus[4][0], alt_bonus[4][1]) if alt_bonus[4][0] != 0 else "+0%")
                 self.info_widget.skill_detail_alt_tap_update_index_line.setText("[{}] {}".format(alt_bonus[0][2] + 1, SKILL_BASE[alt_bonus[0][3]]["name"]) if alt_bonus[0][0] != 0 else "-")
+                self.info_widget.skill_detail_alt_tap_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_alt_long_update_index_line.setText("[{}] {}".format(alt_bonus[1][2] + 1, SKILL_BASE[alt_bonus[1][3]]["name"]) if alt_bonus[1][0] != 0 else "-")
+                self.info_widget.skill_detail_alt_long_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_alt_flick_update_index_line.setText("[{}] {}".format(alt_bonus[2][2] + 1, SKILL_BASE[alt_bonus[2][3]]["name"]) if alt_bonus[2][0] != 0 else "-")
+                self.info_widget.skill_detail_alt_flick_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_alt_slide_update_index_line.setText("[{}] {}".format(alt_bonus[3][2] + 1, SKILL_BASE[alt_bonus[3][3]]["name"]) if alt_bonus[3][0] != 0 else "-")
+                self.info_widget.skill_detail_alt_slide_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_alt_great_update_index_line.setText("[{}] {}".format(alt_bonus[4][2] + 1, SKILL_BASE[alt_bonus[4][3]]["name"]) if alt_bonus[4][0] != 0 else "-")
+                self.info_widget.skill_detail_alt_great_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_alt_tap_update_time_line.setText(str(alt_bonus[0][4]) if alt_bonus[0][0] != 0 else "-")
                 self.info_widget.skill_detail_alt_long_update_time_line.setText(str(alt_bonus[1][4]) if alt_bonus[1][0] != 0 else "-")
                 self.info_widget.skill_detail_alt_flick_update_time_line.setText(str(alt_bonus[2][4]) if alt_bonus[2][0] != 0 else "-")
@@ -407,11 +461,17 @@ class ChartViewer:
                 self.info_widget.skill_detail_ref_great_line.setText("{:+}%".format(ref_bonus[4][0]) if ref_bonus[4][0] != 0 else "+0%")
                 self.info_widget.skill_detail_ref_combo_line.setText("{:+}%".format(ref_bonus[5][0]) if ref_bonus[5][0] != 0 else "+0%")
                 self.info_widget.skill_detail_ref_tap_update_index_line.setText("[{}] {}".format(ref_bonus[0][1] + 1, SKILL_BASE[ref_bonus[0][2]]["name"]) if ref_bonus[0][0] != 0 else "-")
+                self.info_widget.skill_detail_ref_tap_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_ref_long_update_index_line.setText("[{}] {}".format(ref_bonus[1][1] + 1, SKILL_BASE[ref_bonus[1][2]]["name"]) if ref_bonus[1][0] != 0 else "-")
+                self.info_widget.skill_detail_ref_long_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_ref_flick_update_index_line.setText("[{}] {}".format(ref_bonus[2][1] + 1, SKILL_BASE[ref_bonus[2][2]]["name"]) if ref_bonus[2][0] != 0 else "-")
+                self.info_widget.skill_detail_ref_flick_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_ref_slide_update_index_line.setText("[{}] {}".format(ref_bonus[3][1] + 1, SKILL_BASE[ref_bonus[3][2]]["name"]) if ref_bonus[3][0] != 0 else "-")
+                self.info_widget.skill_detail_ref_slide_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_ref_great_update_index_line.setText("[{}] {}".format(ref_bonus[4][1] + 1, SKILL_BASE[ref_bonus[4][2]]["name"]) if ref_bonus[4][0] != 0 else "-")
+                self.info_widget.skill_detail_ref_great_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_ref_combo_update_index_line.setText("[{}] {}".format(ref_bonus[5][1] + 1, SKILL_BASE[ref_bonus[5][2]]["name"]) if ref_bonus[5][0] != 0 else "-")
+                self.info_widget.skill_detail_ref_combo_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_ref_tap_update_time_line.setText(str(ref_bonus[0][3]) if ref_bonus[0][0] != 0 else "-")
                 self.info_widget.skill_detail_ref_long_update_time_line.setText(str(ref_bonus[1][3]) if ref_bonus[1][0] != 0 else "-")
                 self.info_widget.skill_detail_ref_flick_update_time_line.setText(str(ref_bonus[2][3]) if ref_bonus[2][0] != 0 else "-")
@@ -469,6 +529,7 @@ class ChartViewer:
                 self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 7)
                 self.info_widget.skill_detail_mut_combo_line.setText("{:+}% ({:+}%)".format(mut_bonus[0], mut_bonus[1]) if mut_bonus[0] != 0 else "+0%")
                 self.info_widget.skill_detail_mut_combo_update_index_line.setText("[{}] {}".format(mut_bonus[2] + 1, SKILL_BASE[mut_bonus[3]]["name"]) if mut_bonus[0] != 0 else "-")
+                self.info_widget.skill_detail_mut_combo_update_index_line.setCursorPosition(0)
                 self.info_widget.skill_detail_mut_combo_update_time_line.setText(str(mut_bonus[4]) if mut_bonus[0] != 0 else "-")
             else:
                 self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
@@ -546,9 +607,34 @@ class ChartViewer:
             self.info_widget.custom_skill_active_line.setText("Not Activated")
         self.generator.draw_perfect_chart_skill_part(idx, num)
         self.generator.draw_selected_skill(idx, num)
+    
+    def change_note_offset(self):
+        value = self.info_widget.custom_note_offset_spinbox.value()
+        self.generator.note_offset_dict[self.generator.selected_note] = value
+        if value == 0:
+            del self.generator.note_offset_dict[self.generator.selected_note]
+            
+        if self.generator.selected_note in self.custom_offset_cache:
+            if value == self.custom_offset_cache[self.generator.selected_note]:
+                self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[self.generator.selected_note])[10:])
+            else:
+                self.info_widget.custom_note_judgement_line.setText("-")
+        else:
+            if value == 0:
+                self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[self.generator.selected_note])[10:])
+            else:
+                self.info_widget.custom_note_judgement_line.setText("-")
+        
+        self.info_widget.custom_abuse_button.setDisabled(True)
+    
+    def reset_note_offset(self):
+        self.info_widget.custom_note_offset_spinbox.setValue(0)
 
     def reset_all_custom_settings(self):
         self.generator.skill_inactive_list = [[] for _ in range(15)]
+        self.custom_offset_cache = dict()
+        self.generator.note_offset_dict = dict()
+        self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
         self.simulate_custom()
         self.generator.draw_perfect_chart()
         if self.custom_abuse == 1:
@@ -556,7 +642,8 @@ class ChartViewer:
         self.show_detail_nothing()
     
     def simulate_custom(self):
-        eventbus.eventbus.post(CustomSimulationEvent(self.cache_simulation, self.generator.skill_inactive_list))
+        self.custom_offset_cache = self.generator.note_offset_dict.copy()
+        eventbus.eventbus.post(CustomSimulationEvent(self.cache_simulation, self.generator.skill_inactive_list, self.generator.note_offset_dict))
     
     def toggle_custom_abuse(self):
         if self.custom_abuse == 0:
@@ -606,6 +693,7 @@ class ChartViewer:
         self._setup_custom()
         self.info_widget.custom_setting_layout.setContentsMargins(0, 6, 0, 0)
         self.info_widget.custom_skill_layout.setContentsMargins(0, 6, 0, 0)
+        self.info_widget.custom_note_layout.setContentsMargins(0, 6, 0, 0)
         
         self.info_widget.layout.addWidget(self.info_widget.custom_widget)
         self.info_widget.layout.addWidget(self.info_widget.detail_widget)
@@ -1502,9 +1590,33 @@ class ChartViewer:
         self.info_widget.custom_skill_layout.addWidget(self.info_widget.custom_skill_active_line)
         self.info_widget.custom_skill_layout.addWidget(self.info_widget.custom_skill_active_button)
         
+        self.info_widget.custom_note_widget = QWidget()
+        self.info_widget.custom_note_layout = QHBoxLayout(self.info_widget.custom_note_widget)
+        self.info_widget.custom_note_offset_label = QLabel("Offset")
+        self.info_widget.custom_note_offset_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_offset_spinbox = QSpinBox()
+        self.info_widget.custom_note_offset_spinbox.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_offset_spinbox.setSingleStep(10)
+        self.info_widget.custom_note_offset_spinbox.setRange(0, 0)
+        self.info_widget.custom_note_offset_spinbox.valueChanged.connect(lambda: self.change_note_offset())
+        self.info_widget.custom_note_judgement_label = QLabel("Judgement")
+        self.info_widget.custom_note_judgement_label.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_judgement_line = QLineEdit()
+        self.info_widget.custom_note_judgement_line.setReadOnly(True)
+        self.info_widget.custom_note_judgement_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.info_widget.custom_note_judgement_line.setAlignment(Qt.AlignCenter)
+        self.info_widget.custom_note_reset_button = QPushButton("Reset")
+        self.info_widget.custom_note_reset_button.clicked.connect(lambda: self.reset_note_offset())
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_offset_label)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_offset_spinbox)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_judgement_label)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_judgement_line)
+        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_reset_button)
+        
         self.info_widget.custom_detail_widget = QStackedWidget()
         self.info_widget.custom_detail_widget.addWidget(QWidget())
         self.info_widget.custom_detail_widget.addWidget(self.info_widget.custom_skill_widget)
+        self.info_widget.custom_detail_widget.addWidget(self.info_widget.custom_note_widget)
         
         self.info_widget.custom_setting_widget = QWidget()
         self.info_widget.custom_setting_layout = QVBoxLayout(self.info_widget.custom_setting_widget)
