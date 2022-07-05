@@ -424,6 +424,7 @@ class StateMachine:
         self.cache_sum_boosts_pointer = None
         self.cache_life_bonus = 0
         self.cache_support_bonus = 0
+        self.cache_combo_support_bonus = 0
         self.cache_score_bonus = 0
         self.cache_combo_bonus = 0
         self.cache_score_great_bonus = 0
@@ -872,12 +873,15 @@ class StateMachine:
         magics = self.cache_magics
         non_magics = self.cache_non_magics
         max_boosts, sum_boosts = self._evaluate_bonuses_phase_boost(magics, non_magics)
-        life_bonus, support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
-                                                                              sum_boosts)
+        life_bonus, support_bonus, combo_support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
+                                                                                                   sum_boosts)
         if support_bonus < 4:
             to_be_removed = list()
             for held_group, bug in self.being_held.items():
-                self.combo = 0
+                if combo_support_bonus < 3:
+                    self.combo = 0
+                else:
+                    self.combo += 1
                 if held_group < 0:
                     self._handle_long_break(held_group)
                     to_be_removed.append(held_group)
@@ -956,8 +960,8 @@ class StateMachine:
         non_magics = self.cache_non_magics
         max_boosts, sum_boosts = self._evaluate_bonuses_phase_boost(magics, non_magics)
 
-        life_bonus, support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
-                                                                              sum_boosts)
+        life_bonus, support_bonus, combo_support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
+                                                                                                   sum_boosts)
 
         covered = self._auto_covered(support_bonus=support_bonus,
                                      is_flick=NoteType.FLICK in self.special_note_types[note_idx])
@@ -1006,7 +1010,10 @@ class StateMachine:
                 self._handle_long_break(-finish_pos, is_long_start)
             if note_type is NoteType.SLIDE:
                 self._handle_slide_break(group_id)
-            self.combo = 0
+            if combo_support_bonus < 3:
+                self.combo = 0
+            else:
+                self.combo += 1
 
         self.combos[note_idx] = self.combo
         self.score_bonuses[note_idx] = score_bonus
@@ -1078,7 +1085,8 @@ class StateMachine:
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
-        score_bonus, score_great_bonus, combo_bonus, support_bonus = self.evaluate_bonuses(self.special_note_types[note_idx])
+        score_bonus, score_great_bonus, combo_bonus, support_bonus, combo_support_bonus \
+            = self.evaluate_bonuses(self.special_note_types[note_idx])
         if (self.fail_simulate and not self.perfect_only) or self.cc_great > 0 or self.custom:
             if self.custom_note_miss is not None and note_idx in self.custom_note_miss:
                 judgement = Judgement.MISS
@@ -1111,7 +1119,7 @@ class StateMachine:
         else:
             self.score_bonus_skills.append([])
             self.score_great_bonus_skills.append([])
-            if judgement.value - self._check_combo_support() >= 2:
+            if judgement.value - combo_support_bonus >= 2:
                 self.combo = 0
                 self.combo_bonus_skills.append([])
             else:
@@ -1154,7 +1162,7 @@ class StateMachine:
         self.combos.append(self.combo)
 
         # TODO: Sometimes abuse will heal while normal note doesn't
-        score_bonus, score_great_bonus, combo_bonus, _ = self.evaluate_bonuses(special_note_types, skip_healing=is_abuse,
+        score_bonus, score_great_bonus, combo_bonus, _, _ = self.evaluate_bonuses(special_note_types, skip_healing=is_abuse,
                                                          fixed_life=cached_life)
         self.judgements.append(
             self.evaluate_judgement(note_delta, note_type, special_note_types,
@@ -1285,8 +1293,8 @@ class StateMachine:
         magics = self.cache_magics
         non_magics = self.cache_non_magics
         max_boosts, sum_boosts = self._evaluate_bonuses_phase_boost(magics, non_magics)
-        life_bonus, support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
-                                                                              sum_boosts)
+        life_bonus, support_bonus, combo_support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
+                                                                                                   sum_boosts)
         if not skip_healing:
             self.life += life_bonus
             self.life = min(self.max_life, self.life)  # Cap life
@@ -1297,7 +1305,7 @@ class StateMachine:
         self._helper_evaluate_alt_mutual_ref(special_note_types)
         self._helper_normalize_score_combo_bonuses()
         score_bonus, score_great_bonus, combo_bonus = self._evaluate_bonuses_phase_score_combo(magics, non_magics, max_boosts, sum_boosts)
-        return score_bonus, score_great_bonus, combo_bonus, support_bonus
+        return score_bonus, score_great_bonus, combo_bonus, support_bonus, combo_support_bonus
 
     def separate_magics_non_magics(self):
         magics = dict()
@@ -1325,25 +1333,6 @@ class StateMachine:
                     return True
         return False
     
-    def _check_combo_support(self):
-        combo_support = 0
-        for _, skills in self.skill_queue.items():
-            if isinstance(skills, Skill):
-                if skills.is_overload:
-                    combo_support = max(combo_support, 2)
-                elif skills.is_combo_support:
-                    combo_support = max(combo_support, 1)
-                else:
-                    combo_support = 0
-            for skill in skills:
-                if skill.is_overload:
-                    combo_support = max(combo_support, 2)
-                elif skill.is_combo_support:
-                    combo_support = max(combo_support, 1)
-                else:
-                    combo_support = 0
-        return combo_support
-
     def _auto_covered(self, support_bonus, is_flick):
         # MISS covered
         if support_bonus >= 4:
@@ -1538,9 +1527,10 @@ class StateMachine:
     def _evaluate_bonuses_phase_life_support(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
                                              max_boosts, sum_boosts):
         if not self.has_skill_change:
-            return self.cache_life_bonus, self.cache_support_bonus
+            return self.cache_life_bonus, self.cache_support_bonus, self.cache_combo_support_bonus
         temp_life_results = dict()
         temp_support_results = dict()
+        temp_combo_support_results = dict()
         for magic_idx, skills in magics.items():
             magic_idx = magic_idx - 1
             temp_life_results[magic_idx] = 0
@@ -1551,7 +1541,8 @@ class StateMachine:
                 if skill.boost:
                     continue
                 color = int(self.live.unit.get_card(magic_idx).color.value)
-                if not skill.is_guard and skill.v3 == 0 and skill.v4 == 0:
+                if not skill.is_guard and not skill.is_combo_support and not skill.is_overload \
+                    and skill.v3 == 0 and skill.v4 == 0:
                     continue
                 if skill.v3 > 0:
                     temp_life_results[magic_idx] = max(temp_life_results[magic_idx],
@@ -1561,6 +1552,11 @@ class StateMachine:
                                                           ceil(skill.v4 + boost_dict[color][4]))
                 if skill.is_guard:
                     temp_life_results[magic_idx] = max(temp_life_results[magic_idx], ceil(boost_dict[color][4]))
+                if skill.is_combo_support:
+                    temp_combo_support_results[magic_idx] = max(temp_combo_support_results[magic_idx], ceil(1 + boost_dict[color][4]))
+                if skill.is_overload:
+                    temp_combo_support_results[magic_idx] = max(temp_combo_support_results[magic_idx], 2)
+                    
         for non_magic_idx, skills in non_magics.items():
             assert len(skills) == 1 \
                    or self.reference_skills[non_magic_idx].is_encore \
@@ -1572,7 +1568,8 @@ class StateMachine:
                 color = int(self.live.unit.get_card(non_magic_idx).color.value)
                 unit_idx = non_magic_idx // 5
                 boost_dict = sum_boosts if self.live.unit.all_units[unit_idx].resonance else max_boosts
-                if not skill.is_guard and skill.v3 == 0 and skill.v4 == 0:
+                if not skill.is_guard and not skill.is_combo_support and not skill.is_overload \
+                    and skill.v3 == 0 and skill.v4 == 0:
                     continue
                 if skill.v3 > 0:
                     temp_life_results[non_magic_idx] = ceil(skill.v3 * boost_dict[color][3])
@@ -1580,9 +1577,14 @@ class StateMachine:
                     temp_support_results[non_magic_idx] = ceil(skill.v4 + boost_dict[color][4])
                 if skill.is_guard:
                     temp_life_results[non_magic_idx] = ceil(boost_dict[color][4])
+                if skill.is_combo_support:
+                    temp_combo_support_results[non_magic_idx] = ceil(1 + boost_dict[color][4])
+                if skill.is_overload:
+                    temp_combo_support_results[non_magic_idx] = 2
 
         unit_life_bonuses = list()
         unit_support_bonuses = list()
+        unit_combo_support_bonuses = list()
         for unit_idx in range(len(self.live.unit.all_units)):
             agg_func = sum if self.live.unit.all_units[unit_idx].resonance else max
 
@@ -1591,24 +1593,32 @@ class StateMachine:
             # Unify magic
             unified_magic_life = 0
             unified_magic_support = 0
+            unified_magic_combo_support = 0
             unified_non_magic_life = 0
             unified_non_magic_support = 0
+            unified_non_magic_combo_support = 0
             if len(unit_magics) >= 1:
                 for magic_idx in unit_magics:
                     if magic_idx in temp_life_results:
                         unified_magic_life = max((unified_magic_life, temp_life_results[magic_idx]))
                     if magic_idx in temp_support_results:
                         unified_magic_support = max((unified_magic_support, temp_support_results[magic_idx]))
+                    if magic_idx in temp_combo_support_results:
+                        unified_magic_combo_support = max((unified_magic_combo_support, temp_combo_support_results[magic_idx]))
             for non_magic in unit_non_magics:
                 if non_magic in temp_life_results:
                     unified_non_magic_life = agg_func((unified_non_magic_life, temp_life_results[non_magic]))
                 if non_magic in temp_support_results:
                     unified_non_magic_support = agg_func((unified_non_magic_support, temp_support_results[non_magic]))
+                if non_magic in temp_combo_support_results:
+                    unified_non_magic_combo_support = agg_func((unified_non_magic_combo_support, temp_combo_support_results[non_magic]))
             unit_life_bonuses.append(agg_func((unified_magic_life, unified_non_magic_life)))
             unit_support_bonuses.append(agg_func((unified_magic_support, unified_non_magic_support)))
+            unit_combo_support_bonuses.append(agg_func((unified_magic_combo_support, unified_non_magic_combo_support)))
         self.cache_life_bonus = max(unit_life_bonuses)
         self.cache_support_bonus = max(unit_support_bonuses)
-        return self.cache_life_bonus, self.cache_support_bonus
+        self.cache_combo_support_bonus = max(unit_combo_support_bonuses)
+        return self.cache_life_bonus, self.cache_support_bonus, self.cache_combo_support_bonus
 
     def _evaluate_bonuses_phase_score_combo(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
                                             max_boosts, sum_boosts):
