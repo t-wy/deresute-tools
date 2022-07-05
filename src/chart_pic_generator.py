@@ -362,7 +362,8 @@ class BaseChartPicGenerator(ABC):
             self.draw_sync_lines()
             self.draw_group_lines()
             self.draw_notes()
-        self.draw_offset()
+        if self.viewer.chart_mode == 3:
+            self.draw_offset()
 
     def hook_cards(self, all_cards):
         try:

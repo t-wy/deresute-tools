@@ -240,6 +240,10 @@ class ChartViewer:
                 self.set_stacked_widget_index(self.info_widget.custom_widget, 0)
                 self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
                 
+                self.generator.skill_inactive_list = [[] for _ in range(15)]
+                self.custom_offset_cache = dict()
+                self.generator.note_offset_dict = dict()
+                
             self.show_detail_nothing()
             self.generator.pixmap_cache = [None] * self.generator.n_label
 
