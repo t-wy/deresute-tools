@@ -39,7 +39,7 @@ SKILL_BASE = {
     39: {"id": 39, "name": "Alternate", "keywords": ["alt"], "color": (127, 127, 127)},
     40: {"id": 40, "name": "Refrain", "keywords": ["ref"], "color": (218, 126, 3)},
     41: {"id": 41, "name": "Magic", "keywords": ["mag"], "color": (255, 200, 255)},
-    42: {"id": 42, "name": "Mutual", "color": (191, 191, 191)},
+    42: {"id": 42, "name": "Mutual", "keywords": ["mut"],"color": (191, 191, 191)},
 }
 
 SKILL_SAMPLE = {
