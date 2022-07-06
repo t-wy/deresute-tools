@@ -1047,6 +1047,10 @@ class StateMachine:
             else:
                 left_windows[note_idx] = min(left_windows[note_idx], delta)
                 right_windows[note_idx] = max(right_windows[note_idx], delta)
+        
+        for _, (l, r) in enumerate(zip(left_windows, right_windows)):
+            if l < 0 < r: # Revert score if not abuse
+                max_score[_] = self.cache_perfect_score_array[_]
 
         score_delta = max_score - self.cache_perfect_score_array
         abuse_data = AbuseData(score_delta, left_windows, right_windows, judgements)
