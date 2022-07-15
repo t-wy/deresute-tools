@@ -131,6 +131,7 @@ class Simulator:
         is_long = self.notes_data['note_type'] == NoteType.LONG
         is_slide = self.notes_data['note_type'] == NoteType.SLIDE
         is_slide = np.logical_or(is_slide, np.logical_and(self.notes_data['type'] == 3, is_flick))
+        is_slide = np.logical_or(is_slide, np.logical_and(np.logical_or(self.notes_data['type'] == 6, self.notes_data['type'] == 7), self.notes_data['groupId'] != 0))
         self.notes_data['is_flick'] = is_flick
         self.notes_data['is_long'] = is_long
         self.notes_data['is_slide'] = is_slide
