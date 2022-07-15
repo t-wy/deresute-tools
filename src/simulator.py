@@ -484,7 +484,7 @@ class Simulator:
                               special_option=special_option, special_value=special_value, mirror=mirror)
 
         grand = self.live.is_grand
-        note_scores, perfects, max_combo, lowest_life, lowest_life_time, all_100 \
+        note_scores, perfects, misses, max_combo, lowest_life, lowest_life_time, all_100 \
             = self._simulate_internal(times=1, grand=grand, doublelife=doublelife, auto=True, time_offset=time_offset)
 
         auto_score = int(note_scores.sum())
@@ -494,7 +494,7 @@ class Simulator:
         logger.debug("Support: {}".format(int(self.live.get_support())))
         logger.debug("Support team: {}".format(self.live.print_support_team()))
         logger.debug("Auto score: {}".format(auto_score))
-        logger.debug("Perfects/Misses: {}/{}".format(perfects, len(self.notes_data) - perfects))
+        logger.debug("Perfects/Misses: {}/{}".format(perfects, misses))
         logger.debug("Max Combo: {}".format(max_combo))
         logger.debug("Lowest Life: {}".format(lowest_life))
         logger.debug("Lowest Life Time: {}".format(lowest_life_time))
@@ -505,7 +505,7 @@ class Simulator:
             total_life=self.live.get_life(),
             score=auto_score,
             perfects=perfects,
-            misses=len(self.notes_data) - perfects,
+            misses=misses,
             max_combo=max_combo,
             lowest_life=lowest_life,
             lowest_life_time=(lowest_life_time // 1000) / 1000,

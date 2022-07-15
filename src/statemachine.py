@@ -864,9 +864,11 @@ class StateMachine:
             * np.array(self.weights)
             * final_bonus
         )
+        print(list(enumerate(self.judgements)))
 
-        return self.note_scores, len(list(filter(lambda x: x is Judgement.PERFECT, self.judgements))), max(
-            self.combos), self.lowest_life, self.lowest_life_time, self.full_roll_chance == 1
+        return self.note_scores, len(list(filter(lambda x: x is Judgement.PERFECT, self.judgements))), \
+            len(list(filter(lambda x: x is Judgement.MISS, self.judgements))), max(self.combos), \
+            self.lowest_life, self.lowest_life_time, self.full_roll_chance == 1
 
     def break_hold(self, skill_time):
         self.separate_magics_non_magics()
@@ -889,10 +891,9 @@ class StateMachine:
                     self._handle_slide_break(held_group)
                     if held_group in self.being_held and not self.being_held[held_group]:
                         to_be_removed.append(held_group)
+            print(to_be_removed)
             for _ in to_be_removed:
                 self.being_held.pop(_)
-                if not self._check_guard():
-                    self.life -= NONFLICK_DRAIN[self.difficulty]
         if self.life < self.lowest_life:
             self.lowest_life = self.life
             self.lowest_life_time = skill_time
@@ -905,10 +906,20 @@ class StateMachine:
                 check_note_type = self.note_type_stack[check_note_idx]
                 if check_group_id == group_id:
                     if check_note_type is NoteType.SLIDE or last_was_slide:
-                        self.judgements[check_note_idx] = Judgement.MISS
+                        self.judgements[check_note_idx] = -1 # Skipped
                         remove_indices.append(idx)
                     if last_was_slide and check_note_type is not NoteType.SLIDE:
                         last_was_slide = False
+            # Make sure there is a MISS between PERFECT and skipped notes
+            _ = self.notes_data["groupId"].map(int).to_list()
+            group_notes = [i for i in range(len(_)) if _[i] == group_id]
+            judgements = [self.judgements[i] for i in group_notes]
+            if -1 in judgements:
+                idx = judgements.index(-1)
+                if judgements[idx - 1] != Judgement.MISS:
+                    self.judgements[group_notes[idx]] = Judgement.MISS
+                    if not self._check_guard():
+                        self.life -= NONFLICK_DRAIN[self.difficulty]
             for idx in reversed(remove_indices):
                 self.note_idx_stack.pop(idx)
                 self.note_time_stack.pop(idx)
@@ -927,7 +938,12 @@ class StateMachine:
             self.note_time_stack.pop(idx)
             self.delayed.pop(idx)
             self.group_ids.pop(idx)
-            self.judgements[check_note_idx] = Judgement.MISS
+            if is_long_start:
+                self.judgements[check_note_idx] = -1
+            else:
+                self.judgements[check_note_idx] = Judgement.MISS
+                if not self._check_guard():
+                    self.life -= NONFLICK_DRAIN[self.difficulty]
 
     def handle_note_auto(self):
         note_idx = self.note_idx_stack.pop(0)
