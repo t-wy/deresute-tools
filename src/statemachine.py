@@ -864,7 +864,6 @@ class StateMachine:
             * np.array(self.weights)
             * final_bonus
         )
-        print(list(enumerate(self.judgements)))
 
         return self.note_scores, len(list(filter(lambda x: x is Judgement.PERFECT, self.judgements))), \
             len(list(filter(lambda x: x is Judgement.MISS, self.judgements))), max(self.combos), \
@@ -891,7 +890,6 @@ class StateMachine:
                     self._handle_slide_break(held_group)
                     if held_group in self.being_held and not self.being_held[held_group]:
                         to_be_removed.append(held_group)
-            print(to_be_removed)
             for _ in to_be_removed:
                 self.being_held.pop(_)
         if self.life < self.lowest_life:
