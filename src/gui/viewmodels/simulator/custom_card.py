@@ -12,6 +12,7 @@ VISUAL_KEY = "Visual"
 LIFE_KEY = "Life"
 SKILL_DURATION_KEY = "Skill Duration"
 SKILL_INTERVAL_KEY = "Skill Interval"
+SKILL_LEVEL_KEY = "Skill Level"
 VOCAL_POTENTIAL_KEY = "Vocal Potential"
 DANCE_POTENTIAL_KEY = "Dance Potential"
 VISUAL_POTENTIAL_KEY = "Visual Potential"
@@ -21,7 +22,7 @@ STAR_RANK_KEY = "Star Rank"
 
 HEADERS = [COLOR_KEY,
            VOCAL_KEY, DANCE_KEY, VISUAL_KEY, LIFE_KEY,
-           SKILL_DURATION_KEY, SKILL_INTERVAL_KEY,
+           SKILL_DURATION_KEY, SKILL_INTERVAL_KEY, SKILL_LEVEL_KEY,
            VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY, LIFE_POTENTIAL_KEY, SKILL_POTENTIAL_KEY,
            STAR_RANK_KEY]
 
@@ -51,8 +52,8 @@ class CustomCardView:
             class_type = int
             if header == COLOR_KEY:
                 validator = lambda x: 0 <= x <= 2
-            elif header in {VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY, LIFE_POTENTIAL_KEY,
-                            SKILL_POTENTIAL_KEY}:
+            elif header in {SKILL_LEVEL_KEY, VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY,
+                            LIFE_POTENTIAL_KEY, SKILL_POTENTIAL_KEY}:
                 validator = lambda x: 0 <= x <= 10
             elif header == STAR_RANK_KEY:
                 validator = lambda x: 1 <= x <= 20
@@ -95,6 +96,7 @@ class CustomCardModel:
                 self.card.base_li,
                 self.card.skill.duration,
                 self.card.skill.interval,
+                self.card.skill.skill_level,
                 self.card.vo_pots,
                 self.card.da_pots,
                 self.card.vi_pots,
@@ -124,15 +126,17 @@ class CustomCardModel:
         elif r_idx == 6:
             self.card.skill.interval = float(v)
         elif r_idx == 7:
-            self.card.vo_pots = int(v)
+            self.card.skill.skill_level = int(v)
         elif r_idx == 8:
-            self.card.da_pots = int(v)
+            self.card.vo_pots = int(v)
         elif r_idx == 9:
-            self.card.vi_pots = int(v)
+            self.card.da_pots = int(v)
         elif r_idx == 10:
-            self.card.li_pots = int(v)
+            self.card.vi_pots = int(v)
         elif r_idx == 11:
-            self.card.sk_pots = int(v)
+            self.card.li_pots = int(v)
         elif r_idx == 12:
+            self.card.sk_pots = int(v)
+        elif r_idx == 13:
             self.card.star = int(v)
         self.card.refresh_values()

@@ -388,7 +388,7 @@ class BaseChartPicGenerator(ABC):
         for card_idx, card in enumerate(self.unit.all_cards()):
             skill = card.sk
             interval = skill.interval
-            duration = skill.duration
+            duration = skill.duration / 1.5 * (1 + (skill.skill_level - 1) / 18)
             skill_times = int((self.last_sec_float - 3) // interval)
             skill_time = 1
             label = 0

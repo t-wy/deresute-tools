@@ -665,7 +665,7 @@ class StateMachine:
                                 inact += 1
                                 continue
                     act = act_idx * skill.interval
-                    deact = act_idx * skill.interval + skill.duration
+                    deact = act_idx * skill.interval + skill.duration / 1.5 * (1 + (skill.skill_level - 1) / 18)
                     skill_times.append(int(act * 1E6))
                     skill_times.append(int(deact * 1E6))
                     skill_indices.append(unit_idx * 5 + card_idx + 1)
