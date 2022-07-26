@@ -15,8 +15,8 @@ from static.color import Color
 from static.song_difficulty import Difficulty
 from utils.misc import is_debug_mode
 
-KEYWORD_KEYS_STR_ONLY = ["short", "chara", "rarity", "color", "skill", "leader", "time_prob_key", "fes", "noir",
-                         "blanc", "carnival", "main_attribute"]
+KEYWORD_KEYS_STR_ONLY = ["short", "chara", "rarity", "color", "skill", "leader", "time_prob_key", "normal", "limited",
+                         "fes", "noir", "blanc", "carnival", "main_attribute", "main_attribute_2"]
 KEYWORD_KEYS = KEYWORD_KEYS_STR_ONLY + ["owned", "idolized"]
 
 
@@ -42,47 +42,79 @@ class IndexManager:
                     LOWER(cc.full_name) as chara,
                     LOWER(rt.text) as rarity,
                     LOWER(ct.text) as color,
-                    CASE 
+                    CASE
                         WHEN cdc.rarity % 2 == 0 THEN 1
                         ELSE 0
                     END idolized,
-                    CASE 
-                        WHEN pk.id IS NOT NULL THEN sd.condition || pk.short ELSE '' 
-                    END time_prob_key, 
+                    CASE
+                        WHEN pk.id IS NOT NULL THEN sd.condition || pk.short ELSE ''
+                    END time_prob_key,
                     IFNULL(LOWER(sk.keywords), "") as skill,
                     IFNULL(LOWER(lk.keywords), "") as leader,
                     CASE
+                        WHEN cdc.id IN (100173,100174,200147,200148,300125,300126)
+                        THEN "limited"
+                        WHEN sk.id IN (4)
+                        AND cdc.leader_skill_id IN (47,48,49,50,52,53,54,55,57,58,59,60)
+                        AND cdc.rarity > 6
+                        THEN "limited"
+                        WHEN sk.id IN (14,16,17,21,22,23,25,32,33,34,39,42)
+                        AND cdc.rarity > 6
+                        THEN "limited"
+                        ELSE ""
+                    END limited,
+                    CASE
                         WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117,118)
-                        AND cdc.rarity > 6 
-                        THEN "fes" 
+                        AND cdc.rarity > 6
+                        THEN "fes"
                         ELSE ""
                     END fes,
                     CASE
                         WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117)
-                        AND cdc.rarity > 6 
+                        AND cdc.rarity > 6
                         THEN "blanc"
                         ELSE ""
                     END blanc,
                     CASE
                         WHEN cdc.leader_skill_id IN (118)
-                        AND cdc.rarity > 6 
+                        AND cdc.rarity > 6
                         THEN "noir"
                         ELSE ""
                     END noir,
+                    CASE
+                        WHEN cdc.id NOT IN (100173,100174,200147,200148,300125,300126)
+                        AND sk.id NOT IN (4,14,16,17,21,22,23,25,32,33,34,39,42)
+                        AND cdc.leader_skill_id NOT IN (70,71,72,73,81,82,83,84,104,105,106,113,117,118)
+                        AND cdc.rarity > 6
+                        THEN "normal"
+                        ELSE ""
+                    END normal,
                     CASE
                         WHEN cdc.chara_id IN ({})
                         THEN "carnival"
                         ELSE ""
                     END carnival,
                     CASE
-                        WHEN 1.0 * cdc.vocal_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39 
-                        THEN "vocal" 
-                        WHEN 1.0 * cdc.visual_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39 
+                        WHEN 1.0 * cdc.vocal_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        THEN "vocal"
+                        WHEN 1.0 * cdc.visual_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
                         THEN "visual"
-                        WHEN 1.0 * cdc.dance_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39 
+                        WHEN 1.0 * cdc.dance_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
                         THEN "dance"
                         ELSE "balance"
-                    END main_attribute
+                    END main_attribute,
+                    CASE
+                        WHEN 1.0 * cdc.dance_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        AND cdc.leader_skill_id IN (119, 120, 121, 122, 123, 124, 125, 126, 127)
+                        THEN "dance"
+                        WHEN 1.0 * cdc.visual_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        AND cdc.leader_skill_id IN (119, 120, 121, 122, 123, 124, 125, 126, 127)
+                        THEN "visual"
+                        WHEN 1.0 * cdc.vocal_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        AND cdc.leader_skill_id IN (119, 120, 121, 122, 123, 124, 125, 126, 127)
+                        THEN "vocal"
+                        ELSE ""
+                    END main_attribute_2
             FROM card_data_cache as cdc
             INNER JOIN card_name_cache cnc on cdc.id = cnc.card_id
             INNER JOIN owned_card oc on oc.card_id = cnc.card_id
@@ -130,10 +162,13 @@ class IndexManager:
                         skill=TEXT,
                         carnival=TEXT,
                         leader=TEXT,
+                        normal=TEXT,
+                        limited=TEXT,
                         fes=TEXT,
                         noir=TEXT,
                         blanc=TEXT,
                         main_attribute=TEXT,
+                        main_attribute_2=TEXT,
                         time_prob_key=TEXT,
                         content=TEXT(analyzer=SimpleAnalyzer()))
         ix = create_in(INDEX_PATH, schema)
