@@ -47,11 +47,11 @@ def import_from_gameid(game_id, option):
             for card in _:
                 card_dict[card] += 1
         if option in (2, 3, 4, 5):
-            cards_sr = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT id FROM card_data_cache WHERE rarity = 5 OR rarity = 6")]
+            cards_sr = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT id FROM card_data_cache WHERE rarity = 5 OR rarity = 6") if _[0] < 500000]
             for card in cards_sr:
                 card_dict[card] += 1
         if option in (4, 5):
-            cards_rn = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT id FROM card_data_cache WHERE rarity < 5")]
+            cards_rn = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT id FROM card_data_cache WHERE rarity < 5") if _[0] < 500000]
             for card in cards_rn:
                 card_dict[card] += 1
         for card_id, number in card_dict.items():
