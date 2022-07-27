@@ -20,8 +20,13 @@ custom_keys = ["id", "rarity", "image_id", "vocal", "dance", "visual", "life",
                "leader_skill_id", "skill_type", "condition", "available_time_type", "probability_type",
                "value", "value_2", "value_3"]
 
-def import_from_gameid(game_id):
+def import_from_gameid(game_id, option):
     try:
+        owned_cards = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT card_id FROM owned_card WHERE number > 0")]
+        db.cachedb.execute("UPDATE owned_card SET number=0")
+        db.cachedb.commit()
+        if option == 6:
+            return owned_cards
         assert len(str(game_id)) == 9
         z = int(game_id)
         assert 0 <= z <= 999999999
@@ -33,13 +38,27 @@ def import_from_gameid(game_id):
         card_dict = defaultdict(int)
         for card in cards:
             card_dict[card] += 1
+        if option in (1, 3, 5):
+            _ = list()
+            for card in card_dict:
+                if card_dict[card] > 1:
+                    card_dict[card] -= 1
+                    _.append(card-1)
+            for card in _:
+                card_dict[card] += 1
+        if option in (2, 3, 4, 5):
+            cards_sr = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT id FROM card_data_cache WHERE rarity = 5 OR rarity = 6")]
+            for card in cards_sr:
+                card_dict[card] += 1
+        if option in (4, 5):
+            cards_rn = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT id FROM card_data_cache WHERE rarity < 5")]
+            for card in cards_rn:
+                card_dict[card] += 1
         for card_id, number in card_dict.items():
-            z = list(zip(*db.cachedb.execute_and_fetchall("SELECT number FROM owned_card WHERE card_id = ? OR card_id = ?", [card_id, card_id - 1])))[0]
-            if z[0] + z[1] < number:
-                db.cachedb.execute("""
-                    INSERT OR REPLACE INTO owned_card (card_id, number)
-                    VALUES (?,?)
-                """, [card_id, number - z[0]])
+            db.cachedb.execute("""
+                INSERT OR REPLACE INTO owned_card (card_id, number)
+                VALUES (?,?)
+            """, [card_id, number])
         db.cachedb.commit()
         logger.info("Imported {} cards successfully".format(len(card_dict)))
         return list(card_dict.keys())
