@@ -193,6 +193,8 @@ class ChartViewer:
                     skill[3].sort(key = lambda _: _[0])
         self.perfect_detail.score_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
                                                 for note in self.perfect_detail.score_bonus_skill]
+        self.perfect_detail.score_great_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
+                                                      for note in self.perfect_detail.score_great_bonus_skill]
         self.perfect_detail.combo_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
                                                 for note in self.perfect_detail.combo_bonus_skill]
     
@@ -319,7 +321,10 @@ class ChartViewer:
     def _show_detail_note_score_info(self, idx):
         self.info_widget.note_life_line.setText(str(self.perfect_detail.life[idx]))
         self.info_widget.note_combo_line.setText("{} ({})".format(self.perfect_detail.combo[idx], self.perfect_detail.weight[idx]))
-        self.info_widget.note_score_bonus_line.setText(str(self.perfect_detail.score_bonus_list[idx]))
+        self.info_widget.note_score_bonus_line.setText(
+            str(self.perfect_detail.score_bonus_list[idx]) if self.perfect_detail.judgement[idx] == Judgement.PERFECT \
+                else str(self.perfect_detail.score_great_bonus_list[idx])
+            )
         self.info_widget.note_combo_bonus_line.setText(str(self.perfect_detail.combo_bonus_list[idx]))
         self.info_widget.note_note_score_line.setText(str(self.perfect_detail.note_score_list[idx]))
         self.info_widget.note_current_score_line.setText(str(self.perfect_detail.cumulative_score_list[idx]))
@@ -327,10 +332,12 @@ class ChartViewer:
         self.info_widget.note_score_skill.clear()
         if self.perfect_detail.judgement[idx] == Judgement.PERFECT:
             for skill in self.perfect_detail.score_bonus_skill[idx]:
+                if skill[2] == 0:
+                    continue
                 item_skill = QTreeWidgetItem(self.info_widget.note_score_skill)
                 item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
                                                          "{:+}%".format(skill[2])))
-                if skill[2] <= 0:
+                if skill[2] < 0:
                     continue
                 item_skill_child = QTreeWidgetItem(item_skill)
                 total_boost = (sum([_[2]  for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
@@ -342,10 +349,12 @@ class ChartViewer:
                                                                 "{:+}%".format(round((boost[2] - 1000) / 10))))
         elif self.perfect_detail.judgement[idx] == Judgement.GREAT:
             for skill in self.perfect_detail.score_great_bonus_skill[idx]:
+                if skill[2] == 0:
+                    continue
                 item_skill = QTreeWidgetItem(self.info_widget.note_score_skill)
                 item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
                                                          "{:+}%".format(skill[2])))
-                if skill[2] <= 0:
+                if skill[2] < 0:
                     continue
                 item_skill_child = QTreeWidgetItem(item_skill)
                 total_boost = (sum([_[2]  for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
@@ -358,10 +367,12 @@ class ChartViewer:
         
         self.info_widget.note_combo_skill.clear()
         for skill in self.perfect_detail.combo_bonus_skill[idx]:
+            if skill[2] == 0:
+                continue
             item_skill = QTreeWidgetItem(self.info_widget.note_combo_skill)
             item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
                                                      "{:+}%".format(skill[2])))
-            if skill[2] <= 0:
+            if skill[2] < 0:
                 continue
             item_skill_child = QTreeWidgetItem(item_skill)
             total_boost = (sum([_[2] for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
