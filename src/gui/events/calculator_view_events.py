@@ -111,9 +111,10 @@ class CacheSimulationEvent:
         
 
 class CustomSimulationEvent:
-    def __init__(self, simulation_event, skill_inactive_list):
+    def __init__(self, simulation_event, skill_inactive_list, note_offset_dict):
         self.simulation_event = simulation_event
         self.skill_inactive_list = skill_inactive_list
+        self.note_offset_dict = note_offset_dict
 
 
 class CustomSimulationResultEvent:

@@ -433,7 +433,7 @@ class CustomView:
         self.save_layout.addWidget(self.save_button)
         self.save_layout.addWidget(self.create_button)
         
-    def update_image(self): #TODO
+    def update_image(self):
         image_id = self.card_image_id_edit.text()
         if image_id == "" or int(image_id) < 100000:
             return
@@ -688,7 +688,10 @@ class CustomView:
                                                     skill_type,
                                                     condition,
                                                     available_time_type,
-                                                    probability_type
+                                                    probability_type,
+                                                    value,
+                                                    value_2,
+                                                    value_3
                                                 FROM custom_card
                                                 WHERE id = ?
                                                 """, [custom_id])
@@ -717,7 +720,7 @@ class CustomView:
             self.update_leader()
             self.leader_type.setCurrentIndex(_[1])
             
-            _ = self._find_index_from_id(self.skill_list, data[8])
+            _ = self._find_index_from_id(self.skill_list, data[8], data[12], data[13], data[14])
             self.skill_grade.setCurrentIndex(_[0])
             self.update_skill()
             self.skill_kind.setCurrentIndex(_[1])
@@ -762,13 +765,36 @@ class CustomView:
         except OSError:
             pass
         
-    def _find_index_from_id(self, skill_list, skill_id):
-        if skill_list == self.leader_list and skill_id > 5000:
-            skill_id -= 5000
-        for r_idx, l in enumerate(skill_list):
-            for s_idx, s in enumerate(l):
-                if s == skill_id:
-                    return (r_idx, s_idx)
+    def _find_index_from_id(self, skill_list, skill_id, value=0, value_2=0, value_3=0):
+        if skill_list == self.leader_list:
+            if skill_id > 5000:
+                skill_id -= 5000
+            for r_idx, l in enumerate(skill_list):
+                for s_idx, s in enumerate(l):
+                    if s == skill_id:
+                        return (r_idx, s_idx)
+        else:
+            result = []
+            for r_idx, l in enumerate(skill_list):
+                for s_idx, s in enumerate(l):
+                    if s == skill_id:
+                        result.append((r_idx, s_idx))
+                        break
+            if len(result) == 1:
+                return result[0]
+            elif skill_id in (9, 12, 16, 17): 
+                # These skills have same value and different interval or duration among rarity
+                # As there are feature of custom skill time setting, there are no way to determine skill rarity
+                # So in this case, use higher rarity as default
+                return result[0]
+            else:
+                for i in result:
+                    skill = [_ for _ in self.skill_value_list[i[0]] if _[0] == skill_id]
+                    if len(skill) == 0:
+                        continue
+                    if skill[0][-3:] == (value, value_2, value_3):
+                        return i
+            return result[0] # Should not reach here
     
     def _is_setting_valid(self):
         image_id = self.card_image_id_edit.text()

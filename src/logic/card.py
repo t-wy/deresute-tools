@@ -163,6 +163,7 @@ class Card:
         clone_card.base_li = self.base_li
         clone_card.skill.duration = self.skill.duration
         clone_card.skill.interval = self.skill.interval
+        clone_card.skill.skill_level = self.skill.skill_level
         clone_card.vo_pots = self.vo_pots
         clone_card.da_pots = self.da_pots
         clone_card.vi_pots = self.vi_pots

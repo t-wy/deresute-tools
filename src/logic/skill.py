@@ -19,7 +19,7 @@ class Skill:
     def __init__(self, color=Color.CUTE, duration=0, probability=0, interval=999,
                  values=None, v0=0, v1=0, v2=0, v3=0, v4=0, offset=0,
                  boost=False, color_target=False, act=None, bonus_skill=2000, skill_type=None,
-                 min_requirements=None, max_requirements=None, life_requirement=0):
+                 min_requirements=None, max_requirements=None, life_requirement=0, skill_level=10):
         if values is None and v0 == v1 == v2 == v3 == v4 == 0:
             raise ValueError("Invalid skill values", values, v0, v1, v2, v3, v4)
 
@@ -49,6 +49,7 @@ class Skill:
         self.min_requirements = min_requirements
         self.max_requirements = max_requirements
         self.life_requirement = life_requirement
+        self.skill_level = skill_level
         self.targets = self._generate_targets()
         self.normalized = False
         self.original_unit_idx = None
@@ -185,8 +186,10 @@ class Skill:
     @classmethod
     def _handle_skill_type(cls, skill_type, skill_values):
         assert len(skill_values) == 3
-        values = [0, 0, 0, 0, 0] #Score(Perfect), Score(Great), Combo, Heal, Support
-        if skill_type in SUPPORT_TYPES:
+        values = [0, 0, 0, 0, 0] # Score(Perfect), Score(Great), Combo, Heal, Support
+        if skill_type in (9, 12): # Damage guard, combo support
+            pass
+        elif skill_type in SUPPORT_TYPES:
             values[4] = skill_type - 4
         elif skill_type in ACT_TYPES: # Act : Score(Other notes), Score(Special notes), Combo, Heal, Support
             values[0] = skill_values[0]

@@ -416,7 +416,14 @@ class Live(BaseLive):
         if self.probabilities is None:
             card_probabilities = np.zeros((5, 3))
             for card_idx, card in enumerate(self.unit.all_cards()):
-                card_probabilities[card_idx, card.color.value] = card.skill.probability
+                if card.sk_pots == 0:
+                    pot_bonus = 0
+                else:
+                    pot_bonus = db.masterdb.execute_and_fetchone("""
+                            SELECT value_rare_{} FROM potential_value_sk WHERE potential_level = ?
+                        """.format((card.ra - 1) // 2 * 2 + 1), [card.sk_pots])[0]
+                card_probabilities[card_idx, card.color.value] = \
+                    (card.skill.probability - pot_bonus) / 1.5 * (1 + (card.skill.skill_level - 1) / 18) + pot_bonus
             self.get_bonuses()
             probability_bonus = self.bonuses[idx, 4, :]
             card_probabilities = (card_probabilities * (1 + probability_bonus / 100) / 10000).max(axis=1)

@@ -15,7 +15,7 @@ from static.judgement import Judgement
 from static.note_type import NoteType
 from static.skill import get_sparkle_bonus
 from static.song_difficulty import PERFECT_TAP_RANGE, GREAT_TAP_RANGE, NICE_TAP_RANGE, BAD_TAP_RANGE, \
-    Difficulty, FLICK_DRAIN, NONFLICK_DRAIN
+    Difficulty, FLICK_DRAIN, NONFLICK_DRAIN, FLICK_BAD_DRAIN, NONFLICK_BAD_DRAIN
 import customlogger as logger
 
 
@@ -133,8 +133,8 @@ class UnitCacheBonus:
             self.longg = max(self.longg, skill.v0)
             self.slide = max(self.slide, skill.v0)
             if skill.is_scorePG or skill.is_overload:
-                self.great_update = (skill.card_idx, skill.skill_type, skill_time) if self.tap < skill.v0 else self.great_update
-                self.great = max(self.great, skill.v0)
+                self.great_update = (skill.card_idx, skill.skill_type, skill_time) if self.great < skill.v1 else self.great_update
+                self.great = max(self.great, skill.v1)
         if skill.v2 is not None and skill.v2 > 100:
             self.combo_update = (skill.card_idx, skill.skill_type, skill_time) if self.combo < skill.v2 else self.combo_update
             self.combo = max(self.combo, skill.v2)
@@ -424,6 +424,7 @@ class StateMachine:
         self.cache_sum_boosts_pointer = None
         self.cache_life_bonus = 0
         self.cache_support_bonus = 0
+        self.cache_combo_support_bonus = 0
         self.cache_score_bonus = 0
         self.cache_combo_bonus = 0
         self.cache_score_great_bonus = 0
@@ -474,15 +475,12 @@ class StateMachine:
             self.lowest_life_time = -1
 
         # Initializing note data
-        if (abuse or perfect_play) and self.custom_note_offset is None:
+        if perfect_play and self.custom_note_offset is None:
             self.note_time_stack = self.notes_data.sec.map(lambda x: int(x * 1E6)).to_list()
             self.note_time_deltas = [0] * len(self.note_time_stack)
             self.note_type_stack = self._note_type_stack.copy()
             self.note_idx_stack = self._note_idx_stack.copy()
             self.special_note_types = self._special_note_types.copy()
-            if abuse:
-                self.initialize_activation_arrays()
-                self._helper_fill_abuse_dummies()
         else:
             if self.custom:
                 temp = self.notes_data.sec.copy()
@@ -503,6 +501,9 @@ class StateMachine:
             self.note_type_stack = [self._note_type_stack[_] for _ in sorted_indices]
             self.note_idx_stack = [self._note_idx_stack[_] for _ in sorted_indices]
             self.special_note_types = [self._special_note_types[_] for _ in sorted_indices]
+        if abuse:
+            self.initialize_activation_arrays()
+            self._helper_fill_abuse_dummies()
 
         self.cc_great_num = 0
 
@@ -600,6 +601,7 @@ class StateMachine:
         for unit_idx, unit in enumerate(self.live.unit.all_units):
             for _ in range(5): self.skill_inactive_list.append([])
             iterating_order = list()
+            _cache_guard = list()
             _cache_alt = list()
             _cache_mut = list()
             _cache_ref = list()
@@ -607,6 +609,9 @@ class StateMachine:
             for card_idx, card in enumerate(unit.all_cards()):
                 if card.skill.is_magic:
                     _cache_magic.append((card_idx, card))
+                    continue
+                if card.skill.is_guard:
+                    _cache_guard.append((card_idx, card))
                     continue
                 if card.skill.is_alternate:
                     _cache_alt.append((card_idx, card))
@@ -618,7 +623,7 @@ class StateMachine:
                     _cache_ref.append((card_idx, card))
                     continue
                 iterating_order.append((card_idx, card))
-            iterating_order = _cache_magic + iterating_order + _cache_alt + _cache_mut + _cache_ref
+            iterating_order = _cache_magic + _cache_guard + iterating_order + _cache_alt + _cache_mut + _cache_ref
             for card_idx, card in iterating_order:
                 skill = copy.copy(card.skill)
                 idx = unit_idx * 5 + card_idx
@@ -660,7 +665,7 @@ class StateMachine:
                                 inact += 1
                                 continue
                     act = act_idx * skill.interval
-                    deact = act_idx * skill.interval + skill.duration
+                    deact = act_idx * skill.interval + skill.duration / 1.5 * (1 + (skill.skill_level - 1) / 18)
                     skill_times.append(int(act * 1E6))
                     skill_times.append(int(deact * 1E6))
                     skill_indices.append(unit_idx * 5 + card_idx + 1)
@@ -733,7 +738,7 @@ class StateMachine:
         
         if not self.abuse:
             self.weights = [
-                0 if combo == 0 else self.weights[combo - 1] for combo in self.combos
+                1.0 if combo == 0 else self.weights[combo - 1] for combo in self.combos
             ]
 
         self.note_scores = np.round(
@@ -787,7 +792,7 @@ class StateMachine:
                         for enc_num in encore_temp[enc_lane].keys():
                             if note[-3:] == encore_temp[enc_lane][enc_num]:
                                 self.amr_bonuses[lane][num][note_idx] = note[:-3] + (enc_lane, 16, encore_temp[enc_lane][enc_num][-1])
-           
+        
         detail = {'skill_probability' : self.probabilities,
                   'note_number' : self.note_numbers,
                   'checkpoint' : self.checkpoints,
@@ -860,20 +865,24 @@ class StateMachine:
             * final_bonus
         )
 
-        return self.note_scores, len(list(filter(lambda x: x is Judgement.PERFECT, self.judgements))), max(
-            self.combos), self.lowest_life, self.lowest_life_time, self.full_roll_chance == 1
+        return self.note_scores, len(list(filter(lambda x: x is Judgement.PERFECT, self.judgements))), \
+            len(list(filter(lambda x: x is Judgement.MISS, self.judgements))), max(self.combos), \
+            self.lowest_life, self.lowest_life_time, self.full_roll_chance == 1
 
     def break_hold(self, skill_time):
         self.separate_magics_non_magics()
         magics = self.cache_magics
         non_magics = self.cache_non_magics
         max_boosts, sum_boosts = self._evaluate_bonuses_phase_boost(magics, non_magics)
-        life_bonus, support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
-                                                                              sum_boosts)
+        life_bonus, support_bonus, combo_support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
+                                                                                                   sum_boosts)
         if support_bonus < 4:
             to_be_removed = list()
             for held_group, bug in self.being_held.items():
-                self.combo = 0
+                if combo_support_bonus < 3:
+                    self.combo = 0
+                else:
+                    self.combo += 1
                 if held_group < 0:
                     self._handle_long_break(held_group)
                     to_be_removed.append(held_group)
@@ -883,8 +892,6 @@ class StateMachine:
                         to_be_removed.append(held_group)
             for _ in to_be_removed:
                 self.being_held.pop(_)
-                if not self._check_guard():
-                    self.life -= NONFLICK_DRAIN[self.difficulty]
         if self.life < self.lowest_life:
             self.lowest_life = self.life
             self.lowest_life_time = skill_time
@@ -897,10 +904,20 @@ class StateMachine:
                 check_note_type = self.note_type_stack[check_note_idx]
                 if check_group_id == group_id:
                     if check_note_type is NoteType.SLIDE or last_was_slide:
-                        self.judgements[check_note_idx] = Judgement.MISS
+                        self.judgements[check_note_idx] = -1 # Skipped
                         remove_indices.append(idx)
                     if last_was_slide and check_note_type is not NoteType.SLIDE:
                         last_was_slide = False
+            # Make sure there is a MISS between PERFECT and skipped notes
+            _ = self.notes_data["groupId"].map(int).to_list()
+            group_notes = [i for i in range(len(_)) if _[i] == group_id]
+            judgements = [self.judgements[i] for i in group_notes]
+            if -1 in judgements:
+                idx = judgements.index(-1)
+                if judgements[idx - 1] != Judgement.MISS:
+                    self.judgements[group_notes[idx]] = Judgement.MISS
+                    if not self._check_guard():
+                        self.life -= NONFLICK_DRAIN[self.difficulty]
             for idx in reversed(remove_indices):
                 self.note_idx_stack.pop(idx)
                 self.note_time_stack.pop(idx)
@@ -909,14 +926,22 @@ class StateMachine:
 
     def _handle_long_break(self, neg_finish_pos, is_long_start=False):
         if neg_finish_pos in self.being_held or is_long_start:
-            for idx, check_note_idx in enumerate(self.note_idx_stack):
+            note_idx_stack = self.note_idx_stack.copy()
+            note_idx_stack.sort()
+            for idx, check_note_idx in enumerate(note_idx_stack):
                 if self.finish_pos[check_note_idx] == -neg_finish_pos:
                     break
+            idx = self.note_idx_stack.index(check_note_idx)
             self.note_idx_stack.pop(idx)
             self.note_time_stack.pop(idx)
             self.delayed.pop(idx)
             self.group_ids.pop(idx)
-            self.judgements[check_note_idx] = Judgement.MISS
+            if is_long_start:
+                self.judgements[check_note_idx] = -1
+            else:
+                self.judgements[check_note_idx] = Judgement.MISS
+                if not self._check_guard():
+                    self.life -= NONFLICK_DRAIN[self.difficulty]
 
     def handle_note_auto(self):
         note_idx = self.note_idx_stack.pop(0)
@@ -929,8 +954,7 @@ class StateMachine:
         status = self.status[note_idx]
 
         checkpoint_bug = \
-            (not self.grand and finish_pos == 3 and is_checkpoint) \
-            or (self.grand and finish_pos < 10 and finish_pos + status > 6 and is_checkpoint)
+            (self.grand and finish_pos < 10 and finish_pos + status > 6 and is_checkpoint)
 
         # If not checkpoint bug, delay note for evaluation later
         if not checkpoint_bug and not delayed:
@@ -950,8 +974,8 @@ class StateMachine:
         non_magics = self.cache_non_magics
         max_boosts, sum_boosts = self._evaluate_bonuses_phase_boost(magics, non_magics)
 
-        life_bonus, support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
-                                                                              sum_boosts)
+        life_bonus, support_bonus, combo_support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
+                                                                                                   sum_boosts)
 
         covered = self._auto_covered(support_bonus=support_bonus,
                                      is_flick=NoteType.FLICK in self.special_note_types[note_idx])
@@ -1000,7 +1024,10 @@ class StateMachine:
                 self._handle_long_break(-finish_pos, is_long_start)
             if note_type is NoteType.SLIDE:
                 self._handle_slide_break(group_id)
-            self.combo = 0
+            if combo_support_bonus < 3:
+                self.combo = 0
+            else:
+                self.combo += 1
 
         self.combos[note_idx] = self.combo
         self.score_bonuses[note_idx] = score_bonus
@@ -1034,6 +1061,10 @@ class StateMachine:
             else:
                 left_windows[note_idx] = min(left_windows[note_idx], delta)
                 right_windows[note_idx] = max(right_windows[note_idx], delta)
+        
+        for _, (l, r) in enumerate(zip(left_windows, right_windows)):
+            if l < 0 < r: # Revert score if not abuse
+                max_score[_] = self.cache_perfect_score_array[_]
 
         score_delta = max_score - self.cache_perfect_score_array
         abuse_data = AbuseData(score_delta, left_windows, right_windows, judgements)
@@ -1059,9 +1090,6 @@ class StateMachine:
             self.skill_queue.pop(-self.skill_indices[0])
             self.skill_indices.pop(0)
             self.skill_times.pop(0)
-        logger.debug(self.skill_queue)
-        logger.debug(self.skill_indices)
-        logger.debug(self.skill_times)
 
     def handle_note(self):
         if self.abuse:
@@ -1075,12 +1103,13 @@ class StateMachine:
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
-        score_bonus, score_great_bonus, combo_bonus = self.evaluate_bonuses(self.special_note_types[note_idx])
+        score_bonus, score_great_bonus, combo_bonus, support_bonus, combo_support_bonus \
+            = self.evaluate_bonuses(self.special_note_types[note_idx])
         if (self.fail_simulate and not self.perfect_only) or self.cc_great > 0 or self.custom:
             if self.custom_note_miss is not None and note_idx in self.custom_note_miss:
                 judgement = Judgement.MISS
             else:
-                judgement = self.evaluate_judgement(note_delta, note_type, self.special_note_types[note_idx])
+                judgement = self.evaluate_judgement(note_delta, note_type, self.special_note_types[note_idx], perfect_support=support_bonus)
             self.judgements.append(judgement)
         else:
             judgement = Judgement.PERFECT
@@ -1108,12 +1137,31 @@ class StateMachine:
         else:
             self.score_bonus_skills.append([])
             self.score_great_bonus_skills.append([])
-            self.combo_bonus_skills.append([])
-            self.combo = 0
-        self.combos[note_idx] = self.combo
+            if judgement.value - combo_support_bonus >= 2:
+                self.combo = 0
+                self.combo_bonus_skills.append([])
+            else:
+                self.combo += 1
+                if self.combo > 1:
+                    self.combo_bonus_skills.append(self.cache_combo_bonus_skill)
+                else:
+                    self.combo_bonus_skills.append([])
         self.note_number += 1
-        self.note_numbers[note_idx] = self.note_number
+        self.combos[self.note_number - 1] = self.combo
+        self.note_numbers[self.note_number - 1] = note_idx + 1
         self.has_skill_change = False
+        
+        if not self._check_guard():
+            if judgement == Judgement.BAD:
+                if note_type == NoteType.FLICK:
+                    self.life -= FLICK_BAD_DRAIN[self.difficulty]
+                else:
+                    self.life -= NONFLICK_BAD_DRAIN[self.difficulty]
+            elif judgement == Judgement.MISS:
+                if note_type == NoteType.FLICK:
+                    self.life -= FLICK_DRAIN[self.difficulty]
+                else:
+                    self.life -= NONFLICK_DRAIN[self.difficulty]
 
     def _handle_note_abuse(self):
         note_time = self.note_time_stack.pop(0)
@@ -1132,7 +1180,7 @@ class StateMachine:
         self.combos.append(self.combo)
 
         # TODO: Sometimes abuse will heal while normal note doesn't
-        score_bonus, score_great_bonus, combo_bonus = self.evaluate_bonuses(special_note_types, skip_healing=is_abuse,
+        score_bonus, score_great_bonus, combo_bonus, _, _ = self.evaluate_bonuses(special_note_types, skip_healing=is_abuse,
                                                          fixed_life=cached_life)
         self.judgements.append(
             self.evaluate_judgement(note_delta, note_type, special_note_types,
@@ -1143,7 +1191,7 @@ class StateMachine:
         self.has_skill_change = False
 
     def evaluate_judgement(self, note_delta, note_type, special_note_types,
-                           abuse_check=False, is_checkpoint=False) -> Judgement:
+                           abuse_check=False, is_checkpoint=False, perfect_support=0) -> Judgement:
         def check_cc():
             for _, skills in self.skill_queue.items():
                 if isinstance(skills, Skill) and skills.is_cc:
@@ -1192,6 +1240,7 @@ class StateMachine:
                     return Judgement.GREAT
             return Judgement.MISS
         else:
+            judgement = Judgement.PERFECT
             if note_type == NoteType.TAP:
                 l_b = BAD_TAP_RANGE[self.live.difficulty]
                 r_b = BAD_TAP_RANGE[self.live.difficulty]
@@ -1228,26 +1277,33 @@ class StateMachine:
                 r_g = 0
                 l_p = 0
                 r_p = 200000
-
-            if has_cc:
-                l_p /= 2
-                r_p /= 2
-                if note_type == NoteType.TAP and self.cc_great > 0:
+            
+            if self.cc_great > 0 and has_cc:
+                if note_type == NoteType.TAP:
                     rand = np.random.random()
                     if 1 - rand < self.cc_great / 100:
                         if not self.fail_simulate:
                             self.cc_great_num += 1
-                        return Judgement.GREAT
-            if -l_p <= note_delta <= r_p:
-                return Judgement.PERFECT
-            elif -l_g <= note_delta <= r_g:
-                return Judgement.GREAT
-            elif -l_n <= note_delta <= r_n:
-                return Judgement.NICE
-            elif -l_b <= note_delta <= r_b:
-                return Judgement.BAD
+                        judgement = Judgement.GREAT
             else:
-                return Judgement.MISS
+                if has_cc:
+                    l_p /= 2
+                    r_p /= 2
+                    
+                if -l_p <= note_delta <= r_p:
+                    judgement = Judgement.PERFECT
+                elif -l_g <= note_delta <= r_g:
+                    judgement = Judgement.GREAT
+                elif -l_n <= note_delta <= r_n:
+                    judgement = Judgement.NICE
+                elif -l_b <= note_delta <= r_b:
+                    judgement = Judgement.BAD
+                else:
+                    judgement = Judgement.MISS
+                    
+                if judgement.value <= perfect_support:
+                    judgement = Judgement.PERFECT
+            return judgement
 
     def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None):
         if self.has_skill_change:
@@ -1255,8 +1311,8 @@ class StateMachine:
         magics = self.cache_magics
         non_magics = self.cache_non_magics
         max_boosts, sum_boosts = self._evaluate_bonuses_phase_boost(magics, non_magics)
-        life_bonus, support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
-                                                                              sum_boosts)
+        life_bonus, support_bonus, combo_support_bonus = self._evaluate_bonuses_phase_life_support(magics, non_magics, max_boosts,
+                                                                                                   sum_boosts)
         if not skip_healing:
             self.life += life_bonus
             self.life = min(self.max_life, self.life)  # Cap life
@@ -1267,7 +1323,7 @@ class StateMachine:
         self._helper_evaluate_alt_mutual_ref(special_note_types)
         self._helper_normalize_score_combo_bonuses()
         score_bonus, score_great_bonus, combo_bonus = self._evaluate_bonuses_phase_score_combo(magics, non_magics, max_boosts, sum_boosts)
-        return score_bonus, score_great_bonus, combo_bonus
+        return score_bonus, score_great_bonus, combo_bonus, support_bonus, combo_support_bonus
 
     def separate_magics_non_magics(self):
         magics = dict()
@@ -1285,13 +1341,16 @@ class StateMachine:
 
     def _check_guard(self):
         for _, skills in self.skill_queue.items():
-            if isinstance(skills, Skill) and skills.is_guard:
-                return True
+            if isinstance(skills, Skill):
+                if skills.is_guard:
+                    return True
+                else:
+                    return False
             for skill in skills:
                 if skill.is_guard:
                     return True
         return False
-
+    
     def _auto_covered(self, support_bonus, is_flick):
         # MISS covered
         if support_bonus >= 4:
@@ -1486,9 +1545,10 @@ class StateMachine:
     def _evaluate_bonuses_phase_life_support(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
                                              max_boosts, sum_boosts):
         if not self.has_skill_change:
-            return self.cache_life_bonus, self.cache_support_bonus
+            return self.cache_life_bonus, self.cache_support_bonus, self.cache_combo_support_bonus
         temp_life_results = dict()
         temp_support_results = dict()
+        temp_combo_support_results = dict()
         for magic_idx, skills in magics.items():
             magic_idx = magic_idx - 1
             temp_life_results[magic_idx] = 0
@@ -1499,7 +1559,8 @@ class StateMachine:
                 if skill.boost:
                     continue
                 color = int(self.live.unit.get_card(magic_idx).color.value)
-                if skill.v3 == 0 and skill.v4 == 0:
+                if not skill.is_guard and not skill.is_combo_support and not skill.is_overload \
+                    and skill.v3 == 0 and skill.v4 == 0:
                     continue
                 if skill.v3 > 0:
                     temp_life_results[magic_idx] = max(temp_life_results[magic_idx],
@@ -1507,6 +1568,13 @@ class StateMachine:
                 if skill.v4 > 0:
                     temp_support_results[magic_idx] = max(temp_support_results[magic_idx],
                                                           ceil(skill.v4 + boost_dict[color][4]))
+                if skill.is_guard:
+                    temp_life_results[magic_idx] = max(temp_life_results[magic_idx], ceil(boost_dict[color][4]))
+                if skill.is_combo_support:
+                    temp_combo_support_results[magic_idx] = max(temp_combo_support_results[magic_idx], ceil(1 + boost_dict[color][4]))
+                if skill.is_overload:
+                    temp_combo_support_results[magic_idx] = max(temp_combo_support_results[magic_idx], 2)
+                    
         for non_magic_idx, skills in non_magics.items():
             assert len(skills) == 1 \
                    or self.reference_skills[non_magic_idx].is_encore \
@@ -1518,15 +1586,23 @@ class StateMachine:
                 color = int(self.live.unit.get_card(non_magic_idx).color.value)
                 unit_idx = non_magic_idx // 5
                 boost_dict = sum_boosts if self.live.unit.all_units[unit_idx].resonance else max_boosts
-                if skill.v3 == 0 and skill.v4 == 0:
+                if not skill.is_guard and not skill.is_combo_support and not skill.is_overload \
+                    and skill.v3 == 0 and skill.v4 == 0:
                     continue
                 if skill.v3 > 0:
                     temp_life_results[non_magic_idx] = ceil(skill.v3 * boost_dict[color][3])
                 if skill.v4 > 0:
                     temp_support_results[non_magic_idx] = ceil(skill.v4 + boost_dict[color][4])
+                if skill.is_guard:
+                    temp_life_results[non_magic_idx] = ceil(boost_dict[color][4])
+                if skill.is_combo_support:
+                    temp_combo_support_results[non_magic_idx] = ceil(1 + boost_dict[color][4])
+                if skill.is_overload:
+                    temp_combo_support_results[non_magic_idx] = 2
 
         unit_life_bonuses = list()
         unit_support_bonuses = list()
+        unit_combo_support_bonuses = list()
         for unit_idx in range(len(self.live.unit.all_units)):
             agg_func = sum if self.live.unit.all_units[unit_idx].resonance else max
 
@@ -1535,24 +1611,32 @@ class StateMachine:
             # Unify magic
             unified_magic_life = 0
             unified_magic_support = 0
+            unified_magic_combo_support = 0
             unified_non_magic_life = 0
             unified_non_magic_support = 0
+            unified_non_magic_combo_support = 0
             if len(unit_magics) >= 1:
                 for magic_idx in unit_magics:
                     if magic_idx in temp_life_results:
                         unified_magic_life = max((unified_magic_life, temp_life_results[magic_idx]))
                     if magic_idx in temp_support_results:
                         unified_magic_support = max((unified_magic_support, temp_support_results[magic_idx]))
+                    if magic_idx in temp_combo_support_results:
+                        unified_magic_combo_support = max((unified_magic_combo_support, temp_combo_support_results[magic_idx]))
             for non_magic in unit_non_magics:
                 if non_magic in temp_life_results:
                     unified_non_magic_life = agg_func((unified_non_magic_life, temp_life_results[non_magic]))
                 if non_magic in temp_support_results:
                     unified_non_magic_support = agg_func((unified_non_magic_support, temp_support_results[non_magic]))
+                if non_magic in temp_combo_support_results:
+                    unified_non_magic_combo_support = agg_func((unified_non_magic_combo_support, temp_combo_support_results[non_magic]))
             unit_life_bonuses.append(agg_func((unified_magic_life, unified_non_magic_life)))
             unit_support_bonuses.append(agg_func((unified_magic_support, unified_non_magic_support)))
+            unit_combo_support_bonuses.append(agg_func((unified_magic_combo_support, unified_non_magic_combo_support)))
         self.cache_life_bonus = max(unit_life_bonuses)
         self.cache_support_bonus = max(unit_support_bonuses)
-        return self.cache_life_bonus, self.cache_support_bonus
+        self.cache_combo_support_bonus = max(unit_combo_support_bonuses)
+        return self.cache_life_bonus, self.cache_support_bonus, self.cache_combo_support_bonus
 
     def _evaluate_bonuses_phase_score_combo(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
                                             max_boosts, sum_boosts):
@@ -1683,7 +1767,8 @@ class StateMachine:
                     if magic_idx in temp_score_results:
                         if unified_magic_score is None:
                             unified_magic_score_skill = (magic_idx, temp_score_skills[magic_idx].skill_type,
-                                                         temp_score_results[magic_idx], temp_score_boosts[magic_idx])
+                                                         temp_score_results[magic_idx], temp_score_boosts[magic_idx]) \
+                                                        if temp_score_skills[magic_idx] is not None else None
                             unified_magic_score = temp_score_results[magic_idx]
                         else:
                             if unified_magic_score < temp_score_results[magic_idx]:
@@ -1694,7 +1779,8 @@ class StateMachine:
                     if magic_idx in temp_score_great_results:
                         if unified_magic_score_great is None:
                             unified_magic_score_great_skill = (magic_idx, temp_score_great_skills[magic_idx].skill_type,
-                                                               temp_score_great_results[magic_idx], temp_score_great_boosts[magic_idx])
+                                                               temp_score_great_results[magic_idx], temp_score_great_boosts[magic_idx]) \
+                                                              if temp_score_great_skills[magic_idx] is not None else None
                             unified_magic_score_great = temp_score_great_results[magic_idx]
                         else:
                             if unified_magic_score_great < temp_score_great_results[magic_idx]:
@@ -1704,7 +1790,8 @@ class StateMachine:
                     if magic_idx in temp_combo_results:
                         if unified_magic_combo is None:
                             unified_magic_combo_skill = (magic_idx, temp_combo_skills[magic_idx].skill_type,
-                                                         temp_combo_results[magic_idx], temp_combo_boosts[magic_idx])
+                                                         temp_combo_results[magic_idx], temp_combo_boosts[magic_idx]) \
+                                                        if temp_combo_skills[magic_idx] is not None else None
                             unified_magic_combo = temp_combo_results[magic_idx]
                         else:
                             if unified_magic_combo < temp_combo_results[magic_idx]:
@@ -1844,6 +1931,7 @@ class StateMachine:
                 unit_idx = (self.cache_enc[self.skill_indices[0]] - 1) // 5
             self.skill_queue[self.skill_indices[0]] = list()
             iterating_order = list()
+            _cache_guard = list()
             _cache_alt = list()
             _cache_mut = list()
             _cache_ref = list()
@@ -1869,6 +1957,9 @@ class StateMachine:
                     if copied_skill.is_magic:
                         continue
                     # Else let magic copy the encored skill instead
+                if copied_skill.is_guard:
+                    _cache_guard.append(copied_skill)
+                    continue
                 if copied_skill.is_alternate:
                     _cache_alt.append(copied_skill)
                     continue
@@ -1879,7 +1970,7 @@ class StateMachine:
                     _cache_ref.append(copied_skill)
                     continue
                 iterating_order.append(copied_skill)
-            iterating_order = iterating_order + _cache_alt + _cache_mut + _cache_ref
+            iterating_order = _cache_guard + iterating_order + _cache_alt + _cache_mut + _cache_ref
             for _ in iterating_order:
                 self.skill_queue[self.skill_indices[0]].append(_)
             if len(iterating_order) == 0:
@@ -2150,7 +2241,8 @@ class StateMachine:
 
     def _handle_ol_drain(self, life_requirement):
         if self.life > life_requirement:
-            self.life -= life_requirement
+            if not self._check_guard():
+                self.life -= life_requirement
             return False
         else:
             return True

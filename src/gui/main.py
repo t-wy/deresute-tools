@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QMetaObject, QCoreApplication, Qt
 from PyQt5.QtGui import QIcon, QIntValidator, QFontMetrics
 from PyQt5.QtWidgets import QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QTabWidget, QPushButton, QApplication, \
-    QMainWindow, QCheckBox, QScrollArea, QLineEdit, QSizePolicy
+    QMainWindow, QCheckBox, QScrollArea, QLineEdit, QSizePolicy, QComboBox
 
 import customlogger as logger
 from chihiro import ROOT_DIR
@@ -46,7 +46,8 @@ class CustomMainWindow(QMainWindow):
             unit_storage.clean_all_units(grand=False)
             for r_idx in range(self.ui.user_unit_view1.widget.count()):
                 widget = self.ui.user_unit_view1.widget.itemWidget(self.ui.user_unit_view1.widget.item(r_idx))
-                widget.update_unit()
+                if widget is not None:
+                    widget.update_unit()
             profile_manager.cleanup()
 
     def closeEvent(self, event):
@@ -171,11 +172,27 @@ class UiMainWindow:
         fm = QFontMetrics(self.import_text.font())
         self.import_text.setFixedWidth(fm.width(txt) + 10)
         self.import_button = QPushButton("Import from ID", self.main)
-        self.import_button.pressed.connect(lambda: self.import_from_id(self.import_text.text()))
         self.import_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.import_layout.addWidget(self.import_text)
         self.import_layout.addWidget(self.import_button)
         self.card_quicksearch_layout.addLayout(self.import_layout)
+        
+        self.import_setting = QComboBox(self.main)
+        self.import_setting.addItem("SSR+ only")
+        self.import_setting.addItem("1SSR")
+        self.import_setting.addItem("AllSR")
+        self.import_setting.addItem("1SSR / AllSR")
+        self.import_setting.addItem("AllSR↓")
+        self.import_setting.addItem("1SSR / AllSR↓")
+        self.import_setting.addItem("Clear")
+        self.import_setting.setToolTip("SSR+ only : Sets owned value of SSR+ cards only. This applies to all other options.\n"+
+                                       "1SSR : If you have same n(>1) SSRs, set owned value of SSR to 1 and SSR+ to n-1.\n"+
+                                       "AllSR : Set owned value of all SR+ and SR cards to 1.\n"+
+                                       "AllSR↓ : Set owned value of all cards with the rarity lower than SR+ to 1.\n"+
+                                       "Clear : Set owned value of all cards to 0.")
+        self.import_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.import_button.pressed.connect(lambda: self.import_from_id(self.import_text.text(), self.import_setting.currentIndex()))
+        self.card_quicksearch_layout.addWidget(self.import_setting)
         
         self.card_layout.addLayout(self.card_quicksearch_layout)
         self.card_layout.setStretch(1, 1)
@@ -228,9 +245,9 @@ class UiMainWindow:
         self.main_layout.addLayout(self.simulator_layout)
         self.grid_layout.addLayout(self.main_layout, 0, 0, 1, 1)
 
-    def import_from_id(self, game_id):
+    def import_from_id(self, game_id, option):
         self.card_view.disconnect_cell_change()
-        updated_card_ids = profile_manager.import_from_gameid(game_id)
+        updated_card_ids = profile_manager.import_from_gameid(game_id, option)
         if updated_card_ids is None:
             self.card_view.connect_cell_change()
             return

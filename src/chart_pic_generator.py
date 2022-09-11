@@ -185,7 +185,6 @@ class BaseChartPicGenerator(ABC):
         self.notes = self.notes[self.notes['note_type'] != NoteType.DAMAGE].reset_index()
         self.notes['finishPos'] -= 1
         self.damage_notes['finishPos'] -= 1
-        self.notes_offset = [0] * len(self.notes)
         self.mirrored = mirrored
         if mirrored:
             if not grand:
@@ -197,6 +196,8 @@ class BaseChartPicGenerator(ABC):
         
         self.selected_note = -1
         self.selected_damage_note = -1
+        
+        self.note_offset_dict = {}
         
         self.skill_inactive_list = [[] for _ in range(15)]
         self.selected_skill = (-1, -1)
@@ -367,6 +368,8 @@ class BaseChartPicGenerator(ABC):
             self.draw_sync_lines()
             self.draw_group_lines()
             self.draw_notes()
+        if self.viewer.chart_mode == 3:
+            self.draw_offset()
 
     def hook_cards(self, all_cards):
         try:
@@ -391,7 +394,7 @@ class BaseChartPicGenerator(ABC):
         for card_idx, card in enumerate(self.unit.all_cards()):
             skill = card.sk
             interval = skill.interval
-            duration = skill.duration
+            duration = skill.duration / 1.5 * (1 + (skill.skill_level - 1) / 18)
             skill_times = int((self.last_sec_float - 3) // interval)
             skill_time = 1
             label = 0
@@ -609,10 +612,10 @@ class BaseChartPicGenerator(ABC):
     def draw_offset(self):
         for label_idx, label in enumerate(self.note_labels):
             for note in label:
-                if self.notes_offset[note.num-1] == 0:
+                if note.num - 1 not in self.note_offset_dict or self.note_offset_dict[note.num-1] == 0:
                     continue
                 x = self.get_x(note.lane + note.span / 2) - note.note_pic_smol.width() // 2
-                y = self.get_y(note.sec + self.notes_offset[note.num-1] / 1000, label_idx)
+                y = self.get_y(note.sec + self.note_offset_dict[note.num-1] / 1000, label_idx) - note.note_pic_smol.height() // 2
                 self.p[label_idx].drawImage(QPoint(x, y), note.note_pic_smol)
 
     def save_image(self):
