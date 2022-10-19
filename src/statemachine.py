@@ -511,7 +511,7 @@ class StateMachine:
         # Abuse should be the last stage of a simulation pipeline
         assert len(self.checkpoints) == len(self.notes_data)
 
-        def get_range(note_type_internal, special_note_types_internal, checkpoint_internal):
+        def get_range(note_type_internal, special_note_types_internal, checkpoint_internal, lane_fixed_internal):
             if note_type_internal == NoteType.TAP:
                 l_g = -GREAT_TAP_RANGE[self.live.difficulty]
                 l_p = -PERFECT_TAP_RANGE[self.live.difficulty]
@@ -529,23 +529,35 @@ class StateMachine:
                 r_p = 150000
                 return (l_g, r_g), (l_g, l_p, r_p, r_g)
             elif not checkpoint_internal:
-                l_p = -200000
-                r_p = 200000
+                l_p = -150000
+                r_p = 150000
                 return (l_p, r_p), (l_p, r_p)
+            elif lane_fixed_internal:
+                return (0, 0), (0,)
             else:
                 r_p = 200000
                 return (0, r_p), (r_p,)
 
-        for note_time, note_time_delta, note_type, note_idx, special_note_types, checkpoint, weight in zip(
+        lanes = self.notes_data["finishPos"].to_list()
+        previous_lanes = lanes.copy()
+        previous_lanes.insert(0, 0)
+        previous_lanes.pop()
+        lane_matches = [i == j for i, j in zip(lanes, previous_lanes)]
+
+        for note_time, note_time_delta, note_type, note_idx, special_note_types, checkpoint, weight, lane_match in zip(
                 self.note_time_stack[:],
                 self.note_time_deltas[:],
                 self.note_type_stack[:],
                 self.note_idx_stack[:],
                 self.special_note_types[:],
                 self.checkpoints[:],
-                self.weights[:]
+                self.weights[:],
+                lane_matches[:]
         ):
-            boundaries, deltas = get_range(note_type, special_note_types, checkpoint)
+            lane_fixed = False
+            if self.live.difficulty == Difficulty.TRICK and checkpoint and lane_match:
+                lane_fixed = True
+            boundaries, deltas = get_range(note_type, special_note_types, checkpoint, lane_fixed)
             for delta in deltas:
                 dummy_range = [delta]
                 if self.has_cc and delta != 0:
