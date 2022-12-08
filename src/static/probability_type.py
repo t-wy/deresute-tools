@@ -2,8 +2,8 @@ import customlogger as logger
 from db import db
 
 
-
-PROBABILITY_BASE = {1: ("Very Low", "vl"),
+PROBABILITY_BASE = {0: ("", ""),
+                    1: ("Very Low", "vl"),
                     2: ("Low", "lo"),
                     3: ("Medium", "med"),
                     4: ("High", "hi"),
@@ -16,7 +16,7 @@ db.cachedb.execute("""
     CREATE TABLE IF NOT EXISTS probability_keywords (
         "id" INTEGER UNIQUE PRIMARY KEY,
         "keywords" TEXT UNIQUE,
-        "short" TEXT UNIQUE 
+        "short" TEXT UNIQUE
     )
 """)
 for prob_id, (prob_name, prob_key) in PROBABILITY_BASE.items():

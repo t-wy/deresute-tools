@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import pickle
+from typing import TYPE_CHECKING, Optional
 
 from PyQt5 import QtWidgets
 from PyQt5.QtGui import QIntValidator
@@ -11,14 +14,21 @@ from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent, GetPerfectPlayFlagEvent, GetCustomPotsEvent, \
     GetAppealsEvent, GetSupportEvent, GetDoublelifeFlagEvent, GetAutoplayFlagEvent, GetAutoplayOffsetEvent, \
-    GetSkillBoundaryEvent, GetTheoreticalMaxFlagEvent, GetEncoreAMRFlagEvent, GetEncoreMagicUnitFlagEvent, \
+    GetSkillBoundaryEvent, GetEncoreAMRFlagEvent, GetEncoreMagicUnitFlagEvent, \
     GetEncoreMagicMaxAggEvent, GetAllowGreatEvent
 from settings import BACKUP_PATH
 from utils.storage import get_writer, get_reader
 
+if TYPE_CHECKING:
+    from gui.viewmodels.simulator.wide_smart import MainModel
+
 
 class CustomSettingsView:
-    def __init__(self, main, main_model):
+    main: QtWidgets.QWidget
+    main_model: MainModel
+    model: CustomSettingsModel
+
+    def __init__(self, main: QtWidgets.QWidget, main_model: MainModel):
         self.main = main
         self.main_model = main_model
         self._setup_tabs()
@@ -33,6 +43,8 @@ class CustomSettingsView:
         self.tab_widget.setMaximumHeight(100)
         self.tab_widget.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.East)
+        self.tab_widget.setUsesScrollButtons(False)
+        self.tab_widget.tabBar().setStyleSheet("font-size: 7.8pt;")
         tab1 = QtWidgets.QFrame(self.main)
         tab2 = QtWidgets.QFrame(self.main)
         self.tab_widget.addTab(tab1, "Basic")
@@ -52,8 +64,6 @@ class CustomSettingsView:
         self.custom_appeal_checkbox.setToolTip("This option will ignore support appeal.")
         self.custom_support_checkbox = QtWidgets.QCheckBox("Support Appeal", self.main)
         self.custom_perfect_play_checkbox = QtWidgets.QCheckBox("Perfect Simulation", self.main)
-        self.theoretical_max_checkbox = QtWidgets.QCheckBox("Theoretical Max Simulation", self.main)
-        self.theoretical_max_checkbox.setToolTip("Get the highest score theoretically possible.")
         self.doublelife_checkbox = QtWidgets.QCheckBox("2x Life Start", self.main)
         self.autoplay_mode_checkbox = QtWidgets.QCheckBox("Autoplay Mode", self.main)
         self.autoplay_offset_text = QtWidgets.QLineEdit(self.main)
@@ -88,9 +98,8 @@ class CustomSettingsView:
 
     def _setup_positions_1(self):
         self.tab1_layout.addWidget(self.custom_perfect_play_checkbox, 1, 0, 1, 3)
-        self.tab1_layout.addWidget(self.theoretical_max_checkbox, 2, 0, 1, 3)
+        self.tab1_layout.addWidget(self.doublelife_checkbox, 2, 0, 1, 2)
         self.tab1_layout.addWidget(self.custom_potential_checkbox, 1, 3, 1, 2)
-        self.tab1_layout.addWidget(self.doublelife_checkbox, 2, 3, 1, 2)
         self.tab1_layout.addWidget(self.custom_support_text, 0, 5, 1, 1)
         self.tab1_layout.addWidget(self.custom_support_checkbox, 0, 6, 1, 1)
         self.tab1_layout.addWidget(self.custom_appeal_text, 1, 5, 1, 1)
@@ -119,7 +128,9 @@ class CustomSettingsView:
         self.tab2_layout.addWidget(self.mirror_checkbox, 0, 1, 1, 1)
         self.tab2_layout.addWidget(self.skill_boundary, 1, 1, 1, 1)
         self.tab2_layout.addWidget(self.allow_great_checkbox, 2, 1, 1, 1)
-        self.tab2_layout.setColumnStretch(0, 1)
+
+        self.tab2_layout.setColumnStretch(0, 2)
+        self.tab2_layout.setColumnStretch(1, 1)
 
     def _setup_valid_potential_values(self):
         for key, combobox in zip(
@@ -138,7 +149,7 @@ class CustomSettingsView:
         self.skill_boundary.addItem("[  ]")
         self.skill_boundary.addItem("(  )")
 
-    def set_model(self, model):
+    def set_model(self, model: CustomSettingsModel):
         self.model = model
         self.model.hook_events()
         self._restore_from_backup()
@@ -153,7 +164,7 @@ class CustomSettingsView:
                 return
             logger.info("Restoring last session")
             backup = pickle.load(get_reader(BACKUP_PATH / "flags.bk"))
-        except:
+        except Exception:
             logger.error("Failed to load units from last session")
             return
         self.encore_amr_checkbox.setChecked(backup["encore_amr_checkbox"])
@@ -167,13 +178,12 @@ class CustomSettingsView:
 class CustomSettingsModel:
     view: CustomSettingsView
 
-    def __init__(self, view):
+    def __init__(self, view: CustomSettingsView):
         self.view = view
-        self.card_ids = None
         eventbus.eventbus.register(self)
 
     @subscribe(GetCustomPotsEvent)
-    def get_custom_pots(self, event=None):
+    def get_custom_pots(self, event=None) -> Optional[list[int]]:
         if not self.view.custom_potential_checkbox.isChecked():
             logger.debug("Not using custom potentials")
             return None
@@ -186,7 +196,7 @@ class CustomSettingsModel:
         return results
 
     @subscribe(GetAppealsEvent)
-    def get_appeals(self, event=None):
+    def get_appeals(self, event=None) -> Optional[int]:
         if not self.view.custom_appeal_checkbox.isChecked():
             logger.debug("Not using custom appeals")
             return None
@@ -194,7 +204,7 @@ class CustomSettingsModel:
             return None
         return int(self.view.custom_appeal_text.text())
 
-    def set_support(self, appeal):
+    def set_support(self, appeal: int):
         try:
             assert isinstance(appeal, int) and appeal > 0
             self.view.custom_support_text.setText(str(appeal))
@@ -202,7 +212,7 @@ class CustomSettingsModel:
             pass
 
     @subscribe(GetSupportEvent)
-    def get_support(self, event=None):
+    def get_support(self, event=None) -> Optional[int]:
         if not self.view.custom_support_checkbox.isChecked():
             logger.debug("Not using custom support team")
             return None
@@ -211,52 +221,48 @@ class CustomSettingsModel:
         return int(self.view.custom_support_text.text())
 
     @subscribe(PostYoinkEvent)
-    def post_yoink_operations(self, event):
+    def post_yoink_operations(self, event: PostYoinkEvent):
         support = event.support
         self.view.custom_support_checkbox.setChecked(True)
         self.view.custom_potential_checkbox.setChecked(False)
         self.set_support(support)
 
     @subscribe(GetPerfectPlayFlagEvent)
-    def get_perfect_play(self, event=None):
+    def get_perfect_play(self, event=None) -> bool:
         return self.view.custom_perfect_play_checkbox.isChecked()
 
     @subscribe(GetMirrorFlagEvent)
-    def get_mirror(self, event=None):
+    def get_mirror(self, event=None) -> bool:
         return self.view.mirror_checkbox.isChecked()
 
     @subscribe(GetDoublelifeFlagEvent)
-    def get_doublelife(self, event=None):
+    def get_doublelife(self, event=None) -> bool:
         return self.view.doublelife_checkbox.isChecked()
 
     @subscribe(GetAutoplayFlagEvent)
-    def get_autoplay(self, event=None):
+    def get_autoplay(self, event=None) -> bool:
         return self.view.autoplay_mode_checkbox.isChecked()
 
     @subscribe(GetAutoplayOffsetEvent)
-    def get_autoplay_offset(self, event=None):
+    def get_autoplay_offset(self, event=None) -> int:
         if self.view.autoplay_offset_text.text() == "":
             return 0
         return int(self.view.autoplay_offset_text.text())
 
-    @subscribe(GetTheoreticalMaxFlagEvent)
-    def get_theoretical_max_flag(self, event=None):
-        return self.view.theoretical_max_checkbox.isChecked()
-
     @subscribe(GetEncoreAMRFlagEvent)
-    def get_encore_amr_checkbox_flag(self, event=None):
+    def get_encore_amr_checkbox_flag(self, event=None) -> bool:
         return self.view.encore_amr_checkbox.isChecked()
 
     @subscribe(GetEncoreMagicUnitFlagEvent)
-    def get_encore_magic_unit_checkbox_flag(self, event=None):
+    def get_encore_magic_unit_checkbox_flag(self, event=None) -> bool:
         return self.view.encore_magic_unit_checkbox.isChecked()
 
     @subscribe(GetEncoreMagicMaxAggEvent)
-    def get_encore_magic_agg_checkbox_flag(self, event=None):
+    def get_encore_magic_agg_checkbox_flag(self, event=None) -> bool:
         return self.view.encore_magic_agg_checkbox.isChecked()
 
     @subscribe(GetSkillBoundaryEvent)
-    def get_skill_boundary(self, event=None):
+    def get_skill_boundary(self, event=None) -> tuple[bool, bool]:
         if self.view.skill_boundary.currentIndex() == 0 or self.view.skill_boundary.currentIndex() == 1:
             return False, True
         if self.view.skill_boundary.currentIndex() == 2:
@@ -266,7 +272,7 @@ class CustomSettingsModel:
         return False, False
 
     @subscribe(GetAllowGreatEvent)
-    def get_allow_great_flag(self, event=None):
+    def get_allow_great_flag(self, event=None) -> bool:
         return self.view.allow_great_checkbox.isChecked()
 
     def hook_events(self):
@@ -287,5 +293,5 @@ class CustomSettingsModel:
             backup["skill_boundary"] = self.view.skill_boundary.currentIndex()
 
             pickle.dump(backup, get_writer(BACKUP_PATH / "flags.bk"))
-        except:
+        except Exception:
             logger.error("Failed to back up configs")

@@ -10,6 +10,7 @@ class Color(Enum):
     PASSION = 2
     ALL = 3
 
+
 CARD_GUI_COLORS = {
     "Cute": (204, 3, 93),
     "Cool": (4, 82, 231),

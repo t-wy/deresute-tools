@@ -1,4 +1,8 @@
+import datetime
+
 from chihiro import ROOT_DIR
+
+UPDATE_DATE = datetime.date(2022, 12, 8)
 
 LOGGER_NAME = "chihiro"
 LOG_DIR = ROOT_DIR / "logs"
@@ -23,11 +27,12 @@ TOOL_EXE = STATIC_PATH / "tool.exe"
 TEMP_PATH = STATIC_PATH / "temppp"
 
 RHYTHM_ICONS_PATH = ROOT_DIR / "img"
+MY_IMAGE_PATH = RHYTHM_ICONS_PATH / "my"
 
 INDEX_PATH = DATA_PATH / "index"
 
 ABUSE_CHARTS_PATH = ROOT_DIR / "abuse"
 CHART_PICS_PATH = ROOT_DIR / "charts"
 
-REMOTE_CACHE_SCORES_URL = "https://raw.githubusercontent.com/deresute-tools/chihiro-static/master/live_detail_cache.csv"
-REMOTE_TRANSLATED_SONG_URL = "https://raw.githubusercontent.com/deresute-tools/chihiro-static/master/translated.csv"
+REMOTE_CACHE_SCORES_URL = "https://raw.githubusercontent.com/oayimikagakat/chihiro-static/master/live_detail_cache.csv"
+REMOTE_TRANSLATED_SONG_URL = "https://raw.githubusercontent.com/oayimikagakat/chihiro-static/master/translated.csv"

@@ -1,10 +1,10 @@
 import ast
-import os
 import shutil
+from typing import Optional
 
 from whoosh.analysis import SimpleAnalyzer
 from whoosh.fields import *
-from whoosh.index import create_in, open_dir
+from whoosh.index import create_in, open_dir, FileIndex
 
 import customlogger as logger
 from db import db
@@ -15,21 +15,21 @@ from static.color import Color
 from static.song_difficulty import Difficulty
 from utils.misc import is_debug_mode
 
-KEYWORD_KEYS_STR_ONLY = ["short", "chara", "rarity", "color", "skill", "leader", "time_prob_key", "fes", "noir",
-                         "blanc", "carnival", "main_attribute"]
+KEYWORD_KEYS_STR_ONLY = ["short", "chara", "rarity", "color", "skill", "leader", "time_prob_key", "normal", "limited",
+                         "fes", "noir", "blanc", "carnival", "main_attribute", "main_attribute_2"]
 KEYWORD_KEYS = KEYWORD_KEYS_STR_ONLY + ["owned", "idolized"]
 
 
 class IndexManager:
-
     def __init__(self):
         # Skip cleanup in debug
         if not is_debug_mode() and self.cleanup():
             INDEX_PATH.mkdir()
-        self.index = None
-        self.song_index = None
+        self.index: Optional[FileIndex] = None
+        self.song_index: Optional[FileIndex] = None
 
-    def initialize_index_db(self, card_list=None):
+    @staticmethod
+    def initialize_index_db(card_list=None):
         logger.info("Building quicksearch index, please wait...")
 
         carnival_idols = ",".join(map(str, Live.static_get_chara_bonus_set(get_name=False)))
@@ -42,47 +42,79 @@ class IndexManager:
                     LOWER(cc.full_name) as chara,
                     LOWER(rt.text) as rarity,
                     LOWER(ct.text) as color,
-                    CASE 
+                    CASE
                         WHEN cdc.rarity % 2 == 0 THEN 1
                         ELSE 0
                     END idolized,
-                    CASE 
-                        WHEN pk.id IS NOT NULL THEN sd.condition || pk.short ELSE '' 
-                    END time_prob_key, 
+                    CASE
+                        WHEN pk.id IS NOT NULL THEN sd.condition || pk.short ELSE ''
+                    END time_prob_key,
                     IFNULL(LOWER(sk.keywords), "") as skill,
                     IFNULL(LOWER(lk.keywords), "") as leader,
                     CASE
+                        WHEN cdc.id IN (100173,100174,200147,200148,300125,300126)
+                        THEN "limited"
+                        WHEN sk.id IN (4)
+                        AND cdc.leader_skill_id IN (47,48,49,50,52,53,54,55,57,58,59,60)
+                        AND cdc.rarity > 6
+                        THEN "limited"
+                        WHEN sk.id IN (14,16,17,21,22,23,25,32,33,34,39,42)
+                        AND cdc.rarity > 6
+                        THEN "limited"
+                        ELSE ""
+                    END limited,
+                    CASE
                         WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117,118)
-                        AND cdc.rarity > 6 
-                        THEN "fes" 
+                        AND cdc.rarity > 6
+                        THEN "fes"
                         ELSE ""
                     END fes,
                     CASE
                         WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117)
-                        AND cdc.rarity > 6 
+                        AND cdc.rarity > 6
                         THEN "blanc"
                         ELSE ""
                     END blanc,
                     CASE
                         WHEN cdc.leader_skill_id IN (118)
-                        AND cdc.rarity > 6 
+                        AND cdc.rarity > 6
                         THEN "noir"
                         ELSE ""
                     END noir,
+                    CASE
+                        WHEN cdc.id NOT IN (100173,100174,200147,200148,300125,300126)
+                        AND sk.id NOT IN (4,14,16,17,21,22,23,25,32,33,34,39,42)
+                        AND cdc.leader_skill_id NOT IN (70,71,72,73,81,82,83,84,104,105,106,113,117,118)
+                        AND cdc.rarity > 6
+                        THEN "normal"
+                        ELSE ""
+                    END normal,
                     CASE
                         WHEN cdc.chara_id IN ({})
                         THEN "carnival"
                         ELSE ""
                     END carnival,
                     CASE
-                        WHEN 1.0 * cdc.vocal_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39 
-                        THEN "vocal" 
-                        WHEN 1.0 * cdc.visual_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39 
+                        WHEN 1.0 * cdc.vocal_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        THEN "vocal"
+                        WHEN 1.0 * cdc.visual_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
                         THEN "visual"
-                        WHEN 1.0 * cdc.dance_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39 
+                        WHEN 1.0 * cdc.dance_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
                         THEN "dance"
                         ELSE "balance"
-                    END main_attribute
+                    END main_attribute,
+                    CASE
+                        WHEN 1.0 * cdc.dance_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        AND cdc.leader_skill_id IN (119, 120, 121, 122, 123, 124, 125, 126, 127)
+                        THEN "dance"
+                        WHEN 1.0 * cdc.visual_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        AND cdc.leader_skill_id IN (119, 120, 121, 122, 123, 124, 125, 126, 127)
+                        THEN "visual"
+                        WHEN 1.0 * cdc.vocal_min / (cdc.vocal_min + cdc.visual_min + cdc.dance_min) > 0.39
+                        AND cdc.leader_skill_id IN (119, 120, 121, 122, 123, 124, 125, 126, 127)
+                        THEN "vocal"
+                        ELSE ""
+                    END main_attribute_2
             FROM card_data_cache as cdc
             INNER JOIN card_name_cache cnc on cdc.id = cnc.card_id
             INNER JOIN owned_card oc on oc.card_id = cnc.card_id
@@ -130,10 +162,13 @@ class IndexManager:
                         skill=TEXT,
                         carnival=TEXT,
                         leader=TEXT,
+                        normal=TEXT,
+                        limited=TEXT,
                         fes=TEXT,
                         noir=TEXT,
                         blanc=TEXT,
                         main_attribute=TEXT,
+                        main_attribute_2=TEXT,
                         time_prob_key=TEXT,
                         content=TEXT(analyzer=SimpleAnalyzer()))
         ix = create_in(INDEX_PATH, schema)
@@ -155,7 +190,8 @@ class IndexManager:
 
     def initialize_chart_index(self):
         results = db.cachedb.execute_and_fetchall(
-            "SELECT live_detail_id, performers, special_keys, jp_name, name, level, color, difficulty FROM live_detail_cache")
+            "SELECT live_detail_id, performers, special_keys, jp_name, name, level, color, difficulty "
+            "FROM live_detail_cache")
         schema = Schema(title=ID(stored=True),
                         live_detail_id=NUMERIC,
                         performers=TEXT,
@@ -190,13 +226,13 @@ class IndexManager:
         self.song_index = ix
         logger.debug("Quicksearch index initialized for {} charts".format(len(results)))
 
-    def reindex(self, card_ids=None):
+    def reindex(self, card_ids: list[int] = None):
         logger.debug("Reindexing for {} cards".format(len(card_ids)))
         if card_ids is not None:
             results = db.cachedb.execute_and_fetchall(
                 """
-                SELECT card_id, fields 
-                FROM card_index_keywords 
+                SELECT card_id, fields
+                FROM card_index_keywords
                 WHERE card_id IN ({})
                 """.format(','.join(['?'] * len(card_ids))), card_ids)
         else:
@@ -211,7 +247,7 @@ class IndexManager:
                                 **fields)
         writer.commit()
 
-    def get_index(self, song_index=False):
+    def get_index(self, song_index: bool = False) -> FileIndex:
         if not is_debug_mode() and self.index is None:
             im.initialize_index_db()
             im.initialize_index()
@@ -222,7 +258,8 @@ class IndexManager:
             return self.song_index
         return self.index
 
-    def cleanup(self):
+    @staticmethod
+    def cleanup():
         try:
             if INDEX_PATH.exists():
                 shutil.rmtree(str(INDEX_PATH))

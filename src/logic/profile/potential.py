@@ -17,13 +17,13 @@ def initialize_potential_db():
             da INTEGER NOT NULL,
             li INTEGER NOT NULL,
             sk INTEGER NOT NULL,
-            FOREIGN KEY (chara_id) REFERENCES chara_cache(chara_id) 
+            FOREIGN KEY (chara_id) REFERENCES chara_cache(chara_id)
         )
     """)
     db.cachedb.commit()
 
 
-def copy_card_data_from_master(update_all=True, chara_id=None):
+def copy_card_data_from_master(update_all: bool = True, chara_id: int = None):
     if update_all:
         db.cachedb.execute("DROP TABLE IF EXISTS card_data_cache")
         all_cards = db.masterdb.execute_and_fetchall("SELECT * FROM card_data", out_dict=True)
@@ -60,12 +60,21 @@ def copy_card_data_from_master(update_all=True, chara_id=None):
     if update_all:
         card_df.to_sql('card_data_cache', db.cachedb.get_connection(), index=False)
     else:
-        db.cachedb.execute("DELETE FROM card_data_cache WHERE chara_id = ?", [chara_id])
-        card_df.to_sql('card_data_cache', db.cachedb.get_connection(), if_exists='append', index=False)
+        for index, row in card_df.iterrows():
+            db.cachedb.execute("""
+                UPDATE card_data_cache
+                SET bonus_hp = ?,
+                    bonus_vocal = ?,
+                    bonus_dance = ?,
+                    bonus_visual = ?,
+                    bonus_skill = ?
+                WHERE id = ?
+            """, [row['bonus_hp'], row['bonus_vocal'], row['bonus_dance'],
+                  row['bonus_visual'], row['bonus_skill'], row['id']])
     db.cachedb.commit()
 
 
-def update_potential(chara_id, pots):
+def update_potential(chara_id: int, pots: tuple[int]):
     assert len(pots) == 5
     db.cachedb.execute("""
         INSERT OR REPLACE INTO potential_cache (chara_id, vo, vi, da, li, sk)

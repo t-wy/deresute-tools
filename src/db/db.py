@@ -8,7 +8,6 @@ mutex = threading.Lock()
 
 
 class CustomDB(object):
-
     def __init__(self, path):
         self._db_connection = sqlite3.connect(path, check_same_thread=False)
         self._db_cur = self._db_connection.cursor()
@@ -21,18 +20,21 @@ class CustomDB(object):
         self._db_cur.close()
         self._db_connection.close()
 
-    def execute_and_fetchone(self, query, params=None, out_dict=False):
+    def execute_and_fetchone(self, query: str, params: list = None, out_dict: bool = False):
         self.execute(query, params, let_me_unlock=True)
         result = self._db_cur.fetchone()
         if out_dict:
             description = self._db_cur.description
-            res = OrderedDict({key[0]: value for key, value in zip(description, result)})
+            if result is None:
+                res = None
+            else:
+                res = OrderedDict({key[0]: value for key, value in zip(description, result)})
         else:
             res = result
         mutex.release()
         return res
 
-    def execute_and_fetchall(self, query, params=None, out_dict=False):
+    def execute_and_fetchall(self, query: str, params: list = None, out_dict: bool = False):
         self.execute(query, params, let_me_unlock=True)
         result = self._db_cur.fetchall()
         if out_dict:
@@ -43,7 +45,7 @@ class CustomDB(object):
         mutex.release()
         return res
 
-    def execute(self, query, params=None, let_me_unlock=False):
+    def execute(self, query: str, params: list = None, let_me_unlock: bool = False):
         mutex.acquire()
         try:
             if params is None:

@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Union, Optional
 
 import numpy as np
 import pyximport
@@ -7,6 +10,7 @@ from db import db
 from exceptions import InvalidUnit
 from logic.card import Card
 from logic.search import card_query
+from static.color import Color
 
 pyximport.install(language_level=3)
 
@@ -17,9 +21,10 @@ class BaseUnit(ABC):
     def __eq__(self, other):
         if self.__class__ != other.__class__:
             return False
-        if len(self._cards) != len(other._cards):
+        m_cards, o_cards = self.all_cards(), other.all_cards()
+        if len(m_cards) != len(o_cards):
             return False
-        for (m, o) in zip(self.all_cards(), other.all_cards()):
+        for (m, o) in zip(m_cards, o_cards):
             if m != o:
                 return False
         return True
@@ -46,7 +51,16 @@ class BaseUnit(ABC):
 
 
 class Unit(BaseUnit):
-    def __init__(self, c0, c1, c2, c3, c4, cg=None, resonance=None):
+    motif_vocal: int
+    motif_dance: int
+    motif_visual: int
+    motif_vocal_trimmed: int
+    motif_dance_trimmed: int
+    motif_visual_trimmed: int
+    _motif_values_wide: Optional[list[int]]
+    _motif_values_grand: Optional[list[int]]
+
+    def __init__(self, c0: Card, c1: Card, c2: Card, c3: Card, c4: Card, cg: Card = None, resonance: bool = None):
         for _ in [c0, c1, c2, c3, c4]:
             if not isinstance(_, Card):
                 raise InvalidUnit("{} is not a card".format(_))
@@ -61,14 +75,15 @@ class Unit(BaseUnit):
         self._skill_check()
 
     @classmethod
-    def from_query(cls, query, custom_pots=None):
+    def from_query(cls, query: str, custom_pots: Union[list[int], tuple[int, int, int, int, int]] = None) -> Unit:
         card_ids = card_query.convert_short_name_to_id(query)
         if len(card_ids) < 5 or len(card_ids) > 6:
             raise ValueError("Invalid number of cards in query: {}".format(query))
         return cls.from_list(card_ids, custom_pots)
 
     @classmethod
-    def from_list(cls, cards, custom_pots=None):
+    def from_list(cls, cards: list[Union[str, int, Card]],
+                  custom_pots: Union[list[int], tuple[int, int, int, int, int]] = None) -> Unit:
         if len(cards) < 5 or len(cards) > 6:
             raise InvalidUnit("Invalid number of cards: {}".format(cards))
         results = list()
@@ -89,20 +104,21 @@ class Unit(BaseUnit):
             results.append(card)
         return cls(*results)
 
-    def get_card(self, idx):
+    def get_card(self, idx: int) -> Card:
         return self._cards[idx]
 
-    def all_cards(self, guest=False):
+    def all_cards(self, guest: bool = False) -> list[Card]:
         if guest and len(self._cards) == 6:
             return self._cards
         else:
             return self._cards[:5]
 
-    def set_offset(self, offset):
+    def set_offset(self, offset: int):
         for card in filter(lambda x: x is not None, self._cards):
             card.set_skill_offset(offset)
 
-    def leader_bonuses(self, song_color=None, get_fan_bonuses=False):
+    def leader_bonuses(self, song_color: Color = None, get_fan_bonuses: bool = False) \
+            -> Union[tuple[np.ndarray, int], np.ndarray]:
         colors = np.zeros(3)
         skills = set()
         for card in self._cards:
@@ -178,7 +194,7 @@ class Unit(BaseUnit):
                 continue
             card.skill.probability = 0
 
-    def _resonance_check(self):
+    def _resonance_check(self) -> bool:
         skills = {_card.skill.skill_type for _card in self._cards if _card is not None}
         if len(self._cards) == 6:
             cards_to_test = [self._cards[0], self._cards[-1]]
@@ -220,7 +236,7 @@ class Unit(BaseUnit):
         if self.motif_visual_trimmed >= len(self._motif_values_wide):
             self.motif_visual_trimmed = len(self._motif_values_wide) - 1
 
-    def convert_motif(self, skill_type, grand=False):
+    def convert_motif(self, skill_type: int, grand: bool = False) -> Optional[int]:
         if grand:
             values = self._motif_values_wide
         else:
@@ -233,25 +249,22 @@ class Unit(BaseUnit):
             total = self.motif_visual_trimmed
         else:
             return
-        return values[total]
+        return values[int(total)]
 
-    def update_card(self, idx, card):
+    def update_card(self, idx: int, card: Card):
         self._cards[idx] = card
 
-    def _get_motif_vocal(self):
+    def _get_motif_vocal(self) -> int:
         return sum(card.vocal for card in self._cards[:5])
 
-    def _get_motif_dance(self):
+    def _get_motif_dance(self) -> int:
         return sum(card.dance for card in self._cards[:5])
 
-    def _get_motif_visual(self):
+    def _get_motif_visual(self) -> int:
         return sum(card.visual for card in self._cards[:5])
 
-    def print_skills(self):
-        print([card.skill.skill_type for card in self._cards])
-
     @property
-    def base_attributes(self):
+    def base_attributes(self) -> np.ndarray:
         attributes = np.zeros((len(self._cards), 4, 3))  # Cards x Attributes x Colors
         for idx, card in enumerate(self._cards):
             attributes[idx, 0, card.color.value] += card.vocal
@@ -261,9 +274,9 @@ class Unit(BaseUnit):
         return attributes
 
     @property
-    def all_units(self):
+    def all_units(self) -> list[Unit]:
         return [self]
 
     def __str__(self):
-        ids = [card.card_id for card in self._cards]
+        ids = [str(card.card_id) for card in self._cards]
         return " ".join(card_query.convert_id_to_short_name(ids))

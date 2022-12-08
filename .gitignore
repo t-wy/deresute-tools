@@ -108,3 +108,4 @@ data/*
 output/*
 abuse/*
 *.png
+.idea/

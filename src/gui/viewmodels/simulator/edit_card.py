@@ -1,7 +1,13 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QAbstractItemView
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QAbstractItemView, QWidget, QHeaderView
 
 from gui.viewmodels.utils import ValidatableNumericalTableWidgetItem
+from logic.card import Card
 from static.color import Color
 
 COLOR_KEY = "Color"
@@ -11,6 +17,7 @@ VISUAL_KEY = "Visual"
 LIFE_KEY = "Life"
 SKILL_DURATION_KEY = "Skill Duration"
 SKILL_INTERVAL_KEY = "Skill Interval"
+SKILL_LEVEL_KEY = "Skill Level"
 VOCAL_POTENTIAL_KEY = "Vocal Potential"
 DANCE_POTENTIAL_KEY = "Dance Potential"
 VISUAL_POTENTIAL_KEY = "Visual Potential"
@@ -20,13 +27,16 @@ STAR_RANK_KEY = "Star Rank"
 
 HEADERS = [COLOR_KEY,
            VOCAL_KEY, DANCE_KEY, VISUAL_KEY, LIFE_KEY,
-           SKILL_DURATION_KEY, SKILL_INTERVAL_KEY,
+           SKILL_DURATION_KEY, SKILL_INTERVAL_KEY, SKILL_LEVEL_KEY,
            VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY, LIFE_POTENTIAL_KEY, SKILL_POTENTIAL_KEY,
            STAR_RANK_KEY]
 
 
-class CustomCardView:
-    def __init__(self, main):
+class EditCardView:
+    widget: QtWidgets.QTableWidget
+    model: EditCardModel
+
+    def __init__(self, main: QWidget):
         self.widget = QtWidgets.QTableWidget(main)
         self.widget.setSelectionMode(QAbstractItemView.NoSelection)
         self.widget.setSortingEnabled(False)
@@ -34,24 +44,24 @@ class CustomCardView:
         self.widget.horizontalHeader().setVisible(False)
         self.widget.setRowCount(len(HEADERS))
         self.widget.setColumnCount(1)
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
-        self.widget.horizontalHeader().setSectionResizeMode(1)  # Not allow change icon column size
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
+        self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)  # Not allow change icon column size
         self.widget.setVerticalHeaderLabels(HEADERS)
         self.widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
-    def set_model(self, model):
+    def set_model(self, model: EditCardModel):
         self.model = model
 
-    def set_values(self, values):
+    def set_values(self, values: list):
         self.disconnect_cell_changed()
         if len(values) != len(HEADERS):
             return
-        for _, header in enumerate(HEADERS):
+        for idx, header in enumerate(HEADERS):
             class_type = int
             if header == COLOR_KEY:
                 validator = lambda x: 0 <= x <= 2
-            elif header in {VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY, LIFE_POTENTIAL_KEY,
-                            SKILL_POTENTIAL_KEY}:
+            elif header in {SKILL_LEVEL_KEY, VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY,
+                            LIFE_POTENTIAL_KEY, SKILL_POTENTIAL_KEY}:
                 validator = lambda x: 0 <= x <= 10
             elif header == STAR_RANK_KEY:
                 validator = lambda x: 1 <= x <= 20
@@ -59,7 +69,7 @@ class CustomCardView:
                 validator = lambda x: True
             if header in {SKILL_DURATION_KEY, SKILL_INTERVAL_KEY}:
                 class_type = float
-            self.widget.setItem(_, 0, ValidatableNumericalTableWidgetItem(values[_], validator, class_type))
+            self.widget.setItem(idx, 0, ValidatableNumericalTableWidgetItem(values[idx], validator, class_type))
         self.connect_cell_changed()
 
     def connect_cell_changed(self):
@@ -72,14 +82,15 @@ class CustomCardView:
             pass
 
 
-class CustomCardModel:
-    view: CustomCardView
+class EditCardModel:
+    view: EditCardView
+    card: Optional[Card]
 
-    def __init__(self, view):
+    def __init__(self, view: EditCardView):
         self.view = view
         self.card = None
 
-    def set_card_object(self, card):
+    def set_card_object(self, card: Card):
         self.card = card
         if card is None:
             self.view.set_values([""] * len(HEADERS))
@@ -94,6 +105,7 @@ class CustomCardModel:
                 self.card.base_li,
                 self.card.skill.duration,
                 self.card.skill.interval,
+                self.card.skill.skill_level,
                 self.card.vo_pots,
                 self.card.da_pots,
                 self.card.vi_pots,
@@ -101,34 +113,39 @@ class CustomCardModel:
                 self.card.sk_pots,
                 self.card.star
             ])
+            for _ in range(7):
+                item = self.view.widget.item(_, 0)
+                item.setFlags(item.flags() ^ Qt.ItemIsEditable)
 
-    def handle_cell_change(self, r_idx):
+    def handle_cell_change(self, r_idx: int):
         v = self.view.widget.item(r_idx, 0).text()
         if r_idx == 0:
             self.card.color = Color(int(v))
             self.card.skill.color = Color(int(v))
         elif r_idx == 1:
-            self.card.base_vo = float(v)
+            self.card.base_vo = int(float(v))
         elif r_idx == 2:
-            self.card.base_da = float(v)
+            self.card.base_da = int(float(v))
         elif r_idx == 3:
-            self.card.base_vi = float(v)
+            self.card.base_vi = int(float(v))
         elif r_idx == 4:
-            self.card.base_li = float(v)
+            self.card.base_li = int(float(v))
         elif r_idx == 5:
             self.card.skill.duration = float(v)
         elif r_idx == 6:
             self.card.skill.interval = float(v)
         elif r_idx == 7:
-            self.card.vo_pots = int(v)
+            self.card.skill.skill_level = int(v)
         elif r_idx == 8:
-            self.card.da_pots = int(v)
+            self.card.vo_pots = int(v)
         elif r_idx == 9:
-            self.card.vi_pots = int(v)
+            self.card.da_pots = int(v)
         elif r_idx == 10:
-            self.card.li_pots = int(v)
+            self.card.vi_pots = int(v)
         elif r_idx == 11:
-            self.card.sk_pots = int(v)
+            self.card.li_pots = int(v)
         elif r_idx == 12:
+            self.card.sk_pots = int(v)
+        elif r_idx == 13:
             self.card.star = int(v)
         self.card.refresh_values()

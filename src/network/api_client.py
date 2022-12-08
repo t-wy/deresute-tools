@@ -3,6 +3,8 @@ import subprocess
 from ast import literal_eval
 
 import customlogger as logger
+from db import db
+from gui.viewmodels import custom_card
 from logic.card import Card
 from settings import TOOL_EXE, TEMP_PATH
 
@@ -37,6 +39,41 @@ def get_top_build(live_detail_id):
     with open(TEMP_PATH) as fr:
         build = literal_eval(fr.read())
         support = build['backmember_appeal']
+        for idx, card in enumerate(build['member_list']):
+            if 'custom_info' in card:
+                custom_info = card['custom_info']
+                query = """
+                        INSERT INTO custom_card (
+                            "rarity", "image_id", "vocal", "dance", "visual", "life", "use_training_point",
+                            "vocal_point", "dance_point", "visual_point", "life_point", "leader_skill_id",
+                            "skill_rank", "skill_type", "use_custom_skill", "condition", "available_time_type",
+                            "probability_type", "value", "value_2", "value_3")
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """
+                skill = list(db.masterdb.execute_and_fetchone("""
+                                                                 SELECT skill_type, condition, available_time_type,
+                                                                    probability_type, value, value_2, value_3
+                                                                 FROM skill_data
+                                                                 WHERE id = ?
+                                                                 """, [custom_info['skill_id']]))
+                # custom skill id : 5__(skill_type)_(rarity)__(interval)_(duration)
+                skill.insert(0, int(str(custom_info['skill_id'])[3]) // 2)
+                skill.insert(2, 0)
+                attr = [custom_info['rarity'], custom_info['image_card_id'],
+                        custom_card.get_stat_from_point(custom_info['rarity'], custom_info['vocal_pt'], 1),
+                        custom_card.get_stat_from_point(custom_info['rarity'], custom_info['dance_pt'], 2),
+                        custom_card.get_stat_from_point(custom_info['rarity'], custom_info['visual_pt'], 3),
+                        custom_card.get_stat_from_point(custom_info['rarity'], custom_info['life_pt'], 0),
+                        1, custom_info['vocal_pt'], custom_info['dance_pt'], custom_info['visual_pt'],
+                        custom_info['life_pt'], custom_info['leader_skill_id']] + list(skill)
+                db.cachedb.execute(query, attr)
+                db.cachedb.commit()
+
+                custom_id = db.cachedb.execute_and_fetchone("SELECT last_insert_rowid()")[0]
+                custom_card.save_custom_card_image(custom_id, custom_info['rarity'], custom_info['image_card_id'])
+
+                build['member_list'][idx]['card_id'] = 500000 + custom_id
+
         cards = [
             Card.from_id(_['card_id'], custom_pots=(
                 _['potential_param_1'],
