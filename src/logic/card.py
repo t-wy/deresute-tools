@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union, Optional
+from typing import Union, Optional, List
 
 import pyximport
 
@@ -43,7 +43,7 @@ class Card:
         self.is_refreshed = True
 
     @classmethod
-    def from_query(cls, query: Union[list[str], str], *args, **kwargs) -> Card:
+    def from_query(cls, query: Union[List[str], str], *args, **kwargs) -> Card:
         card_id = card_query.convert_short_name_to_id(query)
         if len(card_id) != 1:
             raise ValueError("Not 1 card in query: {}".format(query))

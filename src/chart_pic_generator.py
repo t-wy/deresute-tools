@@ -4,7 +4,7 @@ import math
 import os
 from abc import abstractmethod, ABC
 from collections import defaultdict
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Dict, List, DefaultDict, Tuple
 
 from PyQt5.QtCore import Qt, QPoint, QRectF, QRect
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QFont, QBrush, QPainterPath, qRgba, QPolygonF
@@ -228,9 +228,9 @@ class DraggableQScrollArea(QScrollArea):
 
 
 class ChartScrollArea(DraggableQScrollArea):
-    note_clickable_areas: list[QPolygonF()]
-    damage_clickable_areas: list[QPolygonF()]
-    skill_clickable_areas: list[list[QPolygonF()]]
+    note_clickable_areas: List[QPolygonF()]
+    damage_clickable_areas: List[QPolygonF()]
+    skill_clickable_areas: List[List[QPolygonF()]]
 
     def __init__(self, lane_count: int, *args):
         super().__init__(*args)
@@ -260,23 +260,23 @@ class BaseChartPicGenerator(ABC):
     last_sec: int
 
     label_total: int
-    note_labels: list[list[ChartPicNote]]
-    damage_labels: list[list[ChartPicNote]]
-    skill_labels: list[list[list[ChartPicSkill]]]
+    note_labels: List[List[ChartPicNote]]
+    damage_labels: List[List[ChartPicNote]]
+    skill_labels: List[List[List[ChartPicSkill]]]
 
-    note_offsets: defaultdict[int, int]
-    deact_skills: dict[int, list[int]]
+    note_offsets: DefaultDict[int, int]
+    deact_skills: Dict[int, List[int]]
 
     chart_widget: Optional[ChartScrollArea]
     chart_image_widget: QWidget
     chart_image_layout: QVBoxLayout
 
-    image_labels: list[QLabel]
-    pixmap_caches: list[Optional[QPixmap]]
-    painters: list[QPainter]
+    image_labels: List[QLabel]
+    pixmap_caches: List[Optional[QPixmap]]
+    painters: List[QPainter]
 
     selected_note: int
-    selected_skill: tuple[int, int]
+    selected_skill: Tuple[int, int]
 
     notes: DataFrame
 
@@ -500,7 +500,7 @@ class BaseChartPicGenerator(ABC):
         else:
             return BasicChartPicGenerator(song_id, difficulty, parent, False, mirrored)
 
-    def draw(self, draw_label_idx: Optional[list[int]] = None):
+    def draw(self, draw_label_idx: Optional[List[int]] = None):
         self.begin_painters()
 
         if draw_label_idx is None:
@@ -516,7 +516,7 @@ class BaseChartPicGenerator(ABC):
 
         self.end_painters()
 
-    def draw_grid_and_secs(self, draw_label_idx: list[int]):
+    def draw_grid_and_secs(self, draw_label_idx: List[int]):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
         draw_painter = [self.painters[i] for i in draw_label_idx]
@@ -551,7 +551,7 @@ class BaseChartPicGenerator(ABC):
                     QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 50), Qt.AlignRight,
                     str(sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT))
 
-    def draw_sync_lines(self, draw_label_idx: list[int]):
+    def draw_sync_lines(self, draw_label_idx: List[int]):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
         draw_painter = [self.painters[i] for i in draw_label_idx]
@@ -578,7 +578,7 @@ class BaseChartPicGenerator(ABC):
                 y = self.get_y(sec, label_idx)
                 self.painters[label_idx].drawLine(self.get_x(l), y, self.get_x(r), y)
 
-    def draw_group_lines(self, draw_label_idx: list[int]):
+    def draw_group_lines(self, draw_label_idx: List[int]):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
 
@@ -601,10 +601,10 @@ class BaseChartPicGenerator(ABC):
         pass
 
     @abstractmethod
-    def draw_notes(self, draw_label_idx: list[int], update_clickable_areas: bool = True):
+    def draw_notes(self, draw_label_idx: List[int], update_clickable_areas: bool = True):
         pass
 
-    def draw_offset(self, draw_label_idx: list[int]):
+    def draw_offset(self, draw_label_idx: List[int]):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
 
@@ -619,7 +619,7 @@ class BaseChartPicGenerator(ABC):
                                label_idx) - note.note_pic_smol.height() // 2
                 self.painters[label_idx].drawImage(QPoint(x, y), note.note_pic_smol)
 
-    def paint_skill(self, draw_label_idx: list[int], update_clickable_areas: bool = True):
+    def paint_skill(self, draw_label_idx: List[int], update_clickable_areas: bool = True):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
         else:
@@ -693,7 +693,7 @@ class BaseChartPicGenerator(ABC):
                         return True
         return False
 
-    def hook_cards(self, all_cards: list[Card]) -> bool:
+    def hook_cards(self, all_cards: List[Card]) -> bool:
         try:
             if len(all_cards) == 15:
                 unit = GrandUnit.from_list(all_cards)
@@ -710,7 +710,7 @@ class BaseChartPicGenerator(ABC):
         self.generate_skill_objects()
         return True
 
-    def hook_abuse(self, all_cards: list[Card], abuse_data: AbuseData):
+    def hook_abuse(self, all_cards: List[Card], abuse_data: AbuseData):
         self.hook_cards(all_cards)
         self.generate_note_objects(abuse_data)
 
@@ -971,11 +971,11 @@ class BaseChartPicGenerator(ABC):
         skills = sum([label[card_idx] for label in self.skill_labels], [])
         return next((skill for skill in skills if skill.act_idx == act_idx))
 
-    def get_all_skills_of_index(self, card_idx: int, act_idx: int) -> list[ChartPicSkill]:
+    def get_all_skills_of_index(self, card_idx: int, act_idx: int) -> List[ChartPicSkill]:
         skills = sum([label[card_idx] for label in self.skill_labels], [])
         return [skill for skill in skills if skill.act_idx == act_idx]
 
-    def get_label_of_skill(self, card_idx: int, act_idx: int) -> list[int]:
+    def get_label_of_skill(self, card_idx: int, act_idx: int) -> List[int]:
         skill = self.get_skill_from_index(card_idx, act_idx)
         skill_label = list()
         for label_idx in range(self.label_total):
@@ -1039,7 +1039,7 @@ class BasicChartPicGenerator(BaseChartPicGenerator):
         y2 = self.get_y(note2['sec'], label_idx)
         self.painters[label_idx].drawLine(x1, y1, x2, y2)
 
-    def draw_notes(self, draw_label_idx: list[int], update_clickable_areas: bool = True):
+    def draw_notes(self, draw_label_idx: List[int], update_clickable_areas: bool = True):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
         else:
@@ -1137,7 +1137,7 @@ class GrandChartPicGenerator(BaseChartPicGenerator):
         polygon.append(QPoint(x2l, y2))
         self.painters[label_idx].drawConvexPolygon(polygon)
 
-    def draw_notes(self, draw_label_idx: list[int], update_clickable_areas: bool = True):
+    def draw_notes(self, draw_label_idx: List[int], update_clickable_areas: bool = True):
         if len(draw_label_idx) == 0:
             draw_label_idx = list(range(self.label_total))
         else:

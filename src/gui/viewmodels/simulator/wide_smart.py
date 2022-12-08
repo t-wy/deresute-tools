@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, List
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject
@@ -178,7 +178,7 @@ class MainView:
     def simulate(self, row: int = None):
         score_id, diff_id, live_detail_id, _, _ = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())
         times = self.get_times()
-        all_cards: list[CardsWithUnitUuidAndExtraData] = eventbus.eventbus.post_and_get_first(
+        all_cards: List[CardsWithUnitUuidAndExtraData] = eventbus.eventbus.post_and_get_first(
             GetAllCardsEvent(self.get_current_model(), row), required_non_none=True)
         perfect_play = eventbus.eventbus.post_and_get_first(GetPerfectPlayFlagEvent())
         custom_pots = eventbus.eventbus.post_and_get_first(GetCustomPotsEvent())
@@ -226,13 +226,13 @@ class MainModel(QObject):
 
     @staticmethod
     def simulate_internal(perfect_play: bool, left_inclusive: bool, right_inclusive: bool, score_id: int, diff_id: int,
-                          times: int, all_cards: list[CardsWithUnitUuidAndExtraData], custom_pots: Optional[list[int]],
+                          times: int, all_cards: List[CardsWithUnitUuidAndExtraData], custom_pots: Optional[List[int]],
                           appeals: Optional[int], support: Optional[int], extra_bonus: Optional[ndarray],
                           special_option: Optional[int], special_value: Optional[int],
                           mirror: bool, autoplay: bool, autoplay_offset: int, doublelife: bool,
                           force_encore_amr_cache_to_encore_unit: bool, force_encore_magic_to_encore_unit: bool,
                           allow_encore_magic_to_escape_max_agg: bool, allow_great: bool, row: int = None):
-        all_cards: list[CardsWithUnitUuidAndExtraData]
+        all_cards: List[CardsWithUnitUuidAndExtraData]
         if len(all_cards) == 0:
             logger.info("Nothing to simulate")
             return

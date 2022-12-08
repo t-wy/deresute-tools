@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from whoosh import scoring
 from whoosh.index import FileIndex
@@ -36,7 +36,7 @@ class SongSearchEngine(BaseSearchEngine):
 
 
 def advanced_single_query(query: str, partial_match: bool = True, idolized: bool = True,
-                          ssr: bool = True, owned_only: bool = False) -> list[int]:
+                          ssr: bool = True, owned_only: bool = False) -> List[int]:
     query = query.split()
     square_bracket_open = False
     if partial_match:
@@ -65,7 +65,7 @@ def advanced_single_query(query: str, partial_match: bool = True, idolized: bool
     return []
 
 
-def song_query(query: str, partial_match: bool = True) -> list[int]:
+def song_query(query: str, partial_match: bool = True) -> List[int]:
     query = query.split()
     if partial_match:
         for idx in range(len(query)):

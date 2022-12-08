@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-from typing import Any, Union, Optional
+from typing import Any, Union, Optional, List, Dict, Tuple
 
 import numpy as np
 import pyximport
@@ -23,7 +22,7 @@ COMMON_TIMERS = [(7, 4.5, 'h'), (9, 6, 'h'), (11, 7.5, 'h'), (12, 7.5, 'm'),
 
 class Skill:
     def __init__(self, color: Color = Color.CUTE, duration: int = 0, probability: int = 0, interval: int = 999,
-                 values: list[int] = None, v0: int = 0, v1: int = 0, v2: int = 0, v3: int = 0, v4: int = 0,
+                 values: List[int] = None, v0: int = 0, v1: int = 0, v2: int = 0, v3: int = 0, v4: int = 0,
                  offset: int = 0, boost: bool = False, color_target: bool = False, act: NoteType = None,
                  bonus_skill: int = 2000, skill_type: int = 0,
                  min_requirements: Union[np.array, list] = None, max_requirements: Union[np.array, list] = None,
@@ -70,7 +69,7 @@ class Skill:
     def set_card_idx(self, idx: int):
         self.card_idx = idx
 
-    def _generate_targets(self) -> list[int]:
+    def _generate_targets(self) -> List[int]:
         if self.skill_type == 21 or self.skill_type == 32:
             return [0]
         if self.skill_type == 22 or self.skill_type == 33:
@@ -144,7 +143,7 @@ class Skill:
         return self.skill_type in (4, 21, 22, 23, 24, 25, 26, 27, 31, 39)
 
     @classmethod
-    def _fetch_skill_data_from_db(cls, skill_id: int) -> OrderedDict[str, Any]:
+    def _fetch_skill_data_from_db(cls, skill_id: int) -> Dict[str, Any]:
         return db.masterdb.execute_and_fetchone("""
             SELECT skill_data.*,
                 card_data.attribute,
@@ -158,7 +157,7 @@ class Skill:
             """, params=[skill_id, skill_id], out_dict=True)
 
     @classmethod
-    def _fetch_boost_value_from_db(cls, skill_value: int) -> list[int]:
+    def _fetch_boost_value_from_db(cls, skill_value: int) -> List[int]:
         values = db.masterdb.execute_and_fetchone(
             """
             SELECT  sbt1.boost_value_1 as v0,
@@ -179,7 +178,7 @@ class Skill:
         return values
 
     @classmethod
-    def _fetch_custom_skill_from_db(cls, custom_card_id: int) -> Optional[OrderedDict[str, Any]]:
+    def _fetch_custom_skill_from_db(cls, custom_card_id: int) -> Optional[Dict[str, Any]]:
         values = db.cachedb.execute_and_fetchone("""
             SELECT  image_id,
                     skill_type,
@@ -207,7 +206,7 @@ class Skill:
         return values
 
     @classmethod
-    def _handle_skill_type(cls, skill_type: int, skill_values: tuple[int, int, int]) -> list[int]:
+    def _handle_skill_type(cls, skill_type: int, skill_values: Tuple[int, int, int]) -> List[int]:
         assert len(skill_values) == 3
         values = [0, 0, 0, 0, 0]  # Score(Perfect), Score(Great), Combo, Heal, Support
         if skill_type in (9, 12):  # Damage guard, combo support

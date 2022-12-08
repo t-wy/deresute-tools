@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING, Union, cast
+from typing import TYPE_CHECKING, Union, cast, List, Tuple
 
 from PyQt5.QtCore import QSize, Qt, QMimeData
 from PyQt5.QtGui import QDrag
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 class GrandCalculatorUnitWidget(CalculatorUnitWidgetWithExtraData, UniversalUniqueIdentifiable):
     unit_view: GrandCalculatorView
     vertical_layout: QVBoxLayout
-    card_layouts: list[QHBoxLayout]
+    card_layouts: List[QHBoxLayout]
 
     def __init__(self, unit_view: GrandCalculatorView, parent: QWidget = None, size: int = 32, *args, **kwargs):
         super().__init__(unit_view, parent, size, *args, **kwargs)
@@ -92,7 +92,7 @@ class GrandCalculatorView(CalculatorView):
     def initialize_widget(self, main: QWidget):
         self.widget = GrandCalculatorTableWidget(self, main)
 
-    def set_unit(self, cards: list[Union[int, Card, None]], row: int = None, unit: int = 0):
+    def set_unit(self, cards: List[Union[int, Card, None]], row: int = None, unit: int = 0):
         if row is None:
             row = self.widget.rowCount() - 1
         for idx, card in enumerate(cards):
@@ -111,7 +111,7 @@ class GrandCalculatorView(CalculatorView):
         logger.debug("Inserted empty unit at {}".format(self.widget.rowCount()))
         self.widget.setColumnWidth(0, 40 * 6)
 
-    def add_unit(self, cards: list[Union[int, Card, None]]):
+    def add_unit(self, cards: List[Union[int, Card, None]]):
         if len(cards) == 6:
             cards = cards[:5]
         if len(cards) == 15:
@@ -149,7 +149,7 @@ class GrandCalculatorView(CalculatorView):
             all_units_card_ids.append(units)
         for zipped in all_units:
             for permutation in itertools.permutations(zipped, 3):
-                permutation = cast(list[tuple[list[int], list[Union[Card, None]]]], list(permutation))
+                permutation = cast(List[Tuple[List[int], List[Union[Card, None]]]], list(permutation))
                 unit_card_ids = [_[0] for _ in permutation]
                 unit_internal = permutation[0][1] + permutation[1][1] + permutation[2][1]
                 for idx, _ in enumerate(unit_internal):

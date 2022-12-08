@@ -5,7 +5,7 @@ from bisect import bisect
 from collections import defaultdict
 from math import ceil, floor
 from random import random
-from typing import cast, Union, Optional
+from typing import cast, Union, Optional, Dict, List, DefaultDict, Tuple
 
 import cython
 import numpy as np
@@ -22,8 +22,8 @@ from static.song_difficulty import PERFECT_TAP_RANGE, GREAT_TAP_RANGE, NICE_TAP_
 
 
 class LiveDetail:
-    note_details: list[NoteDetail]
-    skill_details: dict[int, list[SkillDetail]]
+    note_details: List[NoteDetail]
+    skill_details: Dict[int, List[SkillDetail]]
 
     def __init__(self, grand):
         self.note_details = list()
@@ -47,9 +47,9 @@ class NoteDetail:
     weight: float
 
     score: int
-    score_bonus: list[NoteDetailSkill]
-    score_great_bonus: list[NoteDetailSkill]
-    combo_bonus: list[NoteDetailSkill]
+    score_bonus: List[NoteDetailSkill]
+    score_great_bonus: List[NoteDetailSkill]
+    combo_bonus: List[NoteDetailSkill]
 
     def __init__(self, number: int, time: float, note_type: NoteType, checkpoint: bool, offset: int):
         self.number = number
@@ -75,7 +75,7 @@ class NoteDetailSkill:
     lane: int
     skill_type: int
     value: int
-    _boost: Optional[list[NoteDetailSkill]]
+    _boost: Optional[List[NoteDetailSkill]]
 
     def __init__(self, is_boost: bool, lane: int, skill_type: int, value: int):
         self.is_boost = is_boost
@@ -94,7 +94,7 @@ class NoteDetailSkill:
         return floor(self.value / (1 + sum([boost.value / 100 for boost in self._boost]))) if not self.is_boost \
             else None
 
-    def add_boost(self, boost: Union[NoteDetailSkill, list[NoteDetailSkill], None]):
+    def add_boost(self, boost: Union[NoteDetailSkill, List[NoteDetailSkill], None]):
         if self.is_boost:
             return
         if type(boost) == list:
@@ -122,9 +122,9 @@ class SkillDetail:
     _deact: bool  # User set this skill to not activate
     _inact: Optional[SkillInact]  # Skill can't activate for some reason
 
-    encored_skill: tuple[int, int, float]
-    amr_bonus: dict[str, Optional[tuple[int, int, int, int, float]]]  # (value, original_value, lane, type, time)
-    magic_bonus: dict[str, Union[int, bool]]
+    encored_skill: Tuple[int, int, float]
+    amr_bonus: Dict[str, Optional[Tuple[int, int, int, int, float]]]  # (value, original_value, lane, type, time)
+    magic_bonus: Dict[str, Union[int, bool]]
 
     def __init__(self, skill_type: int, probability: float, time_on: float, time_off: float):
         self.skill_type = skill_type
@@ -193,24 +193,24 @@ class UnitCacheBonus:
     slide: int
     great: int
     combo: int
-    tap_update: tuple[int, int, float]
-    longg_update: tuple[int, int, float]
-    flick_update: tuple[int, int, float]
-    slide_update: tuple[int, int, float]
-    great_update: tuple[int, int, float]
-    combo_update: tuple[int, int, float]
-    ref_tap: dict[int, int]
-    ref_flick: dict[int, int]
-    ref_long: dict[int, int]
-    ref_slide: dict[int, int]
-    ref_great: dict[int, int]
-    ref_combo: dict[int, int]
-    alt_tap: dict[int, int]
-    alt_flick: dict[int, int]
-    alt_long: dict[int, int]
-    alt_slide: dict[int, int]
-    alt_great: dict[int, int]
-    alt_combo: dict[int, int]
+    tap_update: Tuple[int, int, float]
+    longg_update: Tuple[int, int, float]
+    flick_update: Tuple[int, int, float]
+    slide_update: Tuple[int, int, float]
+    great_update: Tuple[int, int, float]
+    combo_update: Tuple[int, int, float]
+    ref_tap: Dict[int, int]
+    ref_flick: Dict[int, int]
+    ref_long: Dict[int, int]
+    ref_slide: Dict[int, int]
+    ref_great: Dict[int, int]
+    ref_combo: Dict[int, int]
+    alt_tap: Dict[int, int]
+    alt_flick: Dict[int, int]
+    alt_long: Dict[int, int]
+    alt_slide: Dict[int, int]
+    alt_great: Dict[int, int]
+    alt_combo: Dict[int, int]
 
     def __init__(self):
         self.tap = 0
@@ -367,91 +367,91 @@ class StateMachine:
     notes_data: pd.DataFrame
     base_score: float
     helen_base_score: float
-    weights: list[int]
+    weights: List[int]
 
-    _note_type_stack: list[NoteType]
-    _note_idx_stack: list[int]
-    _special_note_types: list[list[NoteType]]
+    _note_type_stack: List[NoteType]
+    _note_idx_stack: List[int]
+    _special_note_types: List[List[NoteType]]
 
-    note_time_stack: list[int]
-    note_time_deltas: list[int]
-    note_type_stack: list[NoteType]
-    note_idx_stack: list[int]
-    special_note_types: list[list[NoteType]]
-    checkpoints: list[bool]
+    note_time_stack: List[int]
+    note_time_deltas: List[int]
+    note_type_stack: List[NoteType]
+    note_idx_stack: List[int]
+    special_note_types: List[List[NoteType]]
+    checkpoints: List[bool]
 
     unit_offset: int
-    probabilities: list[float]
+    probabilities: List[float]
     has_cc: bool
 
-    _sparkle_bonus_ssr: list[int]
-    _sparkle_bonus_sr: list[int]
+    _sparkle_bonus_ssr: List[int]
+    _sparkle_bonus_sr: List[int]
 
-    skill_times: list[int]
-    skill_indices: list[int]
-    skill_queue: dict[int, Union[Skill, list[Skill]]]
-    reference_skills: list[Optional[Skill]]
+    skill_times: List[int]
+    skill_indices: List[int]
+    skill_queue: Dict[int, Union[Skill, List[Skill]]]
+    reference_skills: List[Optional[Skill]]
 
     life: int
     max_life: int
     combo: int
-    combos: list[int]
-    judgements: list[Judgement]
+    combos: List[int]
+    judgements: List[Judgement]
 
     full_roll_chance: float
 
     note_scores: Optional[np.ndarray]
     np_score_bonuses: Optional[np.ndarray]
-    score_bonuses: list[int]
+    score_bonuses: List[int]
     np_score_great_bonuses: Optional[np.ndarray]
-    score_great_bonuses: list[int]
+    score_great_bonuses: List[int]
     np_combo_bonuses: Optional[np.ndarray]
-    combo_bonuses: list[int]
+    combo_bonuses: List[int]
 
-    last_activated_skill: list[int]
-    last_activated_time: list[int]
+    last_activated_skill: List[int]
+    last_activated_time: List[int]
 
     has_skill_change: bool
-    cache_max_boosts: Optional[list[list[int]]]
-    cache_max_boosts_pointer: Optional[list[list[Optional[NoteDetailSkill]]]]
-    cache_sum_boosts: Optional[list[list[int]]]
-    cache_sum_boosts_pointer: Optional[list[list[list[NoteDetailSkill]]]]
+    cache_max_boosts: Optional[List[List[int]]]
+    cache_max_boosts_pointer: Optional[List[List[Optional[NoteDetailSkill]]]]
+    cache_sum_boosts: Optional[List[List[int]]]
+    cache_sum_boosts_pointer: Optional[List[List[List[NoteDetailSkill]]]]
     cache_life_bonus: int
     cache_support_bonus: int
     cache_combo_support_bonus: int
     cache_score_bonus: int
-    cache_score_bonus_skill: list[NoteDetailSkill]
+    cache_score_bonus_skill: List[NoteDetailSkill]
     cache_score_great_bonus: int
-    cache_score_great_bonus_skill: list[NoteDetailSkill]
+    cache_score_great_bonus_skill: List[NoteDetailSkill]
     cache_combo_bonus: int
-    cache_combo_bonus_skill: list[NoteDetailSkill]
-    cache_magics: dict[int, Union[Skill, list[Skill]]]
-    cache_non_magics: dict[int, Union[Skill, list[Skill]]]
-    cache_ls: dict[int, int]
-    cache_act: dict[int, int]
-    cache_alt: dict[int, tuple[int, int]]
-    cache_mut: dict[int, int]
-    cache_ref: dict[int, tuple[int, int, int]]
-    cache_enc: dict[int, int]
+    cache_combo_bonus_skill: List[NoteDetailSkill]
+    cache_magics: Dict[int, Union[Skill, List[Skill]]]
+    cache_non_magics: Dict[int, Union[Skill, List[Skill]]]
+    cache_ls: Dict[int, int]
+    cache_act: Dict[int, int]
+    cache_alt: Dict[int, Tuple[int, int]]
+    cache_mut: Dict[int, int]
+    cache_ref: Dict[int, Tuple[int, int, int]]
+    cache_enc: Dict[int, int]
 
-    unit_caches: list[UnitCacheBonus]
+    unit_caches: List[UnitCacheBonus]
 
     abuse: bool
-    cache_hps: list[int]
-    is_abuse: list[bool]
+    cache_hps: List[int]
+    is_abuse: List[bool]
     cache_perfect_score_array: Optional[np.ndarray]
-    note_time_deltas_backup: list[int]
-    note_idx_stack_backup: list[int]
-    is_abuse_backup: list[bool]
+    note_time_deltas_backup: List[int]
+    note_idx_stack_backup: List[int]
+    is_abuse_backup: List[bool]
 
     auto: bool
     time_offset: int
     special_offset: int
-    finish_pos: list[int]
-    status: list[int]
-    group_ids: list[int]
-    delayed: list[bool]
-    being_held: dict[int, bool]
+    finish_pos: List[int]
+    status: List[int]
+    group_ids: List[int]
+    delayed: List[bool]
+    being_held: Dict[int, bool]
     lowest_life: int
     lowest_life_time: int
     last_miss_time: int
@@ -461,13 +461,13 @@ class StateMachine:
     allow_encore_magic_to_escape_max_agg: bool
 
     live_detail: LiveDetail
-    note_details: list[NoteDetail]
-    skill_details: dict[int, list[SkillDetail]]
+    note_details: List[NoteDetail]
+    skill_details: Dict[int, List[SkillDetail]]
 
     custom: bool
-    custom_deact_skills: Optional[list[list[int]]]
-    custom_note_offsets: Optional[defaultdict[int, int]]
-    custom_note_misses: Optional[defaultdict[int, int]]
+    custom_deact_skills: Optional[List[List[int]]]
+    custom_note_offsets: Optional[DefaultDict[int, int]]
+    custom_note_misses: Optional[DefaultDict[int, int]]
 
     def __init__(self, grand, difficulty, doublelife, live, notes_data, left_inclusive, right_inclusive, base_score,
                  helen_base_score, weights,
@@ -878,7 +878,7 @@ class StateMachine:
         self.skill_indices = np_skill_indices[sorted_indices].tolist()
 
     def simulate_impl(self, skip_activation_initialization=False) \
-            -> Union[tuple[int, list[int], LiveDetail], tuple[int, AbuseData]]:
+            -> Union[Tuple[int, List[int], LiveDetail], Tuple[int, AbuseData]]:
         if not skip_activation_initialization:
             self.initialize_activation_arrays()
 
@@ -940,7 +940,7 @@ class StateMachine:
             self.weights = [1.0 if combo == 0 else self.weights[combo - 1] for combo in self.combos]
 
         self.note_scores = np.round(self.base_score * np.array(self.weights) * final_bonus)
-        note_scores_list = cast(list[int], self.note_scores.tolist())
+        note_scores_list = cast(List[int], self.note_scores.tolist())
 
         if not self.fail_simulate and not self.abuse:
             self.cache_perfect_score_array = self.note_scores.copy()
@@ -1439,7 +1439,7 @@ class StateMachine:
             return judgement
 
     def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None) \
-            -> tuple[int, int, int, int, int]:
+            -> Tuple[int, int, int, int, int]:
         if self.has_skill_change:
             self.separate_magics_non_magics()
         magics = self.cache_magics
@@ -1594,8 +1594,8 @@ class StateMachine:
                     skill.normalized = True
                     continue
 
-    def _evaluate_bonuses_phase_boost(self, magics: dict[int, list[Skill]], non_magics: dict[int, list[Skill]]) \
-            -> tuple[list[list[int]], list[list[int]]]:
+    def _evaluate_bonuses_phase_boost(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]]) \
+            -> Tuple[List[List[int]], List[List[int]]]:
         if not self.has_skill_change:
             return self.cache_max_boosts, self.cache_sum_boosts
         magic_boosts = [
@@ -1631,7 +1631,7 @@ class StateMachine:
             [1000, 1000, 1000, 1000, 0],
             [1000, 1000, 1000, 1000, 0]
         ]
-        max_boosts_pointer: list[list[Optional[NoteDetailSkill]]]
+        max_boosts_pointer: List[List[Optional[NoteDetailSkill]]]
         max_boosts_pointer = [
             [None, None, None, None, None],
             [None, None, None, None, None],
@@ -1642,7 +1642,7 @@ class StateMachine:
             [1000, 1000, 1000, 1000, 0],
             [1000, 1000, 1000, 1000, 0]
         ]
-        sum_boosts_pointer: list[list[list[NoteDetailSkill]]]
+        sum_boosts_pointer: List[List[List[NoteDetailSkill]]]
         sum_boosts_pointer = [
             [[], [], [], [], []],
             [[], [], [], [], []],
@@ -1689,9 +1689,9 @@ class StateMachine:
         self.cache_sum_boosts_pointer = sum_boosts_pointer
         return max_boosts, sum_boosts
 
-    def _evaluate_bonuses_phase_life_support(self, magics: dict[int, list[Skill]], non_magics: dict[int, list[Skill]],
-                                             max_boosts: list[list[int]], sum_boosts: list[list[int]]) \
-            -> tuple[int, int, int]:
+    def _evaluate_bonuses_phase_life_support(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
+                                             max_boosts: List[List[int]], sum_boosts: List[List[int]]) \
+            -> Tuple[int, int, int]:
         if not self.has_skill_change:
             return self.cache_life_bonus, self.cache_support_bonus, self.cache_combo_support_bonus
         temp_life_results = dict()
@@ -1803,9 +1803,9 @@ class StateMachine:
         self.cache_combo_support_bonus = max(unit_combo_support_bonuses)
         return self.cache_life_bonus, self.cache_support_bonus, self.cache_combo_support_bonus
 
-    def _evaluate_bonuses_phase_score_combo(self, magics: dict[int, list[Skill]], non_magics: dict[int, list[Skill]],
-                                            max_boosts: list[list[int]], sum_boosts: list[list[int]]) \
-            -> tuple[int, int, int]:
+    def _evaluate_bonuses_phase_score_combo(self, magics: Dict[int, List[Skill]], non_magics: Dict[int, List[Skill]],
+                                            max_boosts: List[List[int]], sum_boosts: List[List[int]]) \
+            -> Tuple[int, int, int]:
         if not self.has_skill_change:
             return self.cache_score_bonus, self.cache_score_great_bonus, self.cache_combo_bonus
 
@@ -1827,12 +1827,12 @@ class StateMachine:
         def none_to_zero(x):
             return x if x is not None else 0
 
-        temp_score_results: dict[int, Optional[int]] = dict()
-        temp_score_skills: dict[int, Optional[NoteDetailSkill]] = dict()
-        temp_score_great_results: dict[int, Optional[int]] = dict()
-        temp_score_great_skills: dict[int, Optional[NoteDetailSkill]] = dict()
-        temp_combo_results: dict[int, Optional[int]] = dict()
-        temp_combo_skills: dict[int, Optional[NoteDetailSkill]] = dict()
+        temp_score_results: Dict[int, Optional[int]] = dict()
+        temp_score_skills: Dict[int, Optional[NoteDetailSkill]] = dict()
+        temp_score_great_results: Dict[int, Optional[int]] = dict()
+        temp_score_great_skills: Dict[int, Optional[NoteDetailSkill]] = dict()
+        temp_combo_results: Dict[int, Optional[int]] = dict()
+        temp_combo_skills: Dict[int, Optional[NoteDetailSkill]] = dict()
         for magic_idx, skills in magics.items():
             magic_idx -= 1
             unit_idx = magic_idx // 5
@@ -1982,12 +1982,12 @@ class StateMachine:
                                                                        temp_combo_results[non_magic_idx])
                     temp_combo_skills[non_magic_idx].add_boost(boost_skill)
 
-        unit_score_bonuses: list[int] = list()
-        unit_score_skills: list[list[NoteDetailSkill]] = list()
-        unit_score_great_bonuses: list[int] = list()
-        unit_score_great_skills: list[list[NoteDetailSkill]] = list()
-        unit_combo_bonuses: list[int] = list()
-        unit_combo_skills: list[list[NoteDetailSkill]] = list()
+        unit_score_bonuses: List[int] = list()
+        unit_score_skills: List[List[NoteDetailSkill]] = list()
+        unit_score_great_bonuses: List[int] = list()
+        unit_score_great_skills: List[List[NoteDetailSkill]] = list()
+        unit_combo_bonuses: List[int] = list()
+        unit_combo_skills: List[List[NoteDetailSkill]] = list()
         for unit_idx in range(len(self.live.unit.all_units)):
             resonance = self.live.unit.all_units[unit_idx].resonance
             agg_func = sum_none if resonance else max_none
@@ -2017,11 +2017,11 @@ class StateMachine:
                             unified_magic_combo_skill = temp_combo_skills[magic_idx]
 
             unified_non_magic_score: Optional[int] = None
-            unified_non_magic_score_skill: list[Optional[NoteDetailSkill]] = list()
+            unified_non_magic_score_skill: List[Optional[NoteDetailSkill]] = list()
             unified_non_magic_score_great: Optional[int] = None
-            unified_non_magic_score_great_skill: list[Optional[NoteDetailSkill]] = list()
+            unified_non_magic_score_great_skill: List[Optional[NoteDetailSkill]] = list()
             unified_non_magic_combo: Optional[int] = None
-            unified_non_magic_combo_skill: list[Optional[NoteDetailSkill]] = list()
+            unified_non_magic_combo_skill: List[Optional[NoteDetailSkill]] = list()
             for non_magic in unit_non_magics:
                 if non_magic in temp_score_results:
                     if lt_none(unified_non_magic_score, temp_score_results[non_magic]) or resonance:
@@ -2047,9 +2047,9 @@ class StateMachine:
             unit_score_great_bonuses.append(agg_func((unified_magic_score_great, unified_non_magic_score_great)))
             unit_combo_bonuses.append(agg_func((unified_magic_combo, unified_non_magic_combo)))
 
-            unified_score_skills: list[NoteDetailSkill] = list()
-            unified_score_great_skills: list[NoteDetailSkill] = list()
-            unified_combo_skills: list[NoteDetailSkill] = list()
+            unified_score_skills: List[NoteDetailSkill] = list()
+            unified_score_great_skills: List[NoteDetailSkill] = list()
+            unified_combo_skills: List[NoteDetailSkill] = list()
             if resonance:
                 if unified_magic_score_skill is not None:
                     unified_score_skills.append(unified_magic_score_skill)
@@ -2250,7 +2250,7 @@ class StateMachine:
                 amr_bonus['great'] = (bonuses[4], unit.great - 100) + unit.great_update
                 amr_bonus['combo'] = (bonuses[5], unit.combo - 100) + unit.combo_update
 
-    def _helper_get_current_skills(self) -> list[Skill]:
+    def _helper_get_current_skills(self) -> List[Skill]:
         if self.skill_indices[0] not in self.skill_queue:
             return []
         skills_to_check = self.skill_queue[self.skill_indices[0]]

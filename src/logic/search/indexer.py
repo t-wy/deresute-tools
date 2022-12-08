@@ -1,6 +1,6 @@
 import ast
 import shutil
-from typing import Optional
+from typing import Optional, List
 
 from whoosh.analysis import SimpleAnalyzer
 from whoosh.fields import *
@@ -226,7 +226,7 @@ class IndexManager:
         self.song_index = ix
         logger.debug("Quicksearch index initialized for {} charts".format(len(results)))
 
-    def reindex(self, card_ids: list[int] = None):
+    def reindex(self, card_ids: List[int] = None):
         logger.debug("Reindexing for {} cards".format(len(card_ids)))
         if card_ids is not None:
             results = db.cachedb.execute_and_fetchall(

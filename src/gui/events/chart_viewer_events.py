@@ -1,3 +1,5 @@
+from typing import List
+
 from logic.card import Card
 from simulator import LiveDetail
 from statemachine import AbuseData
@@ -5,12 +7,12 @@ from static.song_difficulty import Difficulty
 
 
 class HookUnitToChartViewerEvent:
-    def __init__(self, cards: list[Card]):
+    def __init__(self, cards: List[Card]):
         self.cards = cards
 
 
 class HookAbuseToChartViewerEvent:
-    def __init__(self, song_id: int, difficulty: Difficulty, cards: list[Card], abuse_df: AbuseData):
+    def __init__(self, song_id: int, difficulty: Difficulty, cards: List[Card], abuse_df: AbuseData):
         self.song_id = song_id
         self.difficulty = difficulty
         self.cards = cards

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union
+from typing import Union, List
 
 import pyximport
 
@@ -24,7 +24,7 @@ class GrandUnit(BaseUnit):
             unit.set_offset(idx)
 
     @classmethod
-    def from_list(cls, card_list: list[Union[str, int, Card]], custom_pots: list[int] = None) -> GrandUnit:
+    def from_list(cls, card_list: List[Union[str, int, Card]], custom_pots: List[int] = None) -> GrandUnit:
         return cls(
             Unit.from_list(card_list[0:5], custom_pots),
             Unit.from_list(card_list[5:10], custom_pots),
@@ -34,10 +34,10 @@ class GrandUnit(BaseUnit):
         return self._units[idx]
 
     @property
-    def all_units(self) -> list[Unit]:
+    def all_units(self) -> List[Unit]:
         return self._units
 
-    def all_cards(self) -> list[Card]:
+    def all_cards(self) -> List[Card]:
         result = []
         for unit in self._units:
             result.extend(unit.all_cards())

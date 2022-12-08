@@ -1,3 +1,5 @@
+from typing import List
+
 from db import db
 
 
@@ -20,7 +22,7 @@ def add_empty_unit() -> int:
     return db.cachedb.execute_and_fetchone("SELECT last_insert_rowid()")[0]
 
 
-def update_unit(unit_id: int, unit_name: str, cards: list[int], grand: bool = False):
+def update_unit(unit_id: int, unit_name: str, cards: List[int], grand: bool = False):
     if isinstance(cards, list):
         cards = ["" if _ is None else str(_) for _ in cards]
         cards = ",".join(cards)

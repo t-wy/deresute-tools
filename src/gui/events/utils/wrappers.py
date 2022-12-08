@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, List
 
 from logic.card import Card
 from logic.grandlive import GrandLive
@@ -7,7 +7,7 @@ from simulator import SimulationResult, AutoSimulationResult
 
 
 class BaseSimulationResultWithUuid:
-    def __init__(self, uuid: str, cards: list[Card], results: Union[SimulationResult, AutoSimulationResult],
+    def __init__(self, uuid: str, cards: List[Card], results: Union[SimulationResult, AutoSimulationResult],
                  abuse_load: bool, live: Union[Live, GrandLive] = None):
         self.uuid = uuid
         self.cards = cards
@@ -17,6 +17,6 @@ class BaseSimulationResultWithUuid:
 
 
 class YoinkResults:
-    def __init__(self, cards: list[Card], support: int):
+    def __init__(self, cards: List[Card], support: int):
         self.cards = cards
         self.support = support

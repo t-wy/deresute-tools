@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-from typing import Any
+from typing import Any, List, Dict
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt
@@ -37,7 +36,7 @@ class PotentialView:
     def set_model(self, model: PotentialModel):
         self.model = model
 
-    def load_data(self, data: list[OrderedDict[str, Any]]):
+    def load_data(self, data: List[Dict[str, Any]]):
         self.widget.setColumnCount(len(data[0]))
         self.widget.setRowCount(len(data))
         self.widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)

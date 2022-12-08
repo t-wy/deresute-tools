@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Union
+from typing import Union, Dict, List
 
 from db import db
 from network import kirara_query
@@ -14,7 +14,7 @@ ALIASES = {
 queried_to_kirara = False
 
 
-def get_chara_dict() -> dict[int, str]:
+def get_chara_dict() -> Dict[int, str]:
     global queried_to_kirara
     # Prevent query if debugging
     if not queried_to_kirara and (
@@ -80,7 +80,7 @@ def generate_short_names():
     db.cachedb.commit()
 
 
-def convert_short_name_to_id(query: Union[list[str], str]) -> list[int]:
+def convert_short_name_to_id(query: Union[List[str], str]) -> List[int]:
     if isinstance(query, list):
         tokens = query
     elif isinstance(query, str):
@@ -100,7 +100,7 @@ def convert_short_name_to_id(query: Union[list[str], str]) -> list[int]:
     return results
 
 
-def convert_id_to_short_name(query: Union[list[str], str]) -> list[str]:
+def convert_id_to_short_name(query: Union[List[str], str]) -> List[str]:
     if isinstance(query, list):
         tokens = query
     elif isinstance(query, str):

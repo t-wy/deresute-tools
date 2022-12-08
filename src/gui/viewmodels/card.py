@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from pathlib import Path
-from typing import cast, Any, Optional
+from typing import cast, Any, Optional, Dict, List
 
 from PyQt5.QtCore import QSize, QMimeData, Qt, QPoint
 from PyQt5.QtGui import QDrag, QPixmap, QPainter, QColor
@@ -28,7 +27,7 @@ from static.skill import SKILL_COLOR_BY_NAME
 
 class CustomCardTable(QTableWidget):
     drag_start_position: QPoint
-    selected: list[QTableWidgetItem]
+    selected: List[QTableWidgetItem]
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -104,7 +103,7 @@ class CardView:
             self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)  # Resize
             self.widget.setColumnWidth(4, name_col_width)
 
-    def load_data(self, data: list[OrderedDict[str, Any]], card_list: list[int] = None):
+    def load_data(self, data: List[Dict[str, Any]], card_list: List[int] = None):
         if card_list is None:
             self.widget.setColumnCount(len(data[0]) + 2)
             self.widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)  # Fix icon column size
@@ -151,7 +150,7 @@ class CardView:
         # Turn on auto-fit once to make it look better than turn it off to render faster during resize
         self.toggle_auto_resize(card_list is None)
 
-    def show_only_ids(self, card_ids: list[int]):
+    def show_only_ids(self, card_ids: List[int]):
         if not card_ids:
             card_ids = set()
         else:
@@ -166,7 +165,7 @@ class CardView:
                 self.widget.setRowHidden(r_idx, True)
         self.refresh_spacing()
 
-    def draw_icons(self, icons: Optional[dict[str, Path]], size: Optional[int]):
+    def draw_icons(self, icons: Optional[Dict[str, Path]], size: Optional[int]):
         if size is None:
             self.size = 20
         else:
@@ -187,8 +186,8 @@ class CardView:
 
 class CardModel:
     view: CardView
-    images: dict[str, Path]
-    owned: dict[int, int]
+    images: Dict[str, Path]
+    owned: Dict[int, int]
     model_id: int
     potential: bool
 
@@ -227,7 +226,7 @@ class CardModel:
         if self.potential:
             self.initialize_cards(event.card_list, potential=True)
 
-    def initialize_cards(self, card_list: list[int] = None, potential: bool = False):
+    def initialize_cards(self, card_list: List[int] = None, potential: bool = False):
         db.cachedb.execute("""ATTACH DATABASE "{}" AS masterdb""".format(meta_updater.get_masterdb_path()))
         db.cachedb.commit()
         query = """
@@ -382,7 +381,7 @@ class CardSmallView(CardView):
 
         self.widget.horizontalHeader().setMinimumSectionSize(0)
 
-    def load_data(self, data: list[OrderedDict[str, Any]], card_list: list[int] = None):
+    def load_data(self, data: List[Dict[str, Any]], card_list: List[int] = None):
         super().load_data(data, card_list)
 
         for i in range(1, 4):
@@ -390,7 +389,7 @@ class CardSmallView(CardView):
 
 
 class CardSmallModel(CardModel):
-    def initialize_cards(self, card_list: list[int] = None, potential: bool = False):
+    def initialize_cards(self, card_list: List[int] = None, potential: bool = False):
         db.cachedb.execute("""ATTACH DATABASE "{}" AS masterdb""".format(meta_updater.get_masterdb_path()))
         db.cachedb.commit()
         query = """

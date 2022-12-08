@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from typing import Union, Optional, TYPE_CHECKING
+from typing import Union, Optional, TYPE_CHECKING, Dict, List, DefaultDict
 
 from numpy import ndarray
 
@@ -120,7 +119,7 @@ class CacheSimulationEvent:
 
 class CustomSimulationEvent:
     def __init__(self, simulation_event: SimulationEvent,
-                 deact_skills: dict[int, list[int]], note_offsets: defaultdict[int, int]):
+                 deact_skills: Dict[int, List[int]], note_offsets: DefaultDict[int, int]):
         self.simulation_event = simulation_event
         self.deact_skills = deact_skills
         self.note_offsets = note_offsets

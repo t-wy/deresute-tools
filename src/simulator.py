@@ -1,7 +1,6 @@
 import csv
 import time
-from collections import defaultdict
-from typing import Optional, Union, cast
+from typing import Optional, Union, cast, Dict, List, Set, DefaultDict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -38,7 +37,7 @@ class BaseSimulationResult:
 
 
 class SimulationResult(BaseSimulationResult):
-    def __init__(self, total_appeal: int, perfect_score: int, perfect_score_array: list[int],
+    def __init__(self, total_appeal: int, perfect_score: int, perfect_score_array: List[int],
                  base: int, deltas: np.ndarray, total_life: int, fans: int, full_roll_chance: float,
                  abuse_score: int, abuse_data: AbuseData, perfect_detail: LiveDetail):
         super().__init__()
@@ -90,7 +89,7 @@ class Simulator:
     note_count: int
     notes_data: pd.DataFrame
     song_duration: float
-    weight_range: list[float]
+    weight_range: List[float]
 
     def __init__(self, live: Union[Live, GrandLive] = None, special_offset: float = None,
                  left_inclusive: bool = False, right_inclusive: bool = True,
@@ -109,7 +108,7 @@ class Simulator:
             self.special_offset = special_offset
 
     def _setup_simulator(self, appeals: int = None, support: int = None, extra_bonus: np.ndarray = None,
-                         chara_bonus_set: set[int] = None, chara_bonus_value: int = 0,
+                         chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
                          special_option: int = None, special_value: int = None, mirror: bool = False):
         self.live.set_chara_bonus(chara_bonus_set, chara_bonus_value)
         if extra_bonus is not None or special_option is not None:
@@ -164,11 +163,11 @@ class Simulator:
 
     def simulate(self, times: int = 100, appeals: int = None,
                  extra_bonus: np.ndarray = None, support: int = None, perfect_play: bool = False,
-                 chara_bonus_set: set[int] = None, chara_bonus_value: int = 0,
+                 chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
                  special_option: int = None, special_value: int = None, doublelife: bool = False,
                  perfect_only: bool = True, auto: bool = False, mirror: bool = False, time_offset: int = 0,
-                 deact_skills: dict[int, list[int]] = None, note_offsets: defaultdict[int, int] = None,
-                 note_misses: list[int] = None) -> Union[SimulationResult, AutoSimulationResult]:
+                 deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
+                 note_misses: List[int] = None) -> Union[SimulationResult, AutoSimulationResult]:
         start = time.time()
         logger.debug("Unit: {}".format(self.live.unit))
         logger.debug("Song: {} - {} - Lv {}".format(self.live.music_name, self.live.difficulty, self.live.level))
@@ -193,11 +192,11 @@ class Simulator:
 
     def _simulate(self, times: int = 100, appeals: int = None,
                   extra_bonus: np.ndarray = None, support: int = None, perfect_play: bool = False,
-                  chara_bonus_set: set[int] = None, chara_bonus_value: int = 0,
+                  chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
                   special_option: int = None, special_value: int = None,
                   doublelife: bool = False, perfect_only: bool = True,
-                  deact_skills: dict[int, list[int]] = None, note_offsets: defaultdict[int, int] = None,
-                  note_misses: list[int] = None) -> SimulationResult:
+                  deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
+                  note_misses: List[int] = None) -> SimulationResult:
         self._setup_simulator(appeals=appeals, support=support, extra_bonus=extra_bonus,
                               chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
                               special_option=special_option, special_value=special_value)
@@ -251,10 +250,10 @@ class Simulator:
 
     def _simulate_internal(self, grand: bool, times: int, fail_simulate: bool = False, doublelife: bool = False,
                            perfect_only: bool = True, auto: bool = False, time_offset: int = 0,
-                           deact_skills: dict[int, list[int]] = None, note_offsets: defaultdict[int, int] = None,
-                           note_misses: list[int] = None) \
-            -> Union[tuple[np.ndarray, int, int, int, int, int, bool, int],
-                     tuple[int, list[int], list[tuple], float, int, Optional[AbuseData], LiveDetail]]:
+                           deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
+                           note_misses: List[int] = None) \
+            -> Union[Tuple[np.ndarray, int, int, int, int, int, bool, int],
+                     Tuple[int, List[int], List[tuple], float, int, Optional[AbuseData], LiveDetail]]:
         impl = StateMachine(grand=grand, difficulty=self.live.difficulty, doublelife=doublelife, live=self.live,
                             notes_data=self.notes_data, left_inclusive=self.left_inclusive,
                             right_inclusive=self.right_inclusive, base_score=self.base_score,
@@ -288,7 +287,7 @@ class Simulator:
             abuse_result_score, abuse_data, perfect_detail
 
     def _simulate_auto(self, appeals: int = None, extra_bonus: np.ndarray = None, support: int = None,
-                       chara_bonus_set: set[int] = None, chara_bonus_value: int = 0,
+                       chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
                        special_option: int = None, special_value: int = None,
                        time_offset: int = 0, mirror: bool = False, doublelife: bool = False) -> AutoSimulationResult:
         if time_offset >= 200:
@@ -333,7 +332,7 @@ class Simulator:
         )
         return ret
 
-    def save_to_file(self, perfect_scores: list[int], abuse_data: AbuseData):
+    def save_to_file(self, perfect_scores: List[int], abuse_data: AbuseData):
         with get_writer(ABUSE_CHARTS_PATH / "{}.csv".format(self.live.score_id), 'w', newline='') as fw:
             csv_writer = csv.writer(fw)
             csv_writer.writerow(["Card Name", "Card ID", "Vo", "Da", "Vi", "Lf", "Sk"])

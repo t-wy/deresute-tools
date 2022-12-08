@@ -1,3 +1,6 @@
+from typing import List
+
+
 class AutoFlagChangeEvent:
     def __init__(self, flag: bool):
         self.flag = flag
@@ -9,7 +12,7 @@ class PostYoinkEvent:
 
 
 class PotentialUpdatedEvent:
-    def __init__(self, card_list: list[int]):
+    def __init__(self, card_list: List[int]):
         self.card_list = card_list
 
 

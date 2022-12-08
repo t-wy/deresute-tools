@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Dict
+
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import QCheckBox, QLineEdit, QApplication, QWidget, QLayout
 
@@ -80,7 +82,7 @@ class QuickSearchView:
 class QuickSearchModel:
     view: QuickSearchView
     card_view: CardView
-    options: dict[str, QCheckBox]
+    options: Dict[str, QCheckBox]
 
     def __init__(self, view: QuickSearchView, card_view: CardView):
         self.view = view

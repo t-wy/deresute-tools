@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List, Tuple
 
 from PyQt5 import QtWidgets
 from PyQt5.QtGui import QIntValidator
@@ -183,7 +183,7 @@ class CustomSettingsModel:
         eventbus.eventbus.register(self)
 
     @subscribe(GetCustomPotsEvent)
-    def get_custom_pots(self, event=None) -> Optional[list[int]]:
+    def get_custom_pots(self, event=None) -> Optional[List[int]]:
         if not self.view.custom_potential_checkbox.isChecked():
             logger.debug("Not using custom potentials")
             return None
@@ -262,7 +262,7 @@ class CustomSettingsModel:
         return self.view.encore_magic_agg_checkbox.isChecked()
 
     @subscribe(GetSkillBoundaryEvent)
-    def get_skill_boundary(self, event=None) -> tuple[bool, bool]:
+    def get_skill_boundary(self, event=None) -> Tuple[bool, bool]:
         if self.view.skill_boundary.currentIndex() == 0 or self.view.skill_boundary.currentIndex() == 1:
             return False, True
         if self.view.skill_boundary.currentIndex() == 2:

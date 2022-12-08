@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union, Optional
+from typing import Union, Optional, List, Tuple
 
 from PyQt5.QtWidgets import QTableWidget, QAbstractItemView, QHeaderView, QWidget
 from numpy import ndarray
@@ -57,8 +57,8 @@ class SupportView:
 class SupportModel:
     view: SupportView
     live: Union[Live, GrandLive]
-    music: Optional[tuple[int, Difficulty]]
-    cards: list[Optional[Card]]
+    music: Optional[Tuple[int, Difficulty]]
+    cards: List[Optional[Card]]
     extended_cards_data: Optional[CardsWithUnitUuidAndExtraData]
 
     def __init__(self, view: SupportView):
@@ -98,7 +98,7 @@ class SupportModel:
         self.music = (score_id, difficulty)
 
     @subscribe(RequestSupportTeamEvent)
-    def generate_support(self, event) -> Optional[tuple[int, int, int]]:
+    def generate_support(self, event) -> Optional[Tuple[int, int, int]]:
         if self.live.unit is None:
             return
         if self.extended_cards_data.lock_chart and self.extended_cards_data is not None \

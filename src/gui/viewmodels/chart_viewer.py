@@ -1,7 +1,7 @@
 import operator
 from collections import defaultdict
 from enum import Enum
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, Dict, List, DefaultDict, Tuple
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFontMetrics, QIntValidator
@@ -45,12 +45,12 @@ class ChartViewer:
     difficulty: Difficulty
     mirrored: bool
 
-    cards: list[Card]
+    cards: List[Card]
     perfect_detail: Optional[LiveDetail]
 
     simulation_cache: Optional[SimulationEvent]
 
-    custom_offset_cache: defaultdict[int, int]
+    custom_offset_cache: DefaultDict[int, int]
     custom_abuse_enabled: bool
     draw_custom_abuse: bool
 
@@ -295,7 +295,7 @@ class ChartViewer:
         self.info_widget.subwidgets['detail_note_score_general_current-score'].textbox[0].setText(
             str(note_detail.cumulative_score))
 
-    def _show_detail_note_bonus_info(self, widget_text: str, bonus: list[NoteDetailSkill]):
+    def _show_detail_note_bonus_info(self, widget_text: str, bonus: List[NoteDetailSkill]):
         widget_name = 'detail_note_score_general_{}-bonus'.format(widget_text)
         sum_bonus = 1 + sum([skill.value / 100 for skill in bonus])
         self.info_widget.subwidgets[widget_name].textbox[0].setText("{:.2f}".format(sum_bonus))
@@ -595,9 +595,9 @@ class ChartViewer:
 class ChartViewerInfoWidget(QWidget):
     chart_viewer: ChartViewer
     layout: QVBoxLayout
-    subwidgets: dict[str, Any]
-    sublayouts: dict[str, Union[QVBoxLayout, QHBoxLayout, QGridLayout]]
-    subwidgetgroups: dict[str, Any]
+    subwidgets: Dict[str, Any]
+    sublayouts: Dict[str, Union[QVBoxLayout, QHBoxLayout, QGridLayout]]
+    subwidgetgroups: Dict[str, Any]
 
     def __init__(self, viewer, *args):
         super().__init__(*args)
@@ -1142,7 +1142,7 @@ class QLabelTextBoxWidget(QLabelTextLineWidget):
 
 
 class QLabelTextGridWidget(QWidget):
-    def __init__(self, row_label: list[str], column_label: list[str], *args):
+    def __init__(self, row_label: List[str], column_label: List[str], *args):
         super().__init__(*args)
 
         self.layout = QGridLayout(self)
@@ -1154,7 +1154,7 @@ class QLabelTextGridWidget(QWidget):
         self.textbox = [[]]
         self._setup_textbox()
 
-    def _setup_label(self, labels: list[str], is_row: bool = True):
+    def _setup_label(self, labels: List[str], is_row: bool = True):
         for index, text in enumerate(labels):
             label_widget = QLabel(text)
             label_widget.setAlignment(Qt.AlignCenter)
@@ -1198,7 +1198,7 @@ def resize_stacked_widget(widget: QStackedWidget, idx: int):
             widget.widget(i).setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
 
-def get_song_info_from_id(song_id: int, diff: Difficulty) -> tuple[str, str, str, str]:
+def get_song_info_from_id(song_id: int, diff: Difficulty) -> Tuple[str, str, str, str]:
     data = db.cachedb.execute_and_fetchone("""
                 SELECT  name,
                         level,

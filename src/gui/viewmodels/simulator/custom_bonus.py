@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Tuple
 
 import numpy as np
 from PyQt5 import QtWidgets
@@ -99,7 +99,7 @@ class CustomBonusModel:
         return Color.ALL
 
     @subscribe(GetCustomBonusEvent)
-    def get_bonus(self, event=None) -> tuple[Optional[np.ndarray], Optional[int], Optional[int]]:
+    def get_bonus(self, event=None) -> Tuple[Optional[np.ndarray], Optional[int], Optional[int]]:
         appeal_idx = self.view.custom_bonus_appeal_preset.currentIndex()
         results = np.zeros((3, 5))
         if appeal_idx in {

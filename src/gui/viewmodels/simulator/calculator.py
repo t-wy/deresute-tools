@@ -4,7 +4,7 @@ import ast
 import pickle
 import threading
 from abc import abstractmethod
-from typing import Optional, cast, TYPE_CHECKING, Union
+from typing import Optional, cast, TYPE_CHECKING, Union, List
 
 import numpy as np
 from PyQt5.QtCore import QSize, Qt, QMimeData, QPoint, QModelIndex
@@ -47,7 +47,7 @@ mutex = threading.Lock()
 
 
 class BackupUnit:
-    def __init__(self, card_ids: list[int], cards_internal: list[Card], lock_unit: bool, lock_chart: bool,
+    def __init__(self, card_ids: List[int], cards_internal: List[Card], lock_unit: bool, lock_chart: bool,
                  extended_cards_data: CardsWithUnitUuidAndExtraData, text: str):
         self.card_ids = card_ids
         self.cards_internal = cards_internal
@@ -299,7 +299,7 @@ class CalculatorUnitWidget(CalculatorUnitWidgetWithExtraData, UniversalUniqueIde
 class DroppableCalculatorWidget(QTableWidget):
     calculator_view: CalculatorView
     drag_start_position: QPoint
-    selected: list[QModelIndex]
+    selected: List[QModelIndex]
 
     def __init__(self, calculator_view: CalculatorView, *args, **kwargs):
         super(DroppableCalculatorWidget, self).__init__(*args, **kwargs)
@@ -373,7 +373,7 @@ class DroppableCalculatorWidget(QTableWidget):
         logger.debug("Dragged {} into calculator".format(card_ids))
         self.calculator_view.add_unit(card_ids)
 
-    def cellWidget(self, row: int, column: int) -> Union[list[QWidget], CalculatorUnitWidget]:
+    def cellWidget(self, row: int, column: int) -> Union[List[QWidget], CalculatorUnitWidget]:
         return super().cellWidget(row, column)
 
 
@@ -498,7 +498,7 @@ class CalculatorView:
                 continue
             card.refresh_values()
 
-    def set_unit(self, cards: list[int], row: int = None):
+    def set_unit(self, cards: List[int], row: int = None):
         if row is None:
             row = self.widget.rowCount() - 1
         for idx, card in enumerate(cards):
@@ -508,14 +508,14 @@ class CalculatorView:
         logger.info("Unit insert: {} - {} row {}".format(self.widget.cellWidget(row, 0).get_short_uuid(),
                                                          " ".join(map(str, cards)), row))
 
-    def add_unit(self, cards: list[int, None]):
+    def add_unit(self, cards: List[int, None]):
         if len(cards) == 15:
             for _ in range(3):
                 self.add_unit_internal(cards[_ * 5: (_ + 1) * 5])
         else:
             self.add_unit_internal(cards)
 
-    def add_unit_internal(self, cards: list[int, None]):
+    def add_unit_internal(self, cards: List[int, None]):
         for r in range(self.widget.rowCount()):
             if self.widget.cellWidget(r, 0).card_ids == [None] * 6:
                 logger.debug("Empty calculator unit at row {}".format(r))
@@ -750,7 +750,7 @@ class CalculatorModel:
 
 
 class CardsWithUnitUuidAndExtraData:
-    def __init__(self, uuid: str, short_uuid: str, cards: list[Card],
+    def __init__(self, uuid: str, short_uuid: str, cards: List[Card],
                  lock_unit: bool, extra_bonus: np.ndarray, special_option: int, special_value: int,
                  lock_chart: bool, score_id: int, diff_id: int, live_detail_id: int, groove_song_color: Color):
         self.uuid = uuid

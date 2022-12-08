@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Union, Optional
+from typing import Union, Optional, List, Tuple
 
 import numpy as np
 import pyximport
@@ -57,8 +57,8 @@ class Unit(BaseUnit):
     motif_vocal_trimmed: int
     motif_dance_trimmed: int
     motif_visual_trimmed: int
-    _motif_values_wide: Optional[list[int]]
-    _motif_values_grand: Optional[list[int]]
+    _motif_values_wide: Optional[List[int]]
+    _motif_values_grand: Optional[List[int]]
 
     def __init__(self, c0: Card, c1: Card, c2: Card, c3: Card, c4: Card, cg: Card = None, resonance: bool = None):
         for _ in [c0, c1, c2, c3, c4]:
@@ -75,15 +75,15 @@ class Unit(BaseUnit):
         self._skill_check()
 
     @classmethod
-    def from_query(cls, query: str, custom_pots: Union[list[int], tuple[int, int, int, int, int]] = None) -> Unit:
+    def from_query(cls, query: str, custom_pots: Union[List[int], Tuple[int, int, int, int, int]] = None) -> Unit:
         card_ids = card_query.convert_short_name_to_id(query)
         if len(card_ids) < 5 or len(card_ids) > 6:
             raise ValueError("Invalid number of cards in query: {}".format(query))
         return cls.from_list(card_ids, custom_pots)
 
     @classmethod
-    def from_list(cls, cards: list[Union[str, int, Card]],
-                  custom_pots: Union[list[int], tuple[int, int, int, int, int]] = None) -> Unit:
+    def from_list(cls, cards: List[Union[str, int, Card]],
+                  custom_pots: Union[List[int], Tuple[int, int, int, int, int]] = None) -> Unit:
         if len(cards) < 5 or len(cards) > 6:
             raise InvalidUnit("Invalid number of cards: {}".format(cards))
         results = list()
@@ -107,7 +107,7 @@ class Unit(BaseUnit):
     def get_card(self, idx: int) -> Card:
         return self._cards[idx]
 
-    def all_cards(self, guest: bool = False) -> list[Card]:
+    def all_cards(self, guest: bool = False) -> List[Card]:
         if guest and len(self._cards) == 6:
             return self._cards
         else:
@@ -118,7 +118,7 @@ class Unit(BaseUnit):
             card.set_skill_offset(offset)
 
     def leader_bonuses(self, song_color: Color = None, get_fan_bonuses: bool = False) \
-            -> Union[tuple[np.ndarray, int], np.ndarray]:
+            -> Union[Tuple[np.ndarray, int], np.ndarray]:
         colors = np.zeros(3)
         skills = set()
         for card in self._cards:
@@ -274,7 +274,7 @@ class Unit(BaseUnit):
         return attributes
 
     @property
-    def all_units(self) -> list[Unit]:
+    def all_units(self) -> List[Unit]:
         return [self]
 
     def __str__(self):

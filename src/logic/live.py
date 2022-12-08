@@ -1,7 +1,7 @@
 import io
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Optional, cast, Union
+from typing import Optional, cast, Union, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -59,7 +59,7 @@ def get_score_color(score_id: int) -> Color:
 
 def fetch_chart(base_music_name: Optional[str], base_score_id: int, base_difficulty: Difficulty, event: bool = False,
                 skip_load_notes: bool = False, skip_damage_notes: bool = True) \
-        -> tuple[Optional[pd.DataFrame], Color, int, Optional[int]]:
+        -> Tuple[Optional[pd.DataFrame], Color, int, Optional[int]]:
     assert base_difficulty in Difficulty
     difficulty = base_difficulty.value
 
@@ -136,7 +136,7 @@ class BaseLive(ABC):
     attributes: Optional[np.ndarray]
     extra_bonuses: Optional[np.ndarray]
     color_bonuses: Optional[np.ndarray]
-    chara_bonus_set: set[int]
+    chara_bonus_set: Set[int]
     chara_bonus_value: int
     special_option: Optional[int]
     special_value: Optional[int]
@@ -236,14 +236,14 @@ class BaseLive(ABC):
         self.support = temp[:10, 1:].astype(int)  # Return top 10
         return self.support[:, -1].sum()
 
-    def print_support_team(self) -> list[str]:
+    def print_support_team(self) -> List[str]:
         if self.support is None:
             self.get_support()
         return card_query.convert_id_to_short_name(" ".join(map(str, self.support[:, 0])))
 
     def set_music(self, music_name: str = None, score_id: int = None, difficulty: Union[int, Difficulty] = None,
                   event: bool = None, skip_load_notes: bool = False, output: bool = False) \
-            -> tuple[pd.DataFrame, Color, int, int]:
+            -> Tuple[pd.DataFrame, Color, int, int]:
         self.music_name = music_name
         self.score_id = score_id
         if isinstance(difficulty, int):
@@ -309,7 +309,7 @@ class BaseLive(ABC):
             self.color_bonuses[4, self.color.value] = 30  # Skill
         return self.color_bonuses
 
-    def set_chara_bonus(self, chara_bonus_set: Optional[set[int]], chara_bonus_value: Optional[int]):
+    def set_chara_bonus(self, chara_bonus_set: Optional[Set[int]], chara_bonus_value: Optional[int]):
         if chara_bonus_set is None:
             chara_bonus_set = set()
         self.chara_bonus_set = chara_bonus_set

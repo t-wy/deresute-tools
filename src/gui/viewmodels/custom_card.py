@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from collections import OrderedDict
-from typing import Any, cast, Optional, Union
+from typing import Any, cast, Optional, Union, Dict, List, Tuple
 
 from PIL import Image
 from PyQt5.QtCore import Qt, QPoint, QMimeData
@@ -126,7 +126,7 @@ def save_custom_card_image(custom_id: int, rarity: int, image_id: int):
 
 class CustomListWidget(QTableWidget):
     drag_start_position: QPoint
-    selected: list[QTableWidgetItem]
+    selected: List[QTableWidgetItem]
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -528,11 +528,11 @@ class CustomView:
         return list(self.model.skill_list[grade_idx].keys())[type_idx]
 
     @property
-    def skill_values(self) -> dict[str, Any]:
+    def skill_values(self) -> Dict[str, Any]:
         grade_idx = self.skill_grade_combobox.currentIndex()
         type_idx = self.skill_type_combobox.currentIndex()
         value_idx = self.skill_detail_combobox.currentIndex()
-        values = cast(tuple[str, list[dict[str, Any]]], list(self.model.skill_list[grade_idx].values())[type_idx])
+        values = cast(Tuple[str, List[Dict[str, Any]]], list(self.model.skill_list[grade_idx].values())[type_idx])
         return values[1][value_idx]
 
     @property
@@ -631,7 +631,7 @@ class CustomView:
 
     def update_skill(self):
         self.skill_type_combobox.clear()
-        names = [detail[0] for detail in cast(tuple[str, list[dict[str, Any]]],
+        names = [detail[0] for detail in cast(Tuple[str, List[Dict[str, Any]]],
                  list(self.model.skill_list[self.skill_grade_combobox.currentIndex()].values()))]
         self.skill_type_combobox.addItems(names)
         self.update_skill_detail()
@@ -641,7 +641,7 @@ class CustomView:
         if self.skill_type_combobox.currentIndex() > 0:
             grade_idx = self.skill_grade_combobox.currentIndex()
             type_idx = self.skill_type_combobox.currentIndex()
-            values = cast(tuple[str, list[dict[str, Any]]],
+            values = cast(Tuple[str, List[Dict[str, Any]]],
                           list(self.model.skill_list[grade_idx].values())[type_idx])[1]
             prob_text = db.cachedb.execute_and_fetchall("SELECT id, keywords FROM probability_keywords")
             prob_text.sort()
@@ -688,7 +688,7 @@ class CustomView:
         self.skill_custom_duration_combobox.setCurrentIndex(0)
         self.skill_custom_probability_combobox.setCurrentIndex(0)
 
-    def _get_current_card_data(self) -> list[Union[int, str]]:
+    def _get_current_card_data(self) -> List[Union[int, str]]:
         if not self.use_custom_skill:
             skill_interval = self.skill_interval
             skill_duration = self.skill_duration
@@ -747,7 +747,7 @@ class CustomView:
             self.skill_custom_probability_combobox.setCurrentIndex(4 - data['probability_type'])
         else:
             self.skill_custom_checkbox.setChecked(False)
-            skill_detail_list = cast(tuple[str, list[dict[str, Any]]],
+            skill_detail_list = cast(Tuple[str, List[Dict[str, Any]]],
                                      list(self.model.skill_list[skill_grade_idx].values())[skill_type_idx])[1]
             skill_detail_idx = next(idx for idx, detail in enumerate(skill_detail_list)
                                     if detail['condition'] == data['condition']
@@ -793,8 +793,8 @@ class CustomView:
 class CustomModel:
     view: CustomView
 
-    leader_list: list[OrderedDict[int, str]]
-    skill_list: list[OrderedDict[int, tuple[str, list[dict[str, Any]]]]]
+    leader_list: List[Dict[int, str]]
+    skill_list: List[Dict[int, Tuple[str, List[Dict[str, Any]]]]]
 
     def __init__(self, view: CustomView):
         self.view = view
@@ -889,7 +889,7 @@ class CustomModel:
     def _handle_yoink_custom_card(self, event):
         self.load_custom_cards()
 
-    def create_card(self, card_data: list[Union[int, str]]):
+    def create_card(self, card_data: List[Union[int, str]]):
         if not self.view.is_setting_valid():
             return
         db.cachedb.execute("""
@@ -905,7 +905,7 @@ class CustomModel:
         save_custom_card_image(int(custom_id), card_data[0], int(card_data[1]))
         self.load_custom_cards()
 
-    def save_card(self, card_data: list[Union[int, str]]):
+    def save_card(self, card_data: List[Union[int, str]]):
         selected_row = self.view.list_widget.selected_row()
         if not self.view.is_setting_valid() or selected_row is None:
             return

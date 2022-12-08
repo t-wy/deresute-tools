@@ -2,6 +2,7 @@ import atexit
 import csv
 import traceback
 from collections import defaultdict
+from typing import List
 
 import customlogger as logger
 from db import db
@@ -19,7 +20,7 @@ custom_keys = ["id", "rarity", "image_id", "vocal", "dance", "visual", "life",
                "value", "value_2", "value_3"]
 
 
-def import_from_gameid(game_id: str, option: int) -> list[int]:
+def import_from_gameid(game_id: str, option: int) -> List[int]:
     try:
         owned_cards = [_[0] for _ in db.cachedb.execute_and_fetchall("SELECT card_id FROM owned_card WHERE number > 0")]
         db.cachedb.execute("UPDATE owned_card SET number = 0")
@@ -122,7 +123,7 @@ class ProfileManager:
             (PROFILE_PATH / "{}.cst".format(profile_name)).unlink()
         self.switch_profile('main')
 
-    def _initialize_owned_cards_csv(self) -> list[int]:
+    def _initialize_owned_cards_csv(self) -> List[int]:
         all_cards = [card_data[0] for card_data in db.masterdb.execute_and_fetchall("SELECT id FROM card_data")]
         if not (PROFILE_PATH / "{}.crd".format(self.profile)).exists():
             with storage.get_writer(PROFILE_PATH / "{}.crd".format(self.profile), 'w') as fw:

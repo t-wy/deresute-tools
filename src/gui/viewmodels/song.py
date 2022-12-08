@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict, Tuple
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QMimeData, QPoint, QModelIndex
@@ -20,7 +19,6 @@ from gui.viewmodels.utils import NumericalTableWidgetItem
 from static.color import Color
 from static.song_difficulty import Difficulty
 
-
 DATA_COLS = ["LDID", "LiveID", "DifficultyInt", "ID", "Name", "Color", "Difficulty", "Level", "Duration (s)",
                      "Note Count", "Tap", "Long", "Flick", "Slide", "Tap %", "Long %", "Flick %", "Slide %",
                      "7h %", "9h %", "11h %", "12m %", "6m %", "7m %", "9m %", "11m %", "13h %"]
@@ -31,7 +29,7 @@ class SongViewWidget(QTableWidget):
     song_view: SongView
 
     drag_start_position: QPoint
-    selected: list[QModelIndex]
+    selected: List[QModelIndex]
 
     def __init__(self, main: QtWidgets.QWidget, song_view: SongView):
         super(SongViewWidget, self).__init__(main)
@@ -98,7 +96,7 @@ class SongView:
         self.model = model
         self.widget.cellClicked.connect(lambda r, _: self.model.ping_support(r))
 
-    def show_only_ids(self, live_detail_ids: list[int]):
+    def show_only_ids(self, live_detail_ids: List[int]):
         if not live_detail_ids:
             live_detail_ids = set()
         else:
@@ -109,7 +107,7 @@ class SongView:
             else:
                 self.widget.setRowHidden(r_idx, True)
 
-    def load_data(self, data: list[OrderedDict[str, Any]]):
+    def load_data(self, data: List[Dict[str, Any]]):
         self.widget.setColumnCount(len(DATA_COLS))
         self.widget.setRowCount(len(data))
         self.widget.setHorizontalHeaderLabels(DATA_COLS)
@@ -237,7 +235,7 @@ class SongModel:
         self.view.load_data(data)
 
     @subscribe(GetSongDetailsEvent)
-    def get_song(self, event=None) -> tuple[Optional[int], Optional[int], Optional[int], Optional[str], Optional[str]]:
+    def get_song(self, event=None) -> Tuple[Optional[int], Optional[int], Optional[int], Optional[str], Optional[str]]:
         row_idx = self.view.widget.selectionModel().currentIndex().row()
         if row_idx == -1:
             return None, None, None, None, None

@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,7 @@ pyximport.install(language_level=3)
 
 class GrandLive(BaseLive):
     unit: GrandUnit
-    unit_lives: list[Live]
+    unit_lives: List[Live]
 
     def __init__(self, music_name: str = None, difficulty: int = None, unit: GrandUnit = None):
         self.unit_lives = list()
@@ -31,7 +31,7 @@ class GrandLive(BaseLive):
 
     def set_music(self, music_name: str = None, score_id: int = None, difficulty: Union[int, Difficulty] = None,
                   event: bool = None, skip_load_notes: bool = False, output: bool = False) \
-            -> tuple[pd.DataFrame, Color, int, int]:
+            -> Tuple[pd.DataFrame, Color, int, int]:
         super().set_music(music_name, score_id, difficulty, event, skip_load_notes)
         for i in range(3):
             self.unit_lives[i].set_music(music_name, score_id, difficulty, event, skip_load_notes)

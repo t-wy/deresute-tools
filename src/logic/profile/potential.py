@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import pandas as pd
 
 import customlogger as logger
@@ -74,7 +76,7 @@ def copy_card_data_from_master(update_all: bool = True, chara_id: int = None):
     db.cachedb.commit()
 
 
-def update_potential(chara_id: int, pots: tuple[int]):
+def update_potential(chara_id: int, pots: Tuple[int]):
     assert len(pots) == 5
     db.cachedb.execute("""
         INSERT OR REPLACE INTO potential_cache (chara_id, vo, vi, da, li, sk)

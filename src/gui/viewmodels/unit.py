@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Optional, Union, cast, TYPE_CHECKING
+from typing import Optional, Union, cast, TYPE_CHECKING, List, Tuple
 
 from PyQt5.QtCore import QSize, Qt, QMimeData, QPoint
 from PyQt5.QtGui import QDrag
@@ -60,8 +60,8 @@ class UnitCard(ImageWidget):
 class UnitWidget(QWidget):
     unit_view: UnitView
     unit_id: int
-    cards: list[UnitCard]
-    cards_internal: list[Optional[Card]]
+    cards: List[UnitCard]
+    cards_internal: List[Optional[Card]]
     unit_name: QLineEdit
     icon_size: int
     path: Path
@@ -93,7 +93,7 @@ class UnitWidget(QWidget):
         elif self.icon_size == 124:
             self.path = IMAGE_PATH
 
-    def clone_internal(self) -> list[Card]:
+    def clone_internal(self) -> List[Card]:
         res = list()
         for card_internal in self.cards_internal:
             if card_internal is None:
@@ -103,7 +103,7 @@ class UnitWidget(QWidget):
         return res
 
     @property
-    def card_ids(self) -> list[Optional[int]]:
+    def card_ids(self) -> List[Optional[int]]:
         return [card.card_id if card is not None else None for card in self.cards_internal]
 
     def set_unit_id(self, unit_id: int):
@@ -188,7 +188,7 @@ class SmallUnitWidget(UnitWidget):
 class DraggableUnitList(QListWidget):
     unit_view: UnitView
     drag_start_position: QPoint
-    selected: list[QListWidgetItem]
+    selected: List[QListWidgetItem]
 
     def __init__(self, parent: QWidget, unit_view: UnitView):
         super().__init__(parent)
@@ -247,7 +247,7 @@ class UnitView:
     def set_model(self, model: UnitModel):
         self.model = model
 
-    def load_data(self, data: list[tuple[int, str, str]]):
+    def load_data(self, data: List[Tuple[int, str, str]]):
         for unit_id, unit_name, unit_cards in data:
             self.add_unit(unit_cards, unit_name, unit_id=unit_id)
 
