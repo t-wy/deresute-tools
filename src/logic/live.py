@@ -1,6 +1,7 @@
 import io
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from typing import Optional, cast, Union, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -9,8 +10,9 @@ import pyximport
 import customlogger as logger
 from db import db
 from exceptions import NoLiveFoundException
+from logic.grandunit import GrandUnit
 from logic.search import card_query
-from logic.unit import BaseUnit, Unit
+from logic.unit import Unit
 from settings import MUSICSCORES_PATH
 from static.appeal_presets import APPEAL_PRESETS
 from static.color import Color
@@ -20,7 +22,7 @@ from static.song_difficulty import Difficulty
 pyximport.install(language_level=3)
 
 
-def classify_note(row):
+def classify_note(row: pd.Series) -> NoteType:
     if row.type == 8:
         return NoteType.DAMAGE
     if row.type == 5:
@@ -39,30 +41,34 @@ def classify_note(row):
         return NoteType.SLIDE
 
 
-def classify_note_vectorized(row):
-    rowtype = row.type.astype(np.int32) # to prevent crashing in 32-bit python
-    return np.choose(rowtype - 3, [
-        np.choose(row.status == 0, [NoteType.FLICK, np.choose(
-            rowtype - 1, [NoteType.TAP, NoteType.LONG, NoteType.SLIDE], mode="clip")]),
-        NoteType.TAP, NoteType.SLIDE, NoteType.FLICK, NoteType.FLICK, NoteType.DAMAGE], mode="clip")
+def classify_note_vectorized(row: pd.DataFrame) -> pd.Series:
+    rowtype = row.type.astype(np.int32)  # to prevent crashing in 32-bit python
+    res = np.choose(rowtype - 3, [np.choose(row.status == 0, [NoteType.FLICK, np.choose(rowtype - 1,
+                                                                                        [NoteType.TAP, NoteType.LONG,
+                                                                                         NoteType.SLIDE],
+                                                                                        mode="clip")]),
+                                  NoteType.TAP, NoteType.SLIDE, NoteType.FLICK, NoteType.FLICK], mode="clip")
+    return cast(pd.Series, res)
 
 
-def get_score_color(score_id):
+def get_score_color(score_id: int) -> Color:
     color = db.masterdb.execute_and_fetchall("SELECT live_data.type FROM live_data WHERE live_data.id = ?",
                                              [score_id])
     return Color(color - 1)
 
 
-def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, skip_load_notes=False, skip_damage_notes=True):
+def fetch_chart(base_music_name: Optional[str], base_score_id: int, base_difficulty: Difficulty, event: bool = False,
+                skip_load_notes: bool = False, skip_damage_notes: bool = True) \
+        -> Tuple[Optional[pd.DataFrame], Color, int, Optional[int]]:
     assert base_difficulty in Difficulty
     difficulty = base_difficulty.value
 
+    score_ids = ()
     if not base_score_id:
         event_test_conditions = (int(event), int(not event))
         music_name = base_music_name.strip()
         music_name_test_conditions = [music_name] + ["{}%{}".format(music_name[:i], music_name[i + 1:])
                                                      for i in range(len(music_name))]
-        score_ids = ()
         for music_name in music_name_test_conditions:
             for event in event_test_conditions:
                 score_ids = db.masterdb.execute_and_fetchall(
@@ -70,7 +76,9 @@ def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, sk
                     SELECT live_data.id, live_data.type, live_detail.level_vocal
                     FROM live_data, live_detail WHERE live_data.music_data_id IN (
                         SELECT id FROM music_data WHERE name LIKE ?
-                    ) AND event_type >= ? AND live_detail.live_data_id = live_data.id AND live_detail.difficulty_type = ?
+                    ) AND event_type >= ?
+                    AND live_detail.live_data_id = live_data.id
+                    AND live_detail.difficulty_type = ?
                     """,
                     [music_name, event, difficulty]
                 )
@@ -87,6 +95,7 @@ def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, sk
                 """, [base_score_id, difficulty]
             )
 
+    color, level = 1, 1
     for score_id, color, level in score_ids:
         flag = False
         with db.CustomDB(MUSICSCORES_PATH / "musicscores_m{:03d}.db".format(score_id)) as score_conn:
@@ -101,17 +110,21 @@ def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, sk
             break
 
     if len(score_ids) == 0 or not flag:
-        raise NoLiveFoundException("Music {} difficulty {} not found".format(music_name, str(base_difficulty)))
+        raise NoLiveFoundException("Music {} difficulty {} not found".format(base_music_name.strip(),
+                                                                             str(base_difficulty)))
     if skip_load_notes:
         return None, Color(color - 1), level, None
     notes_data = pd.read_csv(io.StringIO(row_data[1].decode()))
     duration = notes_data.iloc[-1]['sec']
     if difficulty == 6:
         if skip_damage_notes:
-            notes_data = notes_data[(notes_data["type"] < 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+            notes_data = notes_data[
+                (notes_data["type"] < 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(
+                drop=True)
         else:
-            notes_data = notes_data[(notes_data["type"] <= 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
-        
+            notes_data = notes_data[(notes_data["type"] <= 8) & (
+                        (notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+
     else:
         notes_data = notes_data[notes_data["type"] < 8].reset_index(drop=True)
     notes_data = notes_data.drop(["id"], axis=1)
@@ -120,12 +133,29 @@ def fetch_chart(base_music_name, base_score_id, base_difficulty, event=False, sk
 
 
 class BaseLive(ABC):
+    attributes: Optional[np.ndarray]
+    extra_bonuses: Optional[np.ndarray]
+    color_bonuses: Optional[np.ndarray]
+    chara_bonus_set: Set[int]
+    chara_bonus_value: int
+    special_option: Optional[int]
+    special_value: Optional[int]
+    support: Optional[np.ndarray]
+    unit: Optional[Unit]
+    music_name: Optional[str]
+    score_id: Optional[int]
+    difficulty: Optional[Difficulty]
+    notes: Optional[pd.DataFrame]
+    color: Optional[Color]
+    duration: Optional[int]
+    level: Optional[int]
 
-    def __init__(self, music_name=None, difficulty=None, unit=None):
+    def __init__(self, music_name: str = None, difficulty: Union[int, Difficulty] = None,
+                 unit: Union[Unit, GrandUnit] = None):
         self.attributes = None
         self.extra_bonuses = None
         self.color_bonuses = None
-        self.chara_bonus_set = {}
+        self.chara_bonus_set = set()
         self.chara_bonus_value = 0
         self.special_option = None
         self.special_value = None
@@ -140,13 +170,14 @@ class BaseLive(ABC):
         self.level = None
         self.initialize_music(music_name, difficulty, unit)
 
-    def initialize_music(self, music_name=None, difficulty=None, unit=None):
+    def initialize_music(self, music_name: str = None, difficulty: Union[int, Difficulty] = None,
+                         unit: Union[Unit, GrandUnit] = None):
         if music_name is not None and difficulty is not None:
             self.set_music(music_name, difficulty)
         if unit is not None:
             self.set_unit(unit)
 
-    def get_support(self):
+    def get_support(self) -> int:
         if self.support is not None:
             return self.support[:, -1].sum()
         # Get all owned cards
@@ -205,17 +236,19 @@ class BaseLive(ABC):
         self.support = temp[:10, 1:].astype(int)  # Return top 10
         return self.support[:, -1].sum()
 
-    def print_support_team(self):
+    def print_support_team(self) -> List[str]:
         if self.support is None:
             self.get_support()
         return card_query.convert_id_to_short_name(" ".join(map(str, self.support[:, 0])))
 
-    def set_music(self, music_name=None, score_id=None, difficulty=None, event=None, skip_load_notes=False):
+    def set_music(self, music_name: str = None, score_id: int = None, difficulty: Union[int, Difficulty] = None,
+                  event: bool = None, skip_load_notes: bool = False, output: bool = False) \
+            -> Tuple[pd.DataFrame, Color, int, int]:
         self.music_name = music_name
+        self.score_id = score_id
         if isinstance(difficulty, int):
             difficulty = Difficulty(difficulty)
         self.difficulty = difficulty
-        self.score_id = score_id
         self.reset_attributes()
         if event is None:
             try:
@@ -229,8 +262,21 @@ class BaseLive(ABC):
         else:
             self.notes, self.color, self.level, self.duration = fetch_chart(music_name, score_id, difficulty,
                                                                             event=True, skip_load_notes=skip_load_notes)
+        if output:
+            return self.notes, self.color, self.level, self.duration
 
-    def set_extra_bonus(self, bonuses, special_option, special_value):
+    def set_loaded_music(self, score_id: int, difficulty: Union[int, Difficulty], notes: pd.DataFrame,
+                         color: Color, level: int, duration: int):
+        self.score_id = score_id
+        if isinstance(difficulty, int):
+            difficulty = Difficulty(difficulty)
+        self.difficulty = difficulty
+        self.notes = notes
+        self.color = color
+        self.level = level
+        self.duration = duration
+
+    def set_extra_bonus(self, bonuses: np.ndarray, special_option: int, special_value: int):
         self.extra_bonuses = bonuses
         self.special_option = special_option
         self.special_value = special_value
@@ -246,12 +292,12 @@ class BaseLive(ABC):
         if do_reset_attribute:
             self.reset_attributes(hard_reset=False)
 
-    def get_extra_bonuses(self):
+    def get_extra_bonuses(self) -> np.ndarray:
         if self.extra_bonuses is None:
             self.extra_bonuses = np.zeros((5, 3))
         return self.extra_bonuses
 
-    def get_color_bonuses(self):
+    def get_color_bonuses(self) -> np.ndarray:
         self.color_bonuses = np.zeros((5, 3))
         if self.color is None:
             pass
@@ -263,7 +309,7 @@ class BaseLive(ABC):
             self.color_bonuses[4, self.color.value] = 30  # Skill
         return self.color_bonuses
 
-    def set_chara_bonus(self, chara_bonus_set, chara_bonus_value):
+    def set_chara_bonus(self, chara_bonus_set: Optional[Set[int]], chara_bonus_value: Optional[int]):
         if chara_bonus_set is None:
             chara_bonus_set = set()
         self.chara_bonus_set = chara_bonus_set
@@ -271,7 +317,7 @@ class BaseLive(ABC):
             chara_bonus_value = 0
         self.chara_bonus_value = chara_bonus_value
 
-    def get_appeals(self):
+    def get_appeals(self) -> int:
         return self.get_attributes()[:3].sum()
 
     @abstractmethod
@@ -283,7 +329,7 @@ class BaseLive(ABC):
         pass
 
     @abstractmethod
-    def set_unit(self, unit: BaseUnit):
+    def set_unit(self, unit):
         pass
 
     @abstractmethod
@@ -298,7 +344,7 @@ class BaseLive(ABC):
     def get_life(self):
         pass
 
-    def get_start_life(self, doublelife=False):
+    def get_start_life(self, doublelife=False) -> int:
         if doublelife:
             return self.get_life() * 2
         else:
@@ -310,11 +356,15 @@ class BaseLive(ABC):
         pass
 
     @property
-    def is_grand_chart(self):
+    def is_grand_chart(self) -> bool:
         return self.difficulty == Difficulty.PIANO or self.difficulty == Difficulty.FORTE
 
 
 class Live(BaseLive):
+    bonuses: Optional[np.ndarray]
+    leader_bonuses: Optional[np.ndarray]
+    probabilities: Optional[np.ndarray]
+    fan: int
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -327,7 +377,7 @@ class Live(BaseLive):
         self.unit = unit
         self.reset_attributes()
 
-    def get_attributes(self):
+    def get_attributes(self) -> np.ndarray:
         self.attribute_cache_check()
         if self.attributes is not None:
             return self.attributes
@@ -342,22 +392,22 @@ class Live(BaseLive):
         self.attributes = self.attributes.sum(axis=1)
         return self.attributes
 
-    def reset_attributes(self, hard_reset=True):
+    def reset_attributes(self, hard_reset: bool = True):
         self.attributes = None  # Reset calculation
         self.bonuses = None
         if hard_reset:
             self.extra_bonuses = None
-            self.chara_bonus_set = {}
+            self.chara_bonus_set = set()
             self.chara_bonus_value = 0
         self.leader_bonuses = None
         self.fan = 0
         self.support = None
 
-    def get_life(self):
+    def get_life(self) -> int:
         return self.get_attributes()[3]
 
     @property
-    def is_grand(self):
+    def is_grand(self) -> bool:
         return False
 
     def get_leader_bonuses(self):
@@ -378,7 +428,7 @@ class Live(BaseLive):
         bonuses = np.repeat(bonuses[np.newaxis, :, :], self.unit.base_attributes.shape[0], axis=0)
         self.bonuses = bonuses
 
-    def apply_complex_bonus(self, bonuses):
+    def apply_complex_bonus(self, bonuses: np.ndarray):
         if self.special_option == APPEAL_PRESETS["Event Idols"]:
             for card_idx, card in enumerate(self.unit.all_cards(guest=True)):
                 if card.chara_id in self.get_chara_bonus_set():
@@ -412,7 +462,7 @@ class Live(BaseLive):
             for card_idx, card in enumerate(self.unit.all_cards(guest=True)):
                 bonuses[card_idx, :3, :] += starrank_value_array[card.star - 1][card.rarity // 2 - 1]
 
-    def get_probability(self, idx=None):
+    def get_probability(self, idx: int = None) -> Union[np.ndarray, float]:
         if self.probabilities is None:
             card_probabilities = np.zeros((5, 3))
             for card_idx, card in enumerate(self.unit.all_cards()):
@@ -422,8 +472,8 @@ class Live(BaseLive):
                     pot_bonus = db.masterdb.execute_and_fetchone("""
                             SELECT value_rare_{} FROM potential_value_sk WHERE potential_level = ?
                         """.format((card.ra - 1) // 2 * 2 + 1), [card.sk_pots])[0]
-                card_probabilities[card_idx, card.color.value] = \
-                    (card.skill.probability - pot_bonus) / 1.5 * (1 + (card.skill.skill_level - 1) / 18) + pot_bonus
+                card_probabilities[card_idx, card.color.value] \
+                    = (card.skill.probability - pot_bonus) / 1.5 * (1 + (card.skill.skill_level - 1) / 18) + pot_bonus
             self.get_bonuses()
             probability_bonus = self.bonuses[idx, 4, :]
             card_probabilities = (card_probabilities * (1 + probability_bonus / 100) / 10000).max(axis=1)
@@ -433,14 +483,14 @@ class Live(BaseLive):
             return self.probabilities
         return self.probabilities[idx]
 
-    def get_chara_bonus_set(self):
+    def get_chara_bonus_set(self) -> set:
         if self.chara_bonus_set:
             return self.chara_bonus_set
         self.chara_bonus_set = Live.static_get_chara_bonus_set()
         return self.chara_bonus_set
 
     @classmethod
-    def static_get_chara_bonus_set(cls, get_name=False):
+    def static_get_chara_bonus_set(cls, get_name: bool = False) -> set:
         id_set = set(list(zip(*db.masterdb.execute_and_fetchall("SELECT chara_id FROM carnival_performer_idol")))[0])
         if get_name:
             return set(list(zip(*db.cachedb.execute_and_fetchall(

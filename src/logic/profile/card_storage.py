@@ -1,3 +1,5 @@
+from typing import Union, List
+
 import customlogger as logger
 from db import db
 
@@ -14,7 +16,7 @@ def initialize_owned_cards():
     db.cachedb.commit()
 
 
-def update_owned_cards(card_ids, numbers):
+def update_owned_cards(card_ids: Union[int, List[int]], numbers: Union[int, List[int]]):
     logger.info("Updating cards: {}".format(card_ids))
     if not isinstance(card_ids, list) or not isinstance(numbers, list):
         card_ids = [card_ids]

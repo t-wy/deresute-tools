@@ -1,10 +1,10 @@
 import ast
-import os
 import shutil
+from typing import Optional, List
 
 from whoosh.analysis import SimpleAnalyzer
 from whoosh.fields import *
-from whoosh.index import create_in, open_dir
+from whoosh.index import create_in, open_dir, FileIndex
 
 import customlogger as logger
 from db import db
@@ -21,15 +21,15 @@ KEYWORD_KEYS = KEYWORD_KEYS_STR_ONLY + ["owned", "idolized"]
 
 
 class IndexManager:
-
     def __init__(self):
         # Skip cleanup in debug
         if not is_debug_mode() and self.cleanup():
             INDEX_PATH.mkdir()
-        self.index = None
-        self.song_index = None
+        self.index: Optional[FileIndex] = None
+        self.song_index: Optional[FileIndex] = None
 
-    def initialize_index_db(self, card_list=None):
+    @staticmethod
+    def initialize_index_db(card_list=None):
         logger.info("Building quicksearch index, please wait...")
 
         carnival_idols = ",".join(map(str, Live.static_get_chara_bonus_set(get_name=False)))
@@ -190,7 +190,8 @@ class IndexManager:
 
     def initialize_chart_index(self):
         results = db.cachedb.execute_and_fetchall(
-            "SELECT live_detail_id, performers, special_keys, jp_name, name, level, color, difficulty FROM live_detail_cache")
+            "SELECT live_detail_id, performers, special_keys, jp_name, name, level, color, difficulty "
+            "FROM live_detail_cache")
         schema = Schema(title=ID(stored=True),
                         live_detail_id=NUMERIC,
                         performers=TEXT,
@@ -225,13 +226,13 @@ class IndexManager:
         self.song_index = ix
         logger.debug("Quicksearch index initialized for {} charts".format(len(results)))
 
-    def reindex(self, card_ids=None):
+    def reindex(self, card_ids: List[int] = None):
         logger.debug("Reindexing for {} cards".format(len(card_ids)))
         if card_ids is not None:
             results = db.cachedb.execute_and_fetchall(
                 """
-                SELECT card_id, fields 
-                FROM card_index_keywords 
+                SELECT card_id, fields
+                FROM card_index_keywords
                 WHERE card_id IN ({})
                 """.format(','.join(['?'] * len(card_ids))), card_ids)
         else:
@@ -246,7 +247,7 @@ class IndexManager:
                                 **fields)
         writer.commit()
 
-    def get_index(self, song_index=False):
+    def get_index(self, song_index: bool = False) -> FileIndex:
         if not is_debug_mode() and self.index is None:
             im.initialize_index_db()
             im.initialize_index()
@@ -257,7 +258,8 @@ class IndexManager:
             return self.song_index
         return self.index
 
-    def cleanup(self):
+    @staticmethod
+    def cleanup():
         try:
             if INDEX_PATH.exists():
                 shutil.rmtree(str(INDEX_PATH))

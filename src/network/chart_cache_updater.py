@@ -12,7 +12,7 @@ from db import db
 from logic.live import classify_note_vectorized
 from logic.skill import COMMON_TIMERS
 from network import meta_updater
-from settings import REMOTE_TRANSLATED_SONG_URL, REMOTE_CACHE_SCORES_URL, MUSICSCORES_PATH
+from settings import REMOTE_TRANSLATED_SONG_URL, MUSICSCORES_PATH
 from static.live_values import WEIGHT_RANGE
 from static.note_type import NoteType
 
@@ -74,13 +74,13 @@ def _get_song_list():
                                 difficulty_22   AS d22,
                                 difficulty_101  AS d101,
                                 CASE
-                                    WHEN event_type == 1 
+                                    WHEN event_type == 1
                                     THEN "Atapon"
-                                    WHEN event_type == 3 
+                                    WHEN event_type == 3
                                     THEN "Groove"
-                                    WHEN event_type == 5 
+                                    WHEN event_type == 5
                                     THEN "Parade"
-                                    WHEN event_type == 7 
+                                    WHEN event_type == 7
                                     THEN "Carnival"
                                     ELSE ""
                                 END event_type,
@@ -94,7 +94,7 @@ def _get_song_list():
             value[k] = v
         value['sort'] = min(value.pop('song_id_list'))
         performers = db.masterdb.execute_and_fetchall("""
-                        SELECT 
+                        SELECT
                             cc.full_name
                         FROM music_vocalist
                         LEFT JOIN cachedb.chara_cache cc ON cc.chara_id = music_vocalist.chara_id
@@ -119,7 +119,7 @@ def _get_song_list():
 
 
 def _get_carnival_set_list():
-    RANK_STRING = {
+    rank_string = {
         1: "d3",
         2: "d2",
         3: "d1",
@@ -137,7 +137,7 @@ def _get_carnival_set_list():
         15: "sss",
     }
     query = """
-    SELECT 
+    SELECT
         carnival_map.rank,
         carnival_map.booth_id,
         carnival_map.value2,
@@ -149,7 +149,7 @@ def _get_carnival_set_list():
     res = db.masterdb.execute_and_fetchall(query)
     ret_dict = dict()
     for rank, booth_id, _, live_id in res:
-        ret_dict[live_id] = "carnival" + RANK_STRING[rank] + str(booth_id)
+        ret_dict[live_id] = "carnival" + rank_string[rank] + str(booth_id)
     return ret_dict
 
 
@@ -200,9 +200,9 @@ def _expand_song_list(song_list):
             res_dict[live_detail_id]['live_detail_id'] = live_detail_id
             res_dict[live_detail_id]['live_id'] = live_id
             res_dict[live_detail_id]['diff'] = int(diff[1:])
-            res_dict[live_detail_id]['level'] = \
-                db.masterdb.execute_and_fetchone("SELECT level_vocal FROM live_detail WHERE live_detail.id = ?",
-                                                 (live_detail_id,))[0]
+            res_dict[live_detail_id]['level'] \
+                = db.masterdb.execute_and_fetchone("SELECT level_vocal FROM live_detail WHERE live_detail.id = ?",
+                                                   (live_detail_id,))[0]
     return res_dict
 
 
@@ -229,6 +229,7 @@ def initialize_score_db():
             Timer_11h REAL NOT NULL,
             Timer_12m REAL NOT NULL,
             Timer_6m REAL NOT NULL,
+            Timer_7m REAL NOT NULL,
             Timer_9m REAL NOT NULL,
             Timer_11m REAL NOT NULL,
             Timer_13h REAL NOT NULL
@@ -250,8 +251,8 @@ def _insert_into_live_detail_cache(hashable):
     db.cachedb.execute("""
             INSERT OR IGNORE INTO live_detail_cache( live_detail_id, live_id, sort, color, performers, special_keys,
              jp_name, name, difficulty, level, duration, Tap, Long, Flick, Slide,
-             Timer_7h, Timer_9h, Timer_11h, Timer_12m, Timer_6m, Timer_9m, Timer_11m, Timer_13h)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             Timer_7h, Timer_9h, Timer_11h, Timer_12m, Timer_6m, Timer_7m, Timer_9m, Timer_11m, Timer_13h)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, [
         hashable["live_detail_id"],
         hashable["live_id"],
@@ -273,6 +274,7 @@ def _insert_into_live_detail_cache(hashable):
         hashable["Timer_11h"],
         hashable["Timer_12m"],
         hashable["Timer_6m"],
+        hashable["Timer_7m"],
         hashable["Timer_9m"],
         hashable["Timer_11m"],
         hashable["Timer_13h"]
@@ -285,16 +287,13 @@ def _overwrite_song_name(expanded_song_list):
                     UPDATE live_detail_cache
                     SET name = ?, special_keys = ?
                     WHERE live_detail_id = ?
-                """, [
-            song_data["name"],
-            song_data["special_keys"],
-            live_detail_id,
-        ])
+                """, [song_data["name"], song_data["special_keys"], live_detail_id])
     db.cachedb.commit()
 
 
 def _is_active(time, interval, duration, last_note):
-    return (time > interval) & (time % interval > 0) & (time % interval <= duration) & (time // interval * interval <= last_note - 3)
+    return (time > interval) & (time % interval > 0) & (time % interval <= duration) \
+           & (time // interval * interval <= last_note - 3)
 
 
 def update_cache_scores():
@@ -321,7 +320,9 @@ def update_cache_scores():
         notes_data = pd.read_csv(StringIO(score.decode()))
         live_data["duration"] = notes_data.iloc[-1]['sec']
         if live_data["diff"] == 6:
-            notes_data = notes_data[(notes_data["type"] < 8) & ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))].reset_index(drop=True)
+            notes_data = notes_data[(notes_data["type"] < 8) &
+                                    ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))
+                                    ].reset_index(drop=True)
         else:
             notes_data = notes_data[notes_data["type"] < 8].reset_index(drop=True)
         notes_data['note_type'] = classify_note_vectorized(notes_data)

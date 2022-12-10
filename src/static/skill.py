@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from enum import Enum
 
 import customlogger as logger
 from db import db
@@ -39,45 +40,7 @@ SKILL_BASE = {
     39: {"id": 39, "name": "Alternate", "keywords": ["alt"], "color": (127, 127, 127)},
     40: {"id": 40, "name": "Refrain", "keywords": ["ref"], "color": (218, 126, 3)},
     41: {"id": 41, "name": "Magic", "keywords": ["mag"], "color": (255, 200, 255)},
-    42: {"id": 42, "name": "Mutual", "keywords": ["mut"],"color": (191, 191, 191)},
-}
-
-SKILL_SAMPLE = {
-    1: 100001,
-    2: 100077,
-    4: 100023,
-    5: 100027,
-    6: 100161,
-    7: 100075,
-    9: 100055,
-    12: 100085,
-    14: 100223,
-    15: 100361,
-    16: 100853,
-    17: 100017,
-    20: 100395,
-    21: 100371,
-    22: 200399,
-    23: 300377,
-    24: 100383,
-    25: 100481,
-    26: 100499,
-    27: 100577,
-    28: 100661,
-    29: 100663,
-    30: 100701,
-    31: 100683,
-    32: 100707,
-    33: 200697,
-    34: 300715,
-    35: 100963,
-    36: 100849,
-    37: 100745,
-    38: 100797,
-    39: 100809,
-    40: 100913,
-    41: 200945,
-    42: 101015
+    42: {"id": 42, "name": "Mutual", "keywords": ["mut"], "color": (191, 191, 191)},
 }
 
 SKILL_COLOR_BY_NAME = {
@@ -98,23 +61,21 @@ for skill_id, skill_data in SKILL_BASE.items():
     db.cachedb.execute("""
         INSERT OR IGNORE INTO skill_keywords ("id", "skill_name", "keywords")
         VALUES (?,?,?)
-    """, [skill_id,
-          skill_data['name'],
+    """, [skill_id, skill_data['name'],
           skill_data['name'] + " " + " ".join(skill_data['keywords'])
-                                 if 'keywords' in skill_data
-                                 else skill_data['name']])
+          if 'keywords' in skill_data else skill_data['name']])
 db.cachedb.commit()
 
 logger.debug("chihiro.skill_keywords created.")
 
-SPARKLE_BONUS_SSR = OrderedDict({_[0]: _[1] for idx, _ in
-                     enumerate(db.masterdb.execute_and_fetchall("SELECT life_value / 10, type_01_value FROM skill_life_value ORDER BY life_value"))})
-SPARKLE_BONUS_SR = OrderedDict({_[0]: _[1] for idx, _ in
-                    enumerate(db.masterdb.execute_and_fetchall("SELECT life_value / 10, type_02_value FROM skill_life_value ORDER BY life_value"))})
-SPARKLE_BONUS_SSR_GRAND = OrderedDict({_[0]: _[1] for idx, _ in enumerate(
-    db.masterdb.execute_and_fetchall("SELECT life_value / 10, type_01_value FROM skill_life_value_grand ORDER BY life_value"))})
-SPARKLE_BONUS_SR_GRAND = OrderedDict({_[0]: _[1] for idx, _ in enumerate(
-    db.masterdb.execute_and_fetchall("SELECT life_value / 10, type_02_value FROM skill_life_value_grand ORDER BY life_value"))})
+SPARKLE_BONUS_SSR = OrderedDict({_[0]: _[1] for idx, _ in enumerate(db.masterdb.execute_and_fetchall(
+    "SELECT life_value / 10, type_01_value FROM skill_life_value ORDER BY life_value"))})
+SPARKLE_BONUS_SR = OrderedDict({_[0]: _[1] for idx, _ in enumerate(db.masterdb.execute_and_fetchall(
+    "SELECT life_value / 10, type_02_value FROM skill_life_value ORDER BY life_value"))})
+SPARKLE_BONUS_SSR_GRAND = OrderedDict({_[0]: _[1] for idx, _ in enumerate(db.masterdb.execute_and_fetchall(
+    "SELECT life_value / 10, type_01_value FROM skill_life_value_grand ORDER BY life_value"))})
+SPARKLE_BONUS_SR_GRAND = OrderedDict({_[0]: _[1] for idx, _ in enumerate(db.masterdb.execute_and_fetchall(
+    "SELECT life_value / 10, type_02_value FROM skill_life_value_grand ORDER BY life_value"))})
 
 for d in [SPARKLE_BONUS_SSR, SPARKLE_BONUS_SR, SPARKLE_BONUS_SSR_GRAND, SPARKLE_BONUS_SR_GRAND]:
     c_v = 0
@@ -138,13 +99,15 @@ SKILL_DESCRIPTION = {
     15: "{}% SCORE UP to PERFECT notes, halves PERFECT timing window.",
     16: "Repeats the skill of other idols that was last activated.",
     17: "Heals {} life on PERFECT.",
-    20: "Boosts skill effects of other idols. (SCORE UP/COMBO BONUS UP is boosted by {}%)",
+    20: "Boosts SCORE UP/COMBO BONUS UP skill effects by {}%"
+        " and boosts other skill effects of other idols.",
     21: "If only CUTE idols are in the unit, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
     22: "If only COOL idols are in the unit, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
     23: "If only PASSION idols are in the unit, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
     24: "{}% COMBO BONUS UP, heals {} life on PERFECT",
     25: "With the scale of the life value, COMBO BONUS UP.",
-    26: "If idols of all 3 types are in the unit, {}% SCORE UP and {} life healing on PERFECT notes, {}% COMBO BONUS UP.",
+    26: "If idols of all 3 types are in the unit, {}% SCORE UP and {} life healing on PERFECT notes,"
+        " {}% COMBO BONUS UP.",
     27: "{}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
     28: "{}% SCORE UP to PERFECT notes, {}% SCORE UP to PERFECT LONG notes.",
     29: "{}% SCORE UP to PERFECT notes, {}% SCORE UP to PERFECT FLICK notes.",
@@ -156,12 +119,27 @@ SKILL_DESCRIPTION = {
     35: "With the scale of the VOCAL value of the unit, SCORE UP to PERFECT notes.",
     36: "With the scale of the DANCE value of the unit, SCORE UP to PERFECT notes.",
     37: "With the scale of the VISUAL value of the unit, SCORE UP to PERFECT notes.",
-    38: "If idols of all 3 types are in the unit, boosts SCORE UP/COMBO BONUS UP skill effects by {}% and boosts other skill effects of other idols.",
+    38: "If idols of all 3 types are in the unit, boosts SCORE UP/COMBO BONUS UP skill effects by {}%"
+        " and boosts other skill effects of other idols.",
     39: "{}% COMBO BONUS DOWN, apply the highest SCORE UP effect activated during LIVE {}% boosted.",
     40: "Apply the highest SCORE UP/COMBO BONUS UP effect activated during LIVE.",
     41: "Activates the effects of all idols in the unit and applies the highest effect.",
     42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted."
     }
+
+
+class SkillInact(Enum):
+    LIFE_LOW = 1
+    NOT_CU_ONLY = 2
+    NOT_CO_ONLY = 3
+    NOT_PA_ONLY = 4
+    NOT_TRICOLOR = 5
+    NO_ENCOREABLE = 6
+    NO_SCORE_BONUS = 7
+    NO_COMBO_BONUS = 8
+    NO_SCORE_COMBO = 9
+    NO_MAGIC_SKILL = 10
+
 
 SKILL_INACTIVATION_REASON = {
     1: "Not enough life left.",
@@ -176,7 +154,8 @@ SKILL_INACTIVATION_REASON = {
     10: "There are no skills that magic can activate."
     }
 
-def get_sparkle_bonus(rarity, grand=False):
+
+def get_sparkle_bonus(rarity: int, grand: bool = False):
     if grand:
         if rarity > 6:
             return SPARKLE_BONUS_SSR_GRAND

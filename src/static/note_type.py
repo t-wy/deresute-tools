@@ -6,4 +6,7 @@ class NoteType(Enum):
     LONG = 1
     FLICK = 2
     SLIDE = 3
-    DAMAGE = 4
+    DAMAGE = -1
+
+    def __str__(self):
+        return self.name

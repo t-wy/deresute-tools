@@ -1,8 +1,12 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional, Tuple
+
 import numpy as np
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIntValidator
-from PyQt5.QtWidgets import QTableWidgetItem
+from PyQt5.QtWidgets import QTableWidgetItem, QHeaderView
 
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
@@ -10,9 +14,17 @@ from gui.events.value_accessor_events import GetCustomBonusEvent, GetGrooveSongC
 from static.appeal_presets import APPEAL_PRESETS, COLOR_PRESETS
 from static.color import Color
 
+if TYPE_CHECKING:
+    from gui.viewmodels.simulator.wide_smart import MainModel
+
 
 class CustomBonusView:
-    def __init__(self, main, main_model):
+    layout: QtWidgets.QGridLayout
+    main: QtWidgets.QWidget
+    main_model: MainModel
+    model: CustomBonusModel
+
+    def __init__(self, main: QtWidgets.QWidget, main_model: MainModel):
         self.layout = QtWidgets.QGridLayout()
         self.main = main
         self.main_model = main_model
@@ -31,8 +43,8 @@ class CustomBonusView:
         self.layout.addWidget(self.custom_bonus_appeal_preset, 1, 0, 1, 1)
         self.layout.addWidget(self.custom_bonus_preset_value, 2, 0, 1, 1)
         self.layout.addWidget(self.custom_bonus_table, 0, 1, 3, 3)
-        self.custom_bonus_table.horizontalHeader().setSectionResizeMode(1)  # Auto fit
-        self.custom_bonus_table.verticalHeader().setSectionResizeMode(1)  # Auto fit
+        self.custom_bonus_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # Auto fit
+        self.custom_bonus_table.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)  # Auto fit
         self.custom_bonus_table.setMinimumHeight(100)
 
     def _setup_values(self):
@@ -58,22 +70,22 @@ class CustomBonusView:
                 item.setData(Qt.EditRole, 0)
                 self.custom_bonus_table.setItem(r, c, item)
 
-    def set_model(self, model):
+    def set_model(self, model: CustomBonusModel):
         self.model = model
 
 
 class CustomBonusModel:
     view: CustomBonusView
 
-    def __init__(self, view):
+    def __init__(self, view: CustomBonusView):
         self.view = view
         eventbus.eventbus.register(self)
 
     @subscribe(GetGrooveSongColor)
-    def get_groove_color(self, event=None):
+    def get_groove_color(self, event=None) -> Optional[Color]:
         appeal_idx = self.view.custom_bonus_appeal_preset.currentIndex()
-        is_groove = appeal_idx == APPEAL_PRESETS["Vocal Groove"] or appeal_idx == APPEAL_PRESETS[
-            "Dance Groove"] or appeal_idx == APPEAL_PRESETS["Visual Groove"]
+        is_groove = appeal_idx == APPEAL_PRESETS["Vocal Groove"] or appeal_idx == APPEAL_PRESETS["Dance Groove"] \
+            or appeal_idx == APPEAL_PRESETS["Visual Groove"]
 
         if not is_groove:
             return None
@@ -87,7 +99,7 @@ class CustomBonusModel:
         return Color.ALL
 
     @subscribe(GetCustomBonusEvent)
-    def get_bonus(self, event=None):
+    def get_bonus(self, event=None) -> Tuple[Optional[np.ndarray], Optional[int], Optional[int]]:
         appeal_idx = self.view.custom_bonus_appeal_preset.currentIndex()
         results = np.zeros((3, 5))
         if appeal_idx in {
@@ -115,7 +127,8 @@ class CustomBonusModel:
                 item.setData(Qt.EditRole, 0)
                 self.view.custom_bonus_table.setItem(r, c, item)
 
-    def apply_groove_bonus(self, appeal_idx, value):
+    def apply_groove_bonus(self, appeal_idx: int, value: int):
+        match_c = -1
         if appeal_idx == APPEAL_PRESETS["Vocal Groove"]:
             match_c = 0
         elif appeal_idx == APPEAL_PRESETS["Dance Groove"]:

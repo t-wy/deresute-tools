@@ -108,7 +108,4 @@ data/*
 output/*
 abuse/*
 *.png
-src/network/tool.py
-src/network/secrets.py
-src/network/account.py
-src/network/api_client_tool.py
+.idea/

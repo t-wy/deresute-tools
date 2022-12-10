@@ -1,1644 +1,1213 @@
-import math
+import operator
+from collections import defaultdict
+from enum import Enum
+from typing import Optional, Union, Any, Dict, List, DefaultDict, Tuple
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QPainter, QFont, QFontMetrics, QIntValidator
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget, QLineEdit, QHBoxLayout, QGridLayout, \
-    QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QCheckBox, QPushButton, QSpinBox, QTextEdit, \
-    QSpacerItem
+from PyQt5.QtGui import QFontMetrics, QIntValidator
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QStackedWidget, QLineEdit, QHBoxLayout, \
+    QGridLayout, QRadioButton, QButtonGroup, QSizePolicy, QTreeWidget, QTreeWidgetItem, QCheckBox, QPushButton, \
+    QSpinBox, QTextEdit
 
-from chart_pic_generator import BaseChartPicGenerator, WINDOW_WIDTH, SCROLL_WIDTH, MAX_LABEL_Y
+from chart_pic_generator import BaseChartPicGenerator, WINDOW_WIDTH, SCROLL_WIDTH
 from db import db
-from gui.events.calculator_view_events import CacheSimulationEvent, CustomSimulationEvent, CustomSimulationResultEvent
+from gui.events.calculator_view_events import SimulationEvent, CacheSimulationEvent, CustomSimulationEvent, \
+    CustomSimulationResultEvent
 from gui.events.chart_viewer_events import SendMusicEvent, HookAbuseToChartViewerEvent, HookUnitToChartViewerEvent, \
     ToggleMirrorEvent, HookSimResultToChartViewerEvent
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetMirrorFlagEvent
+from logic.card import Card
+from simulator import LiveDetail
+from statemachine import NoteDetailSkill, get_note_detail
 from static.judgement import Judgement
-from static.song_difficulty import Difficulty, PERFECT_TAP_RANGE, GREAT_TAP_RANGE, NICE_TAP_RANGE, BAD_TAP_RANGE
+from static.note_type import NoteType
 from static.skill import SKILL_BASE, SKILL_INACTIVATION_REASON
+from static.song_difficulty import Difficulty, BAD_TAP_RANGE
 
-PERFECT_NONTAP_RANGE = 150000
-GREAT_NONTAP_RANGE = 180000
-NICE_NONTAP_RANGE = 190000
-BAD_NONTAP_RANGE = 200000
+BAD_NON_TAP_RANGE = 200000
+MISS_OFFSET = 450
 
-class ChartInfoWidget(QWidget):
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.chart_viewer = None
-    
-    def set_chart_viewer(self, chart_viewer):
-        self.chart_viewer = chart_viewer
-    
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        delta = event.oldSize().height() - self.height()
-        chart_widget = self.chart_viewer.chart_widget
-        chart_widget.verticalScrollBar().setValue(chart_widget.verticalScrollBar().value() - delta)
+
+class ChartMode(Enum):
+    DEFAULT = 0
+    PERFECT = 1
+    ABUSE = 2
+    CUSTOM = 3
+
 
 class ChartViewer:
-    def __init__(self, parent, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    generator: Optional[BaseChartPicGenerator]
+
+    chart_mode: ChartMode
+    song_id: int
+    difficulty: Difficulty
+    mirrored: bool
+
+    cards: List[Card]
+    perfect_detail: Optional[LiveDetail]
+
+    simulation_cache: Optional[SimulationEvent]
+
+    custom_offset_cache: DefaultDict[int, int]
+    custom_abuse_enabled: bool
+    draw_custom_abuse: bool
+
+    def __init__(self, parent):
         self.parent = parent
+
+        self.widget = None
+        self.layout = None
+        self.info_widget = None
+        self.chart_widget = None
+
         self.generator = None
-        
-        self.chart_mode = 0
+
+        self.chart_mode = ChartMode.DEFAULT
         self.song_id = 0
-        self.difficulty = 0
-        self.mirror = False
-        
-        self.cards = None
-        self.skill_probability = None
+        self.difficulty = Difficulty.DEBUT
+        self.mirrored = False
+
+        self.cards = list()
+        self.skill_probability = list()
         self.perfect_detail = None
-        
-        self.custom_offset_cache = {}
-        self.custom_group_cache = None
-        self.custom_abuse = -1
-        
-        self.widget = QWidget(parent)
-        self.widget.layout = QVBoxLayout(self.widget)
-        self.info_widget = ChartInfoWidget()
-        self.chart_widget = QScrollArea()
-        self.info_widget.set_chart_viewer(self)
-        self.info_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
-        self.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
-        self.widget.layout.addWidget(self.info_widget)
-        self.widget.layout.addWidget(self.chart_widget)
-        self.setup_info_widget()
-        
-        label = QLabel()
-        canvas = QPixmap(WINDOW_WIDTH, MAX_LABEL_Y)
-        label.setPixmap(canvas)
-        painter = QPainter(label.pixmap())
-        painter.fillRect(0, 0, canvas.width(), canvas.height(), Qt.black)
-        label.repaint()
-        self.chart_widget.setWidget(label)
-        vbar = self.chart_widget.verticalScrollBar()
-        vbar.setValue(vbar.maximum())
-        
+
+        self.simulation_cache = None
+
+        self.custom_offset_cache = defaultdict(int)
+        self.custom_abuse_enabled = False
+        self.draw_custom_abuse = False
+
+        self._setup_widget()
+
         eventbus.eventbus.register(self)
+
+    def _setup_widget(self):
+        self.widget = QWidget(self.parent)
+        self.layout = QVBoxLayout(self.widget)
+
+        self.info_widget = ChartViewerInfoWidget(self)
+        self.info_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
+        self.layout.addWidget(self.info_widget)
+
+        self.chart_widget = QScrollArea()
+        self.chart_widget.setStyleSheet("background-color: #000000")
+        self.chart_widget.setFixedWidth(WINDOW_WIDTH + SCROLL_WIDTH)
+        self.layout.addWidget(self.chart_widget)
 
     @subscribe(SendMusicEvent)
     def hook_music(self, event: SendMusicEvent):
         self.song_id = event.song_id
         self.difficulty = event.difficulty
         self.mirrored = eventbus.eventbus.post_and_get_first(GetMirrorFlagEvent())
-        
-        self.generator = BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self, reset_main=False,
+
+        self.generator = BaseChartPicGenerator.get_generator(self.song_id, self.difficulty, self,
                                                              mirrored=self.mirrored)
-        
+
         self.perfect_detail = None
-        
-        title, difficulty, level, total = self.get_song_info_from_id(self.song_id, self.difficulty)
-        self.info_widget.title_line.setText(title)
-        self.info_widget.difficulty_line.setText(difficulty)
-        self.info_widget.difficulty_line.setCursorPosition(0)
-        self.info_widget.level_line.setText(str(level))
-        self.info_widget.total_notes_line.setText(str(total))
-        
-        self.info_widget.mode_default_button.setChecked(True)
-        self.info_widget.mode_perfect_button.setCheckable(False)
-        self.info_widget.mode_abuse_button.setCheckable(False)
-        self.info_widget.mode_custom_button.setCheckable(False)
-        self.info_widget.custom_abuse_button.setDisabled(True)
-        self.custom_abuse = -1
-    
+
+        title, difficulty, level, total = get_song_info_from_id(self.song_id, self.difficulty)
+
+        self.info_widget.subwidgets['song_title'].textbox[0].setText(title)
+        self.info_widget.subwidgets['song_difficulty'].textbox[0].setText(difficulty)
+        self.info_widget.subwidgets['song_difficulty'].textbox[0].setCursorPosition(0)
+        self.info_widget.subwidgets['song_level'].textbox[0].setText(str(level))
+        self.info_widget.subwidgets['song_notes'].textbox[0].setText(str(total))
+
+        self.info_widget.subwidgets['mode_default'].setChecked(True)
+        self.info_widget.subwidgets['mode_perfect'].setCheckable(False)
+        self.info_widget.subwidgets['mode_abuse'].setCheckable(False)
+        self.info_widget.subwidgets['mode_custom'].setCheckable(False)
+
+        self.info_widget.subwidgets['custom_general_button_abuse'].setDisabled(True)
+        self.custom_abuse_enabled = False
+
     @subscribe(HookAbuseToChartViewerEvent)
     def hook_abuse(self, event: HookAbuseToChartViewerEvent):
         if self.generator is None:
             return
+
         self.generator.hook_abuse(event.cards, event.abuse_df)
-        self.info_widget.mode_abuse_button.setCheckable(True)
-        
-        if (len(self.custom_offset_cache) == 0 or not any(self.custom_offset_cache.values())) \
-            and (len(self.generator.note_offset_dict) == 0 or not any(self.generator.note_offset_dict.values())):
-            self.info_widget.custom_abuse_button.setDisabled(False)
-        self.custom_abuse = 0
-    
+        self.info_widget.subwidgets['mode_abuse'].setCheckable(True)
+
+        if dict_have_nonzero(self.custom_offset_cache) and dict_have_nonzero(self.generator.note_offsets):
+            self.info_widget.subwidgets['custom_general_button_abuse'].setDisabled(False)
+        self.custom_abuse_enabled = True
+
     @subscribe(CacheSimulationEvent)
     def cache_simulation_event(self, event: CacheSimulationEvent):
-        self.cache_simulation = event.event
-    
+        self.simulation_cache = event.event
+
     @subscribe(HookSimResultToChartViewerEvent)
     def hook_simulation_result(self, event: HookSimResultToChartViewerEvent):
         if self.generator is None:
             return
-        if event.song_id != self.song_id or event.difficulty.value != self.difficulty:
+        if self.song_id != event.song_id or self.difficulty != event.difficulty:
             return
+
         self.perfect_detail = event.perfect_detail
-        self._handle_simulation_result()
-        
-        if self.info_widget.mode_perfect_button.isCheckable():
-            self.info_widget.mode_custom_button.setCheckable(True)  
-        
-        if self.chart_mode > 0:
-            self.generator.draw_perfect_chart()
-    
+        self.set_skill_pics_inact_deact()
+
+        if self.info_widget.subwidgets['mode_perfect'].isCheckable():
+            self.info_widget.subwidgets['mode_custom'].setCheckable(True)
+
+        if self.chart_mode != ChartMode.DEFAULT:
+            self.generator.draw_chart(paint_skill=True)
+
     @subscribe(CustomSimulationResultEvent)
     def display_custom_simulation_result(self, event: CustomSimulationResultEvent):
-        if event.live.score_id != self.song_id or event.live.difficulty.value != self.difficulty:
+        if self.song_id != event.live.score_id or self.difficulty != event.live.difficulty:
             return
-        self.info_widget.custom_total_line.setText(str(event.result[0]))
-        self.info_widget.custom_theoretic_line.setText(str(int(event.result[2])))
-        self.info_widget.custom_skill_prob_line.setText("{:.2%}".format(event.result[4]))
-        
-        self.perfect_detail = event.result[1]
-        self._handle_simulation_result()
-        
-        idx = self.generator.selected_note
-        self._show_detail_note_score_info(idx)
-        
-        self.generator.hook_abuse(self.cards, event.result[3])
-        
-        self.generator.draw_perfect_chart()
-        if self.custom_abuse == 1:
-            self.generator.draw_abuse_chart()
-        self.set_stacked_widget_index(self.info_widget.detail_widget, 0)
-        self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
-        
-        if (len(self.custom_offset_cache) == 0 or not any(self.custom_offset_cache.values())) \
-            and (len(self.generator.note_offset_dict) == 0 or not any(self.generator.note_offset_dict.values())):
-            self.info_widget.custom_abuse_button.setDisabled(False)
-    
-    def _handle_simulation_result(self):
-        numbers = self.perfect_detail.note_number
-        length = len(self.perfect_detail.note_number)
-        self.skill_probability = self.perfect_detail.skill_probability
-        self.perfect_detail.judgement = [self.perfect_detail.judgement[numbers.index(_ + 1)] for _ in range(length)]
-        self.perfect_detail.life = [int(self.perfect_detail.life[numbers.index(_ + 1)]) for _ in range(length)]
-        self.perfect_detail.combo = [self.perfect_detail.combo[numbers.index(_ + 1)] for _ in range(length)]
-        self.perfect_detail.weight = [self.perfect_detail.weight[numbers.index(_ + 1)] for _ in range(length)]
-        self.perfect_detail.score_bonus_skill = [self.perfect_detail.score_bonus_skill[numbers.index(_ + 1)]
-                                                 for _ in range(length)]
-        self.perfect_detail.score_great_bonus_skill = [self.perfect_detail.score_great_bonus_skill[numbers.index(_ + 1)]
-                                                        for _ in range(length)]
-        self.perfect_detail.combo_bonus_skill = [self.perfect_detail.combo_bonus_skill[numbers.index(_ + 1)]
-                                                 for _ in range(length)]
-        self.perfect_detail.note_score_list = [int(self.perfect_detail.note_score_list[numbers.index(_ + 1)])
-                                                 for _ in range(length)]
-        total_score = 0
-        cumulative_score_list = [total_score := total_score + self.perfect_detail.note_score_list[idx - 1]
-                                                     for idx in numbers]
-        self.perfect_detail.cumulative_score_list = [cumulative_score_list[numbers.index(_ + 1)] for _ in range(len(numbers))]
-        for note in self.perfect_detail.score_bonus_skill:
-            note.sort(key = lambda _: _[0])
-            for skill in note:
-                if skill[3] is not None and len(skill[3]) > 0:
-                    skill[3].sort(key = lambda _: _[0])
-        for note in self.perfect_detail.combo_bonus_skill:
-            note.sort(key = lambda _: _[0])
-            for skill in note:
-                if skill[3] is not None and len(skill[3]) > 0:
-                    skill[3].sort(key = lambda _: _[0])
-        self.perfect_detail.score_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
-                                                for note in self.perfect_detail.score_bonus_skill]
-        self.perfect_detail.score_great_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
-                                                      for note in self.perfect_detail.score_great_bonus_skill]
-        self.perfect_detail.combo_bonus_list = [round(1 + sum([skill[2] for skill in note]) / 100, 2)
-                                                for note in self.perfect_detail.combo_bonus_skill]
-    
+
+        self.info_widget.subwidgets['custom_general_score_total'].textbox[0].setText(str(event.result.perfect_score))
+        self.info_widget.subwidgets['custom_general_score_theoretic'].textbox[0].setText(
+            str(int(event.result.abuse_score)))
+        self.info_widget.subwidgets['custom_general_score_prob'].textbox[0].setText(
+            "{:.2%}".format(event.result.full_roll_chance))
+
+        self.perfect_detail = event.result.perfect_detail
+        self.set_skill_pics_inact_deact()
+
+        self.generator.hook_abuse(self.cards, event.result.abuse_data)
+
+        self.generator.draw_chart(paint_skill=True)
+        if self.draw_custom_abuse:
+            self.generator.draw_chart(draw_abuse=True)
+        set_stacked_widget_index(self.info_widget.subwidgets['detail'], 0)
+        set_stacked_widget_index(self.info_widget.subwidgets['custom_detail'], 0)
+
+        if dict_have_nonzero(self.custom_offset_cache) and dict_have_nonzero(self.generator.note_offsets):
+            self.info_widget.subwidgets['custom_general_button_abuse'].setDisabled(False)
+
+    def set_skill_pics_inact_deact(self):
+        for card_num, skill_details in self.perfect_detail.skill_details.items():
+            for act_idx, skill_detail in enumerate(skill_details):
+                skills = self.generator.get_all_skills_of_index(card_num - 1, act_idx)
+                for skill in skills:
+                    skill.inact = skill_detail.inact
+                    skill.deact = skill_detail.deact
+
     @subscribe(HookUnitToChartViewerEvent)
     def hook_unit(self, event: HookUnitToChartViewerEvent):
         if self.generator is None:
             return
+
         self.cards = event.cards
         unit_changed = self.generator.hook_cards(event.cards)
-        self.info_widget.mode_perfect_button.setCheckable(True)
+
+        self.info_widget.subwidgets['mode_perfect'].setCheckable(True)
+        self.info_widget.subwidgets['mode_custom'].setCheckable(False)
         self.perfect_detail = None
-        self.info_widget.mode_custom_button.setCheckable(False)
+
         if unit_changed:
-            if self.chart_mode == 1:
-                self.generator.draw_perfect_chart()
-            elif self.chart_mode > 1:
-                self.info_widget.mode_perfect_button.setChecked(True)
+            if self.chart_mode == ChartMode.PERFECT:
+                self.generator.draw_chart(paint_skill=True)
+            elif self.chart_mode != ChartMode.DEFAULT:
+                self.chart_mode = ChartMode.PERFECT
+                self.info_widget.subwidgets['mode_perfect'].setChecked(True)
 
     @subscribe(ToggleMirrorEvent)
     def toggle_mirror(self, event: ToggleMirrorEvent):
         if self.generator is None:
             return
+
         self.generator = self.generator.mirror_generator(event.mirrored)
 
     def set_chart_mode(self):
-        mode = self.info_widget.mode_button_group.checkedId()
-        if self.chart_mode == mode:
+        mode_id = self.info_widget.subwidgetgroups['mode_button'].checkedId()
+        if self.chart_mode == ChartMode(mode_id):
             return
         else:
-            self.chart_mode = mode
-            if mode == 0:
-                self.generator.draw_default_chart()
-            elif mode == 1:
-                self.generator.draw_perfect_chart()
-            elif mode == 2:
-                self.generator.draw_perfect_chart()
-                self.generator.draw_abuse_chart()
-            elif mode == 3:
-                self.generator.draw_perfect_chart()
-                self.set_stacked_widget_index(self.info_widget.custom_widget, 1)
-                self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
+            self.reset_custom_setting()
+
+            self.chart_mode = ChartMode(mode_id)
+            if self.chart_mode == ChartMode.DEFAULT:
+                self.generator.draw_chart()
+            elif self.chart_mode == ChartMode.PERFECT:
+                self.generator.draw_chart(paint_skill=True)
+            elif self.chart_mode == ChartMode.ABUSE:
+                self.generator.draw_chart(draw_abuse=True)
+            elif self.chart_mode == ChartMode.CUSTOM:
+                self.generator.draw_chart(paint_skill=True)
                 self.simulate_custom()
-            
-            if mode != 3:
-                self.set_stacked_widget_index(self.info_widget.custom_widget, 0)
-                self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
-                
-                self.generator.skill_inactive_list = [[] for _ in range(15)]
-                self.custom_offset_cache = dict()
-                self.generator.note_offset_dict = dict()
-                
+                set_stacked_widget_index(self.info_widget.subwidgets['custom'], 1)
+
             self.show_detail_nothing()
-            self.generator.pixmap_cache = [None] * self.generator.n_label
+            self.generator.pixmap_caches = [None] * self.generator.label_total
 
-    def set_stacked_widget_index(self, widget, idx):
-        self._resize_stacked_widget(widget, idx)
-        widget.setCurrentIndex(idx)
-        if idx == 0:
-            widget.hide()
-        else:
-            widget.show()
+    def reset_custom_setting(self):
+        set_stacked_widget_index(self.info_widget.subwidgets['custom'], 0)
+        set_stacked_widget_index(self.info_widget.subwidgets['custom_detail'], 0)
 
-    def _resize_stacked_widget(self, widget, idx):
-        for i in range(widget.count()):
-            if i == idx:
-                widget.widget(i).setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-            else:
-                widget.widget(i).setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.generator.deact_skills = {card_num: [] for card_num in range(1, 16)}
+        self.generator.note_offsets = defaultdict(int)
+        self.custom_offset_cache = defaultdict(int)
 
     def show_detail_nothing(self):
-        self.set_stacked_widget_index(self.info_widget.detail_widget, 0)
-        self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
-        self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
-        self.set_stacked_widget_index(self.info_widget.skill_inactivation_widget, 0)
-        
-        if self.chart_mode == 3:
-            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
-    
-    def show_detail_note_info(self, num, time, note_type):
-        self.set_stacked_widget_index(self.info_widget.detail_widget, 1)
-        self.info_widget.note_number_line.setText(num)
-        self.info_widget.note_second_line.setText(time)
-        self.info_widget.note_type_line.setText(note_type)
-        
-        if self.chart_mode in (1, 3) and note_type != "DAMAGE" and self.perfect_detail != None:
-            self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 1)
-            idx = int(num) - 1
-            if self.chart_mode == 3:
-                self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 2)
-                self.info_widget.custom_note_offset_spinbox.valueChanged.disconnect()
-                miss_offset = 450
-                if note_type == "TAP":
-                    _ = BAD_TAP_RANGE[Difficulty(self.difficulty)] // 1000
-                    self.info_widget.custom_note_offset_spinbox.setRange(-_, _ + miss_offset)
-                elif note_type in ("LONG", "FLICK"):
-                    _ = BAD_NONTAP_RANGE // 1000
-                    self.info_widget.custom_note_offset_spinbox.setRange(-_, _ + miss_offset)
-                elif note_type == "SLIDE":
-                    if self.perfect_detail.checkpoint[idx]:
-                        self.info_widget.custom_note_offset_spinbox.setRange(0, 200 + miss_offset)
-                    else:
-                        self.info_widget.custom_note_offset_spinbox.setRange(-200, 200 + miss_offset)
-                if self.generator.selected_note in self.generator.note_offset_dict:
-                    offset = self.generator.note_offset_dict[self.generator.selected_note]
-                else:
-                    offset = 0
-                self.info_widget.custom_note_offset_spinbox.setValue(offset)
-                self.info_widget.custom_note_offset_spinbox.valueChanged.connect(lambda: self.change_note_offset())
-                
-                if self.generator.selected_note in self.custom_offset_cache:
-                    if offset == self.custom_offset_cache[self.generator.selected_note]:
-                        self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
-                    else:
-                        self.info_widget.custom_note_judgement_line.setText("-")
-                else:
-                    if offset == 0:
-                        self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[idx])[10:])
-                    else:
-                        self.info_widget.custom_note_judgement_line.setText("-") 
-            self._show_detail_note_score_info(idx)
-        else:
-            self.set_stacked_widget_index(self.info_widget.note_score_info_widget, 0)
-    
-    def _show_detail_note_score_info(self, idx):
-        self.info_widget.note_life_line.setText(str(self.perfect_detail.life[idx]))
-        self.info_widget.note_combo_line.setText("{} ({})".format(self.perfect_detail.combo[idx], self.perfect_detail.weight[idx]))
-        self.info_widget.note_score_bonus_line.setText(
-            str(self.perfect_detail.score_bonus_list[idx]) if self.perfect_detail.judgement[idx] == Judgement.PERFECT \
-                else str(self.perfect_detail.score_great_bonus_list[idx])
-            )
-        self.info_widget.note_combo_bonus_line.setText(str(self.perfect_detail.combo_bonus_list[idx]))
-        self.info_widget.note_note_score_line.setText(str(self.perfect_detail.note_score_list[idx]))
-        self.info_widget.note_current_score_line.setText(str(self.perfect_detail.cumulative_score_list[idx]))
-        
-        self.info_widget.note_score_skill.clear()
-        if self.perfect_detail.judgement[idx] == Judgement.PERFECT:
-            for skill in self.perfect_detail.score_bonus_skill[idx]:
-                if skill[2] == 0:
-                    continue
-                item_skill = QTreeWidgetItem(self.info_widget.note_score_skill)
-                item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
-                                                         "{:+}%".format(skill[2])))
-                if skill[2] < 0:
-                    continue
-                item_skill_child = QTreeWidgetItem(item_skill)
-                total_boost = (sum([_[2]  for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
-                item_skill_child.setText(0, "{} : {}".format(SKILL_BASE[skill[1]]["name"],
-                                                             "{:+}%".format(math.floor(skill[2] / total_boost))))
-                for boost in skill[3]:
-                    item_boost = QTreeWidgetItem(item_skill)
-                    item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
-                                                                "{:+}%".format(round((boost[2] - 1000) / 10))))
-        elif self.perfect_detail.judgement[idx] == Judgement.GREAT:
-            for skill in self.perfect_detail.score_great_bonus_skill[idx]:
-                if skill[2] == 0:
-                    continue
-                item_skill = QTreeWidgetItem(self.info_widget.note_score_skill)
-                item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
-                                                         "{:+}%".format(skill[2])))
-                if skill[2] < 0:
-                    continue
-                item_skill_child = QTreeWidgetItem(item_skill)
-                total_boost = (sum([_[2]  for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
-                item_skill_child.setText(0, "{} : {}".format(SKILL_BASE[skill[1]]["name"],
-                                                             "{:+}%".format(math.floor(skill[2] / total_boost))))
-                for boost in skill[3]:
-                    item_boost = QTreeWidgetItem(item_skill)
-                    item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
-                                                                "{:+}%".format(round((boost[2] - 1000) / 10))))
-        
-        self.info_widget.note_combo_skill.clear()
-        for skill in self.perfect_detail.combo_bonus_skill[idx]:
-            if skill[2] == 0:
-                continue
-            item_skill = QTreeWidgetItem(self.info_widget.note_combo_skill)
-            item_skill.setText(0, "[{}] {} : {}".format(skill[0] + 1, SKILL_BASE[skill[1]]["name"],
-                                                     "{:+}%".format(skill[2])))
-            if skill[2] < 0:
-                continue
-            item_skill_child = QTreeWidgetItem(item_skill)
-            total_boost = (sum([_[2] for _ in skill[3]]) - 1000 * (len(skill[3]) - 1)) / 1000
-            item_skill_child.setText(0, "{} : {}".format(SKILL_BASE[skill[1]]["name"],
-                                                         "{:+}%".format(math.floor(skill[2] / total_boost))))
-            for boost in skill[3]:
-                item_boost = QTreeWidgetItem(item_skill)
-                item_boost.setText(0, "[{}] {} : ({})".format(boost[0] + 1, SKILL_BASE[boost[1]]["name"],
-                                                            "{:+}%".format(round((boost[2] - 1000) / 10))))
-          
-    def show_detail_skill_info(self, skill_type, time):
-        card_idx, idx = self.generator.selected_skill
-        self.set_stacked_widget_index(self.info_widget.detail_widget, 2)
-        self.info_widget.skill_type_line.setText(SKILL_BASE[skill_type]['name'])
-        self.info_widget.skill_time_line.setText(time)
-        if self.skill_probability is not None:
-            self.info_widget.skill_prob_line.setText("{:.2%}".format(self.skill_probability[card_idx]))
-        self.info_widget.skill_description_line.setText(self.cards[card_idx].sk.get_skill_description())
-        
-        if self.perfect_detail == None:
+        set_stacked_widget_index(self.info_widget.subwidgets['detail'], 0)
+        set_stacked_widget_index(self.info_widget.subwidgets['detail_note_score'], 0)
+        set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 0)
+        set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_inactivation'], 0)
+
+        if self.chart_mode == ChartMode.CUSTOM:
+            set_stacked_widget_index(self.info_widget.subwidgets['custom_detail'], 0)
+
+    def show_detail_note_info(self, number: int):
+        if self.perfect_detail is None:
             return
-        
-        if card_idx in self.perfect_detail.skill_inactivation_reason and \
-            idx in self.perfect_detail.skill_inactivation_reason[card_idx]:
-            self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
-            self.set_stacked_widget_index(self.info_widget.skill_inactivation_widget, 1)
-            self.info_widget.skill_prob_line.setText("-")
-            self.info_widget.skill_inactivation_detail_line.setText(
-                SKILL_INACTIVATION_REASON[self.perfect_detail.skill_inactivation_reason[card_idx][idx]])
+
+        note_detail = get_note_detail(self.perfect_detail.note_details, number)
+
+        set_stacked_widget_index(self.info_widget.subwidgets['detail'], 1)
+
+        self.info_widget.subwidgets['detail_note_general_number'].textbox[0].setText(str(number))
+        self.info_widget.subwidgets['detail_note_general_time'].textbox[0].setText("{:.3f}".format(note_detail.time))
+        self.info_widget.subwidgets['detail_note_general_type'].textbox[0].setText(str(note_detail.note_type))
+
+        if self.chart_mode in (ChartMode.PERFECT, ChartMode.CUSTOM) \
+                and note_detail.note_type != NoteType.DAMAGE and self.perfect_detail is not None:
+            set_stacked_widget_index(self.info_widget.subwidgets['detail_note_score'], 1)
+            self._show_detail_note_score_info(number)
+
+            if self.chart_mode == ChartMode.CUSTOM:
+                self._show_detail_note_custom_info(number)
         else:
-            self.set_stacked_widget_index(self.info_widget.skill_inactivation_widget, 0)
-            
-            if skill_type == 16: #encore
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 1)
-                if card_idx in self.perfect_detail.encore_skill and idx in self.perfect_detail.encore_skill[card_idx]:
-                    encore_skill = self.perfect_detail.encore_skill[card_idx][idx]
-                    self.info_widget.skill_detail_encore_line.setText("[{}] {}".format(encore_skill[0] + 1,
-                                                                                       SKILL_BASE[encore_skill[1]]["name"]))
-                    self.info_widget.skill_detail_encore_line_.setText("{:.1f}".format(encore_skill[2]))
+            set_stacked_widget_index(self.info_widget.subwidgets['detail_note_score'], 0)
+
+    def _show_detail_note_score_info(self, number: int):
+        note_detail = get_note_detail(self.perfect_detail.note_details, number)
+
+        self.info_widget.subwidgets['detail_note_score_general_life'].textbox[0].setText(str(note_detail.life))
+        self.info_widget.subwidgets['detail_note_score_general_combo'].textbox[0].setText(
+            "{} ({})".format(note_detail.combo, note_detail.weight))
+
+        if note_detail.judgement == Judgement.PERFECT:
+            score_bonus = note_detail.score_bonus
+        else:
+            score_bonus = note_detail.score_great_bonus
+        self._show_detail_note_bonus_info("score", score_bonus)
+
+        combo_bonus = note_detail.combo_bonus
+        self._show_detail_note_bonus_info("combo", combo_bonus)
+
+        self.info_widget.subwidgets['detail_note_score_general_note-score'].textbox[0].setText(str(note_detail.score))
+        self.info_widget.subwidgets['detail_note_score_general_current-score'].textbox[0].setText(
+            str(note_detail.cumulative_score))
+
+    def _show_detail_note_bonus_info(self, widget_text: str, bonus: List[NoteDetailSkill]):
+        widget_name = 'detail_note_score_general_{}-bonus'.format(widget_text)
+        sum_bonus = 1 + sum([skill.value / 100 for skill in bonus])
+        self.info_widget.subwidgets[widget_name].textbox[0].setText("{:.2f}".format(sum_bonus))
+
+        widget_name = 'detail_note_score_skill_{}'.format(widget_text)
+        self.info_widget.subwidgets[widget_name].clear()
+        for skill in bonus:
+            item_skill = QTreeWidgetItem(self.info_widget.subwidgets[widget_name])
+            skill_type_text = SKILL_BASE[skill.skill_type]['name']
+            item_skill.setText(0, "[{}] {} : {}".format(skill.lane, skill_type_text, "{:+}%".format(skill.value)))
+
+            if len(skill.boost) == 0:
+                continue
+
+            item_skill_child = QTreeWidgetItem(item_skill)
+            item_skill_child.setText(0, "{} : {}".format(skill_type_text, "{:+}%".format(skill.pre_boost_value)))
+            for boost in skill.boost:
+                item_boost = QTreeWidgetItem(item_skill)
+                item_boost.setText(0, "[{}] {} : ({})".format(boost.lane, SKILL_BASE[boost.skill_type]['name'],
+                                                              "{:+}%".format(boost.value)))
+
+    def _show_detail_note_custom_info(self, number: int):
+        note_detail = get_note_detail(self.perfect_detail.note_details, number)
+
+        set_stacked_widget_index(self.info_widget.subwidgets['custom_detail'], 2)
+
+        self.info_widget.subwidgets['custom_detail_note_offset-spinbox'].valueChanged.disconnect()
+        left, right = 0, 0
+        if note_detail.note_type == NoteType.TAP:
+            left = -BAD_TAP_RANGE[Difficulty(self.difficulty)] // 1000
+            right = -left + MISS_OFFSET
+        elif note_detail.note_type in (NoteType.LONG, NoteType.FLICK):
+            left = -BAD_NON_TAP_RANGE // 1000
+            right = -left + MISS_OFFSET
+        elif note_detail.note_type == NoteType.SLIDE:
+            left = 0 if note_detail.checkpoint else -150
+            right = 150 + MISS_OFFSET
+        self.info_widget.subwidgets['custom_detail_note_offset-spinbox'].setRange(left, right)
+        offset = self.generator.note_offsets[number - 1]
+        self.info_widget.subwidgets['custom_detail_note_offset-spinbox'].setValue(offset)
+        self.info_widget.subwidgets['custom_detail_note_offset-spinbox'].valueChanged.connect(
+            lambda: self.change_note_offset())
+
+        self._set_custom_judgement_text(number, offset)
+
+    def show_detail_damage_info(self, time: float):
+        set_stacked_widget_index(self.info_widget.subwidgets['detail'], 1)
+
+        self.info_widget.subwidgets['detail_note_general_number'].textbox[0].setText("-")
+        self.info_widget.subwidgets['detail_note_general_time'].textbox[0].setText("{:.3f}".format(time))
+        self.info_widget.subwidgets['detail_note_general_type'].textbox[0].setText("DAMAGE")
+
+    def show_detail_skill_info(self, lane: int, idx: int):
+        if self.perfect_detail is None:
+            return
+
+        skill_detail = self.perfect_detail.skill_details[lane][idx]
+
+        set_stacked_widget_index(self.info_widget.subwidgets['detail'], 2)
+
+        skill_type = skill_detail.skill_type
+
+        self.info_widget.subwidgets['detail_skill_general_type'].textbox[0].setText(SKILL_BASE[skill_type]['name'])
+        self.info_widget.subwidgets['detail_skill_general_time'].textbox[0].setText(
+            "{:.1f} ~ {:.1f}".format(skill_detail.time_on, skill_detail.time_off))
+        self.info_widget.subwidgets['detail_skill_general_prob'].textbox[0].setText(
+            "{:.2%}".format(skill_detail.probability))
+        self.info_widget.subwidgets['detail_skill_description'].textbox[0].setText(
+            self.cards[lane - 1].sk.get_skill_description())
+
+        if skill_detail.inact:
+            set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 0)
+            set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_inactivation'], 1)
+            self.info_widget.subwidgets['detail_skill_general_prob'].textbox[0].setText("-")
+            self.info_widget.subwidgets['detail_skill_inactivation_detail'].textbox[0].setText(
+                SKILL_INACTIVATION_REASON[skill_detail.inact.value])
+        elif skill_detail.deact:
+            set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 0)
+        else:
+            if skill_type == 16:  # encore
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 1)
+                encored_skill = skill_detail.encored_skill
+                if encored_skill != (0, 0, 0):
+                    self.info_widget.subwidgets['detail_skill_detail_encore_skill'].textbox[0].setText(
+                        "[{}] {}".format(encored_skill[0], SKILL_BASE[encored_skill[1]]["name"]))
+                    self.info_widget.subwidgets['detail_skill_detail_encore_time'].textbox[0].setText(
+                        "{:.1f}".format(encored_skill[2]))
                 else:
-                    self.info_widget.skill_detail_encore_line.setText("")
-                    self.info_widget.skill_detail_encore_line_.setText("")
-            elif skill_type == 25: #life sparkle
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 2)
-                t = float(time.split(" ~ ")[0])
-                if self.cache_simulation.left_inclusive:
-                    last_note = self.generator.notes.index[self.generator.notes['sec'] < t].tolist()[-1]
-                else:
-                    last_note = self.generator.notes.index[self.generator.notes['sec'] <= t].tolist()[-1]
-                self.info_widget.skill_detail_sparkle_life_line.setText(str(self.perfect_detail.life[last_note]))
+                    self.info_widget.subwidgets['detail_skill_detail_encore_skill'].textbox[0].setText("-")
+                    self.info_widget.subwidgets['detail_skill_detail_encore_time'].textbox[0].setText("-")
+            elif skill_type == 25:  # life sparkle
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 2)
+                op = operator.lt if self.simulation_cache.left_inclusive else operator.le
+                notes = self.generator.notes
+                last_note_idx = notes.index[op(notes['sec'], skill_detail.time_on)].tolist()[-1]
+                last_note = get_note_detail(self.perfect_detail.note_details, last_note_idx + 1)
+                self.info_widget.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].setText(str(last_note.life))
                 self.update_sparkle_value()
-            elif skill_type in (35, 36, 37): #motif
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 3)
-                _ = card_idx // 5 * 5
+            elif skill_type in (35, 36, 37):  # motif
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 3)
+                unit_idx = (lane - 1) // 5
                 if skill_type == 35:
-                    appeal = sum([_.vo for _ in self.cards[_:_+5]])
-                    self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+                    appeal = sum([card.vo for card in self.cards[unit_idx * 5: unit_idx * 5 + 5]])
                 elif skill_type == 36:
-                    appeal = sum([_.da for _ in self.cards[_:_+5]])
-                    self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
-                elif skill_type == 37:
-                    appeal = sum([_.vi for _ in self.cards[_:_+5]])
-                    self.info_widget.skill_detail_motif_appeal_line.setText(str(appeal))
+                    appeal = sum([card.da for card in self.cards[unit_idx * 5: unit_idx * 5 + 5]])
+                else:
+                    appeal = sum([card.vi for card in self.cards[unit_idx * 5: unit_idx * 5 + 5]])
+                self.info_widget.subwidgets['detail_skill_detail_motif_appeal'].textbox[0].setText(str(appeal))
                 self.update_motif_value()
-            elif skill_type == 39: #alternate
-                if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
-                    alt_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
+            elif skill_type == 39:  # alternate
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 4)
+                alt_bonus = skill_detail.amr_bonus
+
+                note_types = ("tap", "long", "flick", "slide", "great")
+                for note_type in note_types:
+                    widget_name = "detail_skill_detail_alt_{}".format(note_type)
+                    bonus = alt_bonus[note_type]
+                    if bonus[0] == 0:
+                        self.info_widget.subwidgets[widget_name].textbox[0].setText("-")
+                        self.info_widget.subwidgets[widget_name].textbox[1].setText("-")
+                        self.info_widget.subwidgets[widget_name].textbox[2].setText("-")
+                    else:
+                        self.info_widget.subwidgets[widget_name].textbox[0].setText(
+                            "{:+}% ({:+}%)".format(bonus[0], bonus[1]))
+                        self.info_widget.subwidgets[widget_name].textbox[1].setText(
+                            "[{}] {}".format(bonus[2] + 1, SKILL_BASE[bonus[3]]['name']))
+                        self.info_widget.subwidgets[widget_name].textbox[1].setCursorPosition(0)
+                        self.info_widget.subwidgets[widget_name].textbox[2].setText(str(bonus[4]))
+            elif skill_type == 40:  # refrain
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 5)
+                ref_bonus = skill_detail.amr_bonus
+
+                note_types = ("tap", "long", "flick", "slide", "great", "combo")
+                for note_type in note_types:
+                    widget_name = "detail_skill_detail_ref_{}".format(note_type)
+                    bonus = ref_bonus[note_type]
+
+                    if bonus[0] == 0:
+                        self.info_widget.subwidgets[widget_name].textbox[0].setText("-")
+                        self.info_widget.subwidgets[widget_name].textbox[1].setText("-")
+                        self.info_widget.subwidgets[widget_name].textbox[2].setText("-")
+                    else:
+                        self.info_widget.subwidgets[widget_name].textbox[0].setText("{:+}%".format(bonus[0]))
+                        self.info_widget.subwidgets[widget_name].textbox[1].setText(
+                            "[{}] {}".format(bonus[2] + 1, SKILL_BASE[bonus[3]]['name']))
+                        self.info_widget.subwidgets[widget_name].textbox[1].setCursorPosition(0)
+                        self.info_widget.subwidgets[widget_name].textbox[2].setText(str(bonus[4]))
+            elif skill_type == 41:  # magic
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 6)
+                magic_bonus = skill_detail.magic_bonus
+
+                note_types = ("tap", "long", "flick", "slide", "great")
+                for note_type in note_types:
+                    widget_name = "detail_skill_detail_magic_score_{}".format(note_type)
+                    self.info_widget.subwidgets[widget_name].textbox[0].setText("{:+}%".format(magic_bonus[note_type]))
+
+                combo_text = "{:+}%".format(magic_bonus['combo'])
+                tooltip = ""
+                if magic_bonus['sparkle'] != 0:
+                    combo_text = "({:+}%)".format(max(magic_bonus['combo'], magic_bonus['sparkle']))
+                    tooltip = "COMBO BONUS value from Life Sparkle can change while the skill is active."
+                self.info_widget.subwidgets['detail_skill_detail_magic_score_combo'].textbox[0].setText(combo_text)
+                self.info_widget.subwidgets['detail_skill_detail_magic_score_combo'].textbox[0].setToolTip(tooltip)
+
+                life_text = "-{} / {:+}".format(magic_bonus['overload'], magic_bonus['life'])
+                self.info_widget.subwidgets['detail_skill_detail_magic_score_life'].textbox[0].setText(life_text)
+
+                support_text = str(Judgement(magic_bonus['perfect_support'])) if magic_bonus['perfect_support'] else "-"
+                self.info_widget.subwidgets['detail_skill_detail_magic_middle_support_perfect'].textbox[0].setText(
+                    support_text)
+                support_text = str(Judgement(1 + magic_bonus['combo_support'])) if magic_bonus['combo_support'] else "-"
+                self.info_widget.subwidgets['detail_skill_detail_magic_middle_support_combo'].textbox[0].setText(
+                    support_text)
+
+                boost_types = ("cu", "co", "pa")
+                boost_attrs = ("score", "combo", "life", "support")
+                for type_idx, boost_type in enumerate(boost_types):
+                    for attr_idx, boost_attr in enumerate(boost_attrs):
+                        widget_name = "detail_skill_detail_magic_middle_boost"
+                        boost_text = "{:+}".format(magic_bonus["{}_{}".format(boost_type, boost_attr)])
+                        if attr_idx < 3:
+                            boost_text += "%"
+                        self.info_widget.subwidgets[widget_name].textbox[type_idx + 1][attr_idx + 1].setText(boost_text)
+
+                self.info_widget.subwidgets['detail_skill_detail_magic_misc_guard'].setChecked(magic_bonus['guard'])
+                self.info_widget.subwidgets['detail_skill_detail_magic_misc_concentration'].setChecked(
+                    magic_bonus['concentration'])
+            elif skill_type == 42:  # mutual
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 7)
+                mut_bonus = skill_detail.amr_bonus
+
+                widget_name = "detail_skill_detail_mut_combo"
+                bonus = mut_bonus['combo']
+                if bonus[0] == 0:
+                    self.info_widget.subwidgets[widget_name].textbox[0].setText("-")
+                    self.info_widget.subwidgets[widget_name].textbox[1].setText("-")
+                    self.info_widget.subwidgets[widget_name].textbox[2].setText("-")
                 else:
-                    alt_bonus = [(0, 0, 0, 0, 0)] * 5
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 4)
-                self.info_widget.skill_detail_alt_tap_line.setText("{:+}% ({:+}%)".format(alt_bonus[0][0], alt_bonus[0][1]) if alt_bonus[0][0] != 0 else "+0%")
-                self.info_widget.skill_detail_alt_long_line.setText("{:+}% ({:+}%)".format(alt_bonus[1][0], alt_bonus[1][1]) if alt_bonus[1][0] != 0 else "+0%")
-                self.info_widget.skill_detail_alt_flick_line.setText("{:+}% ({:+}%)".format(alt_bonus[2][0], alt_bonus[2][1]) if alt_bonus[2][0] != 0 else "+0%")
-                self.info_widget.skill_detail_alt_slide_line.setText("{:+}% ({:+}%)".format(alt_bonus[3][0], alt_bonus[3][1]) if alt_bonus[3][0] != 0 else "+0%")
-                self.info_widget.skill_detail_alt_great_line.setText("{:+}% ({:+}%)".format(alt_bonus[4][0], alt_bonus[4][1]) if alt_bonus[4][0] != 0 else "+0%")
-                self.info_widget.skill_detail_alt_tap_update_index_line.setText("[{}] {}".format(alt_bonus[0][2] + 1, SKILL_BASE[alt_bonus[0][3]]["name"]) if alt_bonus[0][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_tap_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_alt_long_update_index_line.setText("[{}] {}".format(alt_bonus[1][2] + 1, SKILL_BASE[alt_bonus[1][3]]["name"]) if alt_bonus[1][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_long_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_alt_flick_update_index_line.setText("[{}] {}".format(alt_bonus[2][2] + 1, SKILL_BASE[alt_bonus[2][3]]["name"]) if alt_bonus[2][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_flick_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_alt_slide_update_index_line.setText("[{}] {}".format(alt_bonus[3][2] + 1, SKILL_BASE[alt_bonus[3][3]]["name"]) if alt_bonus[3][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_slide_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_alt_great_update_index_line.setText("[{}] {}".format(alt_bonus[4][2] + 1, SKILL_BASE[alt_bonus[4][3]]["name"]) if alt_bonus[4][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_great_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_alt_tap_update_time_line.setText(str(alt_bonus[0][4]) if alt_bonus[0][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_long_update_time_line.setText(str(alt_bonus[1][4]) if alt_bonus[1][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_flick_update_time_line.setText(str(alt_bonus[2][4]) if alt_bonus[2][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_slide_update_time_line.setText(str(alt_bonus[3][4]) if alt_bonus[3][0] != 0 else "-")
-                self.info_widget.skill_detail_alt_great_update_time_line.setText(str(alt_bonus[4][4]) if alt_bonus[4][0] != 0 else "-")
-            elif skill_type == 40: #refrain
-                if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
-                    ref_bonus = self.perfect_detail.amr_bonus[card_idx][idx]
-                else:
-                    ref_bonus = [(0, 0, 0, 0)] * 6
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 5)
-                self.info_widget.skill_detail_ref_tap_line.setText("{:+}%".format(ref_bonus[0][0]) if ref_bonus[0][0] != 0 else "+0%")
-                self.info_widget.skill_detail_ref_long_line.setText("{:+}%".format(ref_bonus[1][0]) if ref_bonus[1][0] != 0 else "+0%")
-                self.info_widget.skill_detail_ref_flick_line.setText("{:+}%".format(ref_bonus[2][0]) if ref_bonus[2][0] != 0 else "+0%")
-                self.info_widget.skill_detail_ref_slide_line.setText("{:+}%".format(ref_bonus[3][0]) if ref_bonus[3][0] != 0 else "+0%")
-                self.info_widget.skill_detail_ref_great_line.setText("{:+}%".format(ref_bonus[4][0]) if ref_bonus[4][0] != 0 else "+0%")
-                self.info_widget.skill_detail_ref_combo_line.setText("{:+}%".format(ref_bonus[5][0]) if ref_bonus[5][0] != 0 else "+0%")
-                self.info_widget.skill_detail_ref_tap_update_index_line.setText("[{}] {}".format(ref_bonus[0][1] + 1, SKILL_BASE[ref_bonus[0][2]]["name"]) if ref_bonus[0][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_tap_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_ref_long_update_index_line.setText("[{}] {}".format(ref_bonus[1][1] + 1, SKILL_BASE[ref_bonus[1][2]]["name"]) if ref_bonus[1][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_long_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_ref_flick_update_index_line.setText("[{}] {}".format(ref_bonus[2][1] + 1, SKILL_BASE[ref_bonus[2][2]]["name"]) if ref_bonus[2][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_flick_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_ref_slide_update_index_line.setText("[{}] {}".format(ref_bonus[3][1] + 1, SKILL_BASE[ref_bonus[3][2]]["name"]) if ref_bonus[3][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_slide_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_ref_great_update_index_line.setText("[{}] {}".format(ref_bonus[4][1] + 1, SKILL_BASE[ref_bonus[4][2]]["name"]) if ref_bonus[4][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_great_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_ref_combo_update_index_line.setText("[{}] {}".format(ref_bonus[5][1] + 1, SKILL_BASE[ref_bonus[5][2]]["name"]) if ref_bonus[5][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_combo_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_ref_tap_update_time_line.setText(str(ref_bonus[0][3]) if ref_bonus[0][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_long_update_time_line.setText(str(ref_bonus[1][3]) if ref_bonus[1][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_flick_update_time_line.setText(str(ref_bonus[2][3]) if ref_bonus[2][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_slide_update_time_line.setText(str(ref_bonus[3][3]) if ref_bonus[3][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_great_update_time_line.setText(str(ref_bonus[4][3]) if ref_bonus[4][0] != 0 else "-")
-                self.info_widget.skill_detail_ref_combo_update_time_line.setText(str(ref_bonus[5][3]) if ref_bonus[5][0] != 0 else "-")
-            elif skill_type == 41: #magic
-                if card_idx in self.perfect_detail.magic_bonus and idx in self.perfect_detail.magic_bonus[card_idx]:
-                    magic_bonus = self.perfect_detail.magic_bonus[card_idx][idx]
-                else:
-                    magic_bonus = {"tap" : 0, "long" : 0, "flick" : 0, "slide" : 0, "great" : 0, "combo" : 0,
-                         "sparkle" : 0, "life" : 0, "psupport" : 0, "csupport" : 0,
-                         "cu_score" : 0, "cu_combo" : 0, "cu_life" : 0, "cu_support" : 0,
-                         "co_score" : 0, "co_combo" : 0, "co_life" : 0, "co_support" : 0,
-                         "pa_score" : 0, "pa_combo" : 0, "pa_life" : 0, "pa_support" : 0,
-                         "guard" : False, "overload" : 0, "concentration" : False}
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 6)
-                self.info_widget.skill_detail_magic_tap_line.setText("{:+}%".format(magic_bonus["tap"]))
-                self.info_widget.skill_detail_magic_long_line.setText("{:+}%".format(magic_bonus["long"]))
-                self.info_widget.skill_detail_magic_flick_line.setText("{:+}%".format(magic_bonus["flick"]))
-                self.info_widget.skill_detail_magic_slide_line.setText("{:+}%".format(magic_bonus["slide"]))
-                self.info_widget.skill_detail_magic_great_line.setText("{:+}%".format(magic_bonus["great"]))
-                if magic_bonus["sparkle"] != 0:
-                    combo_text = "({:+}%)".format(max(magic_bonus["combo"], magic_bonus["sparkle"]))
-                    self.info_widget.skill_detail_magic_combo_line.setToolTip("COMBO BONUS value from Life Sparkle can change while the skill is active.")
-                else:
-                    combo_text = "{:+}%".format(max(magic_bonus["combo"], magic_bonus["sparkle"]))
-                    self.info_widget.skill_detail_magic_combo_line.setToolTip("")
-                self.info_widget.skill_detail_magic_combo_line.setText(combo_text)
-                self.info_widget.skill_detail_magic_life_line.setText("-{} / {:+}".format(magic_bonus["overload"], magic_bonus["life"]))
-                self.info_widget.skill_detail_magic_life_line.setToolTip("Life consumed on skill activation / Life recovered on PERFECT note")
-                psupport_text = ["-", "GREAT", "NICE", "BAD", "MISS"]
-                csupport_text = ["-", "NICE", "BAD", "MISS"]
-                self.info_widget.skill_detail_magic_psupport_line.setText(psupport_text[magic_bonus["psupport"]])
-                self.info_widget.skill_detail_magic_csupport_line.setText(csupport_text[magic_bonus["csupport"]])
-                self.info_widget.skill_detail_magic_boost_score_cute_line.setText("{:+}%".format(magic_bonus["cu_score"]))
-                self.info_widget.skill_detail_magic_boost_combo_cute_line.setText("{:+}%".format(magic_bonus["cu_combo"]))
-                self.info_widget.skill_detail_magic_boost_life_cute_line.setText("{:+}%".format(magic_bonus["cu_life"]))
-                self.info_widget.skill_detail_magic_boost_support_cute_line.setText("{:+}".format(magic_bonus["cu_support"]))
-                self.info_widget.skill_detail_magic_boost_score_cool_line.setText("{:+}%".format(magic_bonus["co_score"]))
-                self.info_widget.skill_detail_magic_boost_combo_cool_line.setText("{:+}%".format(magic_bonus["co_combo"]))
-                self.info_widget.skill_detail_magic_boost_life_cool_line.setText("{:+}%".format(magic_bonus["co_life"]))
-                self.info_widget.skill_detail_magic_boost_support_cool_line.setText("{:+}".format(magic_bonus["co_support"]))
-                self.info_widget.skill_detail_magic_boost_score_passion_line.setText("{:+}%".format(magic_bonus["pa_score"]))
-                self.info_widget.skill_detail_magic_boost_combo_passion_line.setText("{:+}%".format(magic_bonus["pa_combo"]))
-                self.info_widget.skill_detail_magic_boost_life_passion_line.setText("{:+}%".format(magic_bonus["pa_life"]))
-                self.info_widget.skill_detail_magic_boost_support_passion_line.setText("{:+}".format(magic_bonus["pa_support"]))
-                self.info_widget.skill_detail_magic_guard_checkbox.setChecked(magic_bonus["guard"])
-                self.info_widget.skill_detail_magic_concentration_checkbox.setChecked(magic_bonus["concentration"])
-            elif skill_type == 42: #mutual
-                if card_idx in self.perfect_detail.amr_bonus and idx in self.perfect_detail.amr_bonus[card_idx]:
-                    mut_bonus = self.perfect_detail.amr_bonus[card_idx][idx][5]
-                else:
-                    mut_bonus = (0, 0, 0, 0, 0)
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 7)
-                self.info_widget.skill_detail_mut_combo_line.setText("{:+}% ({:+}%)".format(mut_bonus[0], mut_bonus[1]) if mut_bonus[0] != 0 else "+0%")
-                self.info_widget.skill_detail_mut_combo_update_index_line.setText("[{}] {}".format(mut_bonus[2] + 1, SKILL_BASE[mut_bonus[3]]["name"]) if mut_bonus[0] != 0 else "-")
-                self.info_widget.skill_detail_mut_combo_update_index_line.setCursorPosition(0)
-                self.info_widget.skill_detail_mut_combo_update_time_line.setText(str(mut_bonus[4]) if mut_bonus[0] != 0 else "-")
+                    self.info_widget.subwidgets[widget_name].textbox[0].setText(
+                        "{:+}% ({:+}%)".format(bonus[0], bonus[1]))
+                    self.info_widget.subwidgets[widget_name].textbox[1].setText(
+                        "[{}] {}".format(bonus[2] + 1, SKILL_BASE[bonus[3]]['name']))
+                    self.info_widget.subwidgets[widget_name].textbox[1].setCursorPosition(0)
+                    self.info_widget.subwidgets[widget_name].textbox[2].setText(str(bonus[4]))
             else:
-                self.set_stacked_widget_index(self.info_widget.skill_detail_widget, 0)
-        
-        if self.chart_mode == 3:
-            self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 1)
-            idx = self.generator.selected_skill[0]
-            num = self.generator.selected_skill[1]
-            if idx in self.perfect_detail.skill_inactivation_reason and \
-                num in self.perfect_detail.skill_inactivation_reason[idx]:
-                self.info_widget.custom_skill_active_button.setDisabled(True)
-                self.info_widget.custom_skill_active_line.setText("-")
+                set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_detail'], 0)
+
+            set_stacked_widget_index(self.info_widget.subwidgets['detail_skill_inactivation'], 0)
+
+        if self.chart_mode == ChartMode.CUSTOM:
+            set_stacked_widget_index(self.info_widget.subwidgets['custom_detail'], 1)
+
+            if skill_detail.inact:
+                self.info_widget.subwidgets['custom_detail_skill_button'].setDisabled(True)
+                self.info_widget.subwidgets['custom_detail_skill_status'].setText("-")
             else:
-                self.info_widget.custom_skill_active_button.setDisabled(False)
-                if num in self.generator.skill_inactive_list[idx]:
-                    self.info_widget.custom_skill_active_line.setText("Not Activated")
-                else:
-                    self.info_widget.custom_skill_active_line.setText("Activated")
-    
+                self.info_widget.subwidgets['custom_detail_skill_button'].setDisabled(False)
+                active_text = "Activated"
+                if idx in self.generator.deact_skills[lane]:
+                    active_text = "Not Activated"
+                self.info_widget.subwidgets['custom_detail_skill_status'].setText(active_text)
+
     def update_sparkle_value(self):
-        life = int(self.info_widget.skill_detail_sparkle_life_line.text())
-        rarity_ssr = self.cards[self.generator.selected_skill[0]].sk.values[0] == 1
-        
-        life_trimmed = life // 10
-        
-        if rarity_ssr:
-            sparkle_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_01_value FROM skill_life_value")]
-        else:
-            sparkle_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_02_value FROM skill_life_value")]
-        
-        if life_trimmed >= len(sparkle_values):
-            life_trimmed = len(sparkle_values) - 1
-        
-        value = sparkle_values[int(life_trimmed)]
-        self.info_widget.skill_detail_sparkle_combo_line.setText("{:+}%".format(value - 100))
-    
+        life = int(self.info_widget.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].text())
+
+        rarity_ssr = self.cards[self.generator.selected_skill[0] - 1].sk.values[0] == 1
+        query = "SELECT type_0{}_value FROM skill_life_value".format(1 if rarity_ssr else 2)
+        sparkle_values = [_[0] for _ in db.masterdb.execute_and_fetchall(query)]
+
+        life_trimmed = min(life // 10, len(sparkle_values) - 1)
+        value = sparkle_values[life_trimmed]
+        self.info_widget.subwidgets['detail_skill_detail_sparkle_combo'].textbox[0].setText("{:+}%".format(value - 100))
+
     def update_motif_value(self):
-        appeal = int(self.info_widget.skill_detail_motif_appeal_line.text())
-        grand = len(self.cards) == 15
-        
-        appeal_trimmed = appeal // 1000
-        
-        if grand:
-            motif_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_01_value FROM skill_motif_value_grand")]
-        else:
-            motif_values = [_[0] for _ in db.masterdb.execute_and_fetchall("SELECT type_01_value FROM skill_motif_value")]
-        
-        if appeal_trimmed >= len(motif_values):
-            appeal_trimmed = len(motif_values) - 1
-        
+        appeal = int(self.info_widget.subwidgets['detail_skill_detail_motif_appeal'].textbox[0].text())
+
+        grand = len(self.cards) > 6
+        query = "SELECT type_01_value FROM skill_motif_value{}".format("_grand" if grand else "")
+        motif_values = [_[0] for _ in db.masterdb.execute_and_fetchall(query)]
+
+        appeal_trimmed = min(appeal // 1000, len(motif_values) - 1)
         value = motif_values[int(appeal_trimmed)]
-        self.info_widget.skill_detail_motif_score_line.setText("{:+}%".format(value - 100))
-    
+        self.info_widget.subwidgets['detail_skill_detail_motif_score'].textbox[0].setText("{:+}%".format(value - 100))
+
     def save_chart(self):
         self.generator.save_image()
 
-    def get_song_info_from_id(self, song_id, diff):
-        data = db.cachedb.execute_and_fetchone("""
-                    SELECT  name,
-                            level,
-                            CAST(Tap + Long + Flick + Slide AS INTEGER)
-                    FROM live_detail_cache WHERE live_id = ? AND difficulty = ?
-                """, [song_id, diff])
-        diff_text = db.cachedb.execute_and_fetchone("SELECT text FROM difficulty_text WHERE id = ?", [diff])
-        return data[0], diff_text[0], data[1], data[2]
+    def change_note_offset(self):
+        number = self.generator.selected_note
+        offset = self.info_widget.subwidgets['custom_detail_note_offset-spinbox'].value()
+        self.generator.note_offsets[number - 1] = offset
+        self._set_custom_judgement_text(number, offset)
+        self.info_widget.subwidgets['custom_general_button_abuse'].setDisabled(True)
+
+    def _set_custom_judgement_text(self, number: int, offset: int):
+        note_detail = get_note_detail(self.perfect_detail.note_details, number)
+        cached_offset = self.custom_offset_cache[number - 1]
+        judgement_text = str(note_detail.judgement) if offset == cached_offset else "-"
+        self.info_widget.subwidgets['custom_detail_note_judgement'].textbox[0].setText(judgement_text)
+
+    def reset_note_offset(self):
+        self.info_widget.subwidgets['custom_detail_note_offset-spinbox'].setValue(0)
 
     def change_skill_activation(self):
-        idx = self.generator.selected_skill[0]
-        num = self.generator.selected_skill[1]
-        if num in self.generator.skill_inactive_list[idx]:
-            self.generator.skill_inactive_list[idx].remove(num)
-            self.info_widget.custom_skill_active_line.setText("Activated")
+        card_num, act_idx = self.generator.selected_skill
+        if act_idx in self.generator.deact_skills[card_num]:
+            self.generator.deact_skills[card_num].remove(act_idx)
+            self.info_widget.subwidgets['custom_detail_skill_status'].setText("Activated")
         else:
-            self.generator.skill_inactive_list[idx].append(num)
-            self.info_widget.custom_skill_active_line.setText("Not Activated")
-        self.generator.draw_perfect_chart_skill_part(idx, num)
-        self.generator.draw_selected_skill(idx, num)
-    
-    def change_note_offset(self):
-        value = self.info_widget.custom_note_offset_spinbox.value()
-        self.generator.note_offset_dict[self.generator.selected_note] = value
-        if value == 0:
-            del self.generator.note_offset_dict[self.generator.selected_note]
-            
-        if self.generator.selected_note in self.custom_offset_cache:
-            if value == self.custom_offset_cache[self.generator.selected_note]:
-                self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[self.generator.selected_note])[10:])
-            else:
-                self.info_widget.custom_note_judgement_line.setText("-")
-        else:
-            if value == 0:
-                self.info_widget.custom_note_judgement_line.setText(str(self.perfect_detail.judgement[self.generator.selected_note])[10:])
-            else:
-                self.info_widget.custom_note_judgement_line.setText("-")
-        
-        self.info_widget.custom_abuse_button.setDisabled(True)
-    
-    def reset_note_offset(self):
-        self.info_widget.custom_note_offset_spinbox.setValue(0)
+            self.generator.deact_skills[card_num].append(act_idx)
+            self.info_widget.subwidgets['custom_detail_skill_status'].setText("Not Activated")
 
-    def reset_all_custom_settings(self):
-        self.generator.skill_inactive_list = [[] for _ in range(15)]
-        self.custom_offset_cache = dict()
-        self.generator.note_offset_dict = dict()
-        self.set_stacked_widget_index(self.info_widget.custom_detail_widget, 0)
+    def reset_custom_chart(self):
+        self.reset_custom_setting()
         self.simulate_custom()
-        self.generator.draw_perfect_chart()
-        if self.custom_abuse == 1:
-            self.generator.draw_abuse_chart()
+        self.generator.draw_chart(paint_skill=True)
+        if self.draw_custom_abuse:
+            self.generator.draw_chart(draw_abuse=True)
         self.show_detail_nothing()
-    
+
     def simulate_custom(self):
-        self.custom_offset_cache = self.generator.note_offset_dict.copy()
-        eventbus.eventbus.post(CustomSimulationEvent(self.cache_simulation, self.generator.skill_inactive_list, self.generator.note_offset_dict))
-    
+        self.custom_offset_cache = self.generator.note_offsets.copy()
+        eventbus.eventbus.post(CustomSimulationEvent(self.simulation_cache, self.generator.deact_skills,
+                                                     self.generator.note_offsets))
+
     def toggle_custom_abuse(self):
-        if self.custom_abuse == 0:
+        if self.draw_custom_abuse:
+            self.draw_custom_abuse = False
+            self.generator.draw_chart(paint_skill=True)
+        else:
+            self.draw_custom_abuse = True
             self.generator.draw_nothing_selected()
-            self.generator.draw_abuse_chart()
-            self.show_detail_nothing()
-            self.custom_abuse = 1
-        elif self.custom_abuse == 1:
-            self.generator.draw_perfect_chart()
-            self.custom_abuse = 0
-    
-    def setup_info_widget(self):
-        self.info_widget.layout = QVBoxLayout(self.info_widget)
-        self.info_widget.layout.setSpacing(0)
-        
+            self.generator.draw_chart(draw_abuse=True)
+        self.show_detail_nothing()
+
+
+class ChartViewerInfoWidget(QWidget):
+    chart_viewer: ChartViewer
+    layout: QVBoxLayout
+    subwidgets: Dict[str, Any]
+    sublayouts: Dict[str, Union[QVBoxLayout, QHBoxLayout, QGridLayout]]
+    subwidgetgroups: Dict[str, Any]
+
+    def __init__(self, viewer, *args):
+        super().__init__(*args)
+        self.chart_viewer = viewer
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(0)
+
+        self.subwidgets = dict()
+        self.sublayouts = dict()
+        self.subwidgetgroups = dict()
+
         self._setup_song_info()
-        self.info_widget.song_info_layout.setSpacing(6)
-        self.info_widget.layout.addSpacing(12)
-        
         self._setup_chart_mode()
-        self.info_widget.mode_button_layout.setSpacing(6)
-        
-        self.info_widget.detail_widget = QStackedWidget()
-        self.info_widget.detail_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        self.info_widget.detail_widget.addWidget(QWidget())
-        
-        self._setup_note_info()
-        self._setup_note_score_info()
-        self.info_widget.note_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.note_score_layout.setContentsMargins(0, 6, 0, 0)
-        
-        self._setup_skill_info()
-        self.info_widget.skill_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_encore_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_sparkle_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_motif_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_alt_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_ref_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_magic_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_detail_mut_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.skill_inactivation_detail_layout.setContentsMargins(0, 6, 0, 0)
-        
-        self.info_widget.custom_widget = QStackedWidget()
-        self.info_widget.custom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        self.info_widget.custom_widget.addWidget(QWidget())
-        
         self._setup_custom()
-        self.info_widget.custom_setting_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.custom_skill_layout.setContentsMargins(0, 6, 0, 0)
-        self.info_widget.custom_note_layout.setContentsMargins(0, 6, 0, 0)
-        
-        self.info_widget.layout.addWidget(self.info_widget.custom_widget)
-        self.info_widget.layout.addWidget(self.info_widget.detail_widget)
-        
-        self._resize_stacked_widget(self.info_widget.detail_widget, 0)
-        self._resize_stacked_widget(self.info_widget.custom_widget, 0)
-        self._resize_stacked_widget(self.info_widget.note_score_info_widget, 0)
-        self._resize_stacked_widget(self.info_widget.custom_detail_widget, 0)
-        self._resize_stacked_widget(self.info_widget.skill_detail_widget, 0)
-        self._resize_stacked_widget(self.info_widget.skill_inactivation_widget, 0)
-    
-    '''
-    self.info_widget
-        self.info_widget.song_info_layout
-            self.info_widget.title_layout
-            self.info_widget.difficulty_layout
-            self.info_widget.level_layout
-            self.info_widget.total_layout
-            self.info_widget.save
-        self.info_widget.mode_button_layout
-            self.info_widget.mode_label
-            self.info_widget.mode_default_button
-            self.info_widget.mode_perfect_button
-            self.info_widget.mode_abuse_button
-            self.info_widget.mode_custom_button
-        self.info_widget.custom_widget
-            QWidget()
-            self.info_widget.custom_setting_widget
-                self.info_widget.custom_general_layout
-                    self.info_widget.custom_score_layout
-                    self.info_widget.custom_button_layout
-                self.info_widget.custom_detail_widget
-                    QWidget()
-                    self.info_widget.custom_skill_widget
-        self.info_widget.detail_widget
-            QWidget()
-            self.info_widget.note_widget
-                self.info_widget.note_info_layout
-                    self.info_widget.note_number_layout
-                    self.info_widget.note_second_layout
-                    self.info_widget.note_type_layout
-                self.info_widget.note_score_info_widget
-                    QWidget()
-                    self.info_widget.note_score_widget
-                        self.info_widget.note_score_general_layout
-                        self.info_widget.note_skills_layout
-            self.info_widget.skill_widget
-                self.info_widget.skill_info_layout
-                    self.info_widget.skill_type_layout
-                    self.info_widget.skill_time_layout
-                    self.info_widget.skill_prob_layout
-                self.info_widget.skill_description_layout
-                self.info_widget.skill_detail_widget
-                    QWidget()    
-                    self.info_widget.skill_detail_encore_widget
-                    self.info_widget.skill_detail_sparkle_widget
-                    self.info_widget.skill_detail_motif_widget
-                    self.info_widget.skill_detail_alt_widget
-                    self.info_widget.skill_detail_ref_widget
-                    self.info_widget.skill_detail_magic_widget
-                    self.info_widget.skill_detail_mut_widget
-                self.info_widget.skill_inactivation_widget
-                    QWidget()
-                    self.info_widget.skill_inactivation_detail_widget
-    '''
-        
+        self._setup_note_skill_detail()
+
     def _setup_song_info(self):
-        self.info_widget.title_layout = QVBoxLayout()
-        self.info_widget.title_label = QLabel("Title")
-        self.info_widget.title_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.title_line = QLineEdit()
-        self.info_widget.title_line.setReadOnly(True)
-        self.info_widget.title_line.setCursorPosition(0)
-        self.info_widget.title_layout.addWidget(self.info_widget.title_label)
-        self.info_widget.title_layout.addWidget(self.info_widget.title_line)
-        
-        self.info_widget.difficulty_layout = QVBoxLayout()
-        self.info_widget.difficulty_label = QLabel("Difficulty")
-        self.info_widget.difficulty_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.difficulty_line = QLineEdit()
-        self.info_widget.difficulty_line.setReadOnly(True)
-        self.info_widget.difficulty_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.difficulty_layout.addWidget(self.info_widget.difficulty_label)
-        self.info_widget.difficulty_layout.addWidget(self.info_widget.difficulty_line)
-        
-        self.info_widget.level_layout = QVBoxLayout()
-        self.info_widget.level_label = QLabel("Level")
-        self.info_widget.level_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.level_line = QLineEdit()
-        self.info_widget.level_line.setReadOnly(True)
-        self.info_widget.level_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.level_layout.addWidget(self.info_widget.level_label)
-        self.info_widget.level_layout.addWidget(self.info_widget.level_line)
-        
-        self.info_widget.total_notes_layout = QVBoxLayout()
-        self.info_widget.total_notes_label = QLabel("Notes")
-        self.info_widget.total_notes_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.total_notes_line = QLineEdit()
-        self.info_widget.total_notes_line.setReadOnly(True)
-        self.info_widget.total_notes_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.total_notes_layout.addWidget(self.info_widget.total_notes_label)
-        self.info_widget.total_notes_layout.addWidget(self.info_widget.total_notes_line)
-        
-        self.info_widget.save = QPushButton("Save")
-        self.info_widget.save.clicked.connect(lambda: self.save_chart())
-        self.info_widget.save.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        
-        self.info_widget.song_info_layout = QHBoxLayout()
-        self.info_widget.song_info_layout.addLayout(self.info_widget.title_layout, 9)
-        self.info_widget.song_info_layout.addLayout(self.info_widget.difficulty_layout, 2)
-        self.info_widget.song_info_layout.addLayout(self.info_widget.level_layout, 2)
-        self.info_widget.song_info_layout.addLayout(self.info_widget.total_notes_layout, 2)
-        self.info_widget.song_info_layout.addWidget(self.info_widget.save, 2)
-        self.info_widget.layout.addLayout(self.info_widget.song_info_layout)
-    
+        self.sublayouts['song'] = QHBoxLayout()
+        self.sublayouts['song'].setSpacing(6)
+        self.layout.addLayout(self.sublayouts['song'])
+        self.layout.addSpacing(12)
+
+        self.subwidgets['song_title'] = QLabelTextLineWidget("Title", halign=Qt.AlignLeft)
+        self.sublayouts['song'].addWidget(self.subwidgets['song_title'], 9)
+
+        self.subwidgets['song_difficulty'] = QLabelTextLineWidget("Difficulty")
+        self.sublayouts['song'].addWidget(self.subwidgets['song_difficulty'], 2)
+
+        self.subwidgets['song_level'] = QLabelTextLineWidget("Level")
+        self.sublayouts['song'].addWidget(self.subwidgets['song_level'], 2)
+
+        self.subwidgets['song_notes'] = QLabelTextLineWidget("Notes")
+        self.sublayouts['song'].addWidget(self.subwidgets['song_notes'], 2)
+
+        self.subwidgets['song_save'] = QPushButton("Save")
+        self.subwidgets['song_save'].clicked.connect(lambda: self.chart_viewer.save_chart())
+        self.subwidgets['song_save'].setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.sublayouts['song'].addWidget(self.subwidgets['song_save'], 2)
+
     def _setup_chart_mode(self):
-        self.info_widget.mode_button_group = QButtonGroup(self.info_widget)
-        
-        self.info_widget.mode_label = QLabel('Chart Mode')
-        
-        self.info_widget.mode_default_button = QRadioButton('Default')
-        self.info_widget.mode_default_button.setChecked(True)
-        self.info_widget.mode_default_button.toggled.connect(self.set_chart_mode)
-        self.info_widget.mode_button_group.addButton(self.info_widget.mode_default_button, 0)
-        
-        self.info_widget.mode_perfect_button = QRadioButton('Perfect')
-        self.info_widget.mode_perfect_button.setCheckable(False)
-        self.info_widget.mode_perfect_button.toggled.connect(self.set_chart_mode)
-        self.info_widget.mode_button_group.addButton(self.info_widget.mode_perfect_button, 1)
-        
-        self.info_widget.mode_abuse_button = QRadioButton('Abuse')
-        self.info_widget.mode_abuse_button.setCheckable(False)
-        self.info_widget.mode_abuse_button.toggled.connect(self.set_chart_mode)
-        self.info_widget.mode_button_group.addButton(self.info_widget.mode_abuse_button, 2)
-        
-        self.info_widget.mode_custom_button = QRadioButton('Custom')
-        self.info_widget.mode_custom_button.setCheckable(False)
-        self.info_widget.mode_custom_button.toggled.connect(self.set_chart_mode)
-        self.info_widget.mode_button_group.addButton(self.info_widget.mode_custom_button, 3)
-        
-        self.info_widget.mode_button_layout = QHBoxLayout()
-        self.info_widget.mode_button_layout.addStretch(1)
-        self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_label, 2)
-        self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_default_button, 2)
-        self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_perfect_button, 2)
-        self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_abuse_button, 2)
-        self.info_widget.mode_button_layout.addWidget(self.info_widget.mode_custom_button, 2)
-        self.info_widget.layout.addLayout(self.info_widget.mode_button_layout)
-    
-    def _setup_note_info(self):
-        self.info_widget.note_number_layout = QVBoxLayout()
-        self.info_widget.note_number_label = QLabel("Note Number")
-        self.info_widget.note_number_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_number_line = QLineEdit()
-        self.info_widget.note_number_line.setReadOnly(True)
-        self.info_widget.note_number_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_number_layout.addWidget(self.info_widget.note_number_label)
-        self.info_widget.note_number_layout.addWidget(self.info_widget.note_number_line)
-        
-        self.info_widget.note_second_layout = QVBoxLayout()
-        self.info_widget.note_second_label = QLabel("Note Time")
-        self.info_widget.note_second_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_second_line = QLineEdit()
-        self.info_widget.note_second_line.setReadOnly(True)
-        self.info_widget.note_second_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_second_layout.addWidget(self.info_widget.note_second_label)
-        self.info_widget.note_second_layout.addWidget(self.info_widget.note_second_line)
-        
-        self.info_widget.note_type_layout = QVBoxLayout()
-        self.info_widget.note_type_label = QLabel("Note Type")
-        self.info_widget.note_type_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_type_line = QLineEdit()
-        self.info_widget.note_type_line.setReadOnly(True)
-        self.info_widget.note_type_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_type_layout.addWidget(self.info_widget.note_type_label)
-        self.info_widget.note_type_layout.addWidget(self.info_widget.note_type_line)
-        
-        self.info_widget.note_widget = QWidget()
-        self.info_widget.note_layout = QVBoxLayout(self.info_widget.note_widget)
-        
-        self.info_widget.note_info_layout = QHBoxLayout()
-        self.info_widget.note_info_layout.addLayout(self.info_widget.note_number_layout)
-        self.info_widget.note_info_layout.addLayout(self.info_widget.note_second_layout)
-        self.info_widget.note_info_layout.addLayout(self.info_widget.note_type_layout)
-        self.info_widget.note_layout.addSpacing(6)
-        self.info_widget.note_layout.addLayout(self.info_widget.note_info_layout)
-        
-    def _setup_note_score_info(self):
-        self.info_widget.note_life_layout = QVBoxLayout()
-        self.info_widget.note_life_label = QLabel("Life")
-        self.info_widget.note_life_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_life_line = QLineEdit()
-        self.info_widget.note_life_line.setReadOnly(True)
-        self.info_widget.note_life_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_life_layout.addWidget(self.info_widget.note_life_label)
-        self.info_widget.note_life_layout.addWidget(self.info_widget.note_life_line)
-        
-        self.info_widget.note_combo_layout = QVBoxLayout()
-        self.info_widget.note_combo_label = QLabel("Combo")
-        self.info_widget.note_combo_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_combo_line = QLineEdit()
-        self.info_widget.note_combo_line.setReadOnly(True)
-        self.info_widget.note_combo_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_combo_layout.addWidget(self.info_widget.note_combo_label)
-        self.info_widget.note_combo_layout.addWidget(self.info_widget.note_combo_line)
-        
-        self.info_widget.note_score_bonus_layout = QVBoxLayout()
-        self.info_widget.note_score_bonus_label = QLabel("Score bonus")
-        self.info_widget.note_score_bonus_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_score_bonus_line = QLineEdit()
-        self.info_widget.note_score_bonus_line.setReadOnly(True)
-        self.info_widget.note_score_bonus_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_score_bonus_layout.addWidget(self.info_widget.note_score_bonus_label)
-        self.info_widget.note_score_bonus_layout.addWidget(self.info_widget.note_score_bonus_line)
-        
-        self.info_widget.note_combo_bonus_layout = QVBoxLayout()
-        self.info_widget.note_combo_bonus_label = QLabel("Combo bonus")
-        self.info_widget.note_combo_bonus_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_combo_bonus_line = QLineEdit()
-        self.info_widget.note_combo_bonus_line.setReadOnly(True)
-        self.info_widget.note_combo_bonus_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_combo_bonus_layout.addWidget(self.info_widget.note_combo_bonus_label)
-        self.info_widget.note_combo_bonus_layout.addWidget(self.info_widget.note_combo_bonus_line)
-        
-        self.info_widget.note_note_score_layout = QVBoxLayout()
-        self.info_widget.note_note_score_label = QLabel("Note Score")
-        self.info_widget.note_note_score_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_note_score_line = QLineEdit()
-        self.info_widget.note_note_score_line.setReadOnly(True)
-        self.info_widget.note_note_score_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_note_score_layout.addWidget(self.info_widget.note_note_score_label)
-        self.info_widget.note_note_score_layout.addWidget(self.info_widget.note_note_score_line)
-        
-        self.info_widget.note_current_score_layout = QVBoxLayout()
-        self.info_widget.note_current_score_label = QLabel("Current Score")
-        self.info_widget.note_current_score_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_current_score_line = QLineEdit()
-        self.info_widget.note_current_score_line.setReadOnly(True)
-        self.info_widget.note_current_score_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.note_current_score_layout.addWidget(self.info_widget.note_current_score_label)
-        self.info_widget.note_current_score_layout.addWidget(self.info_widget.note_current_score_line)
-        
-        self.info_widget.note_score_general_layout = QHBoxLayout()
-        self.info_widget.note_score_general_layout.addLayout(self.info_widget.note_life_layout)
-        self.info_widget.note_score_general_layout.addLayout(self.info_widget.note_combo_layout)
-        self.info_widget.note_score_general_layout.addLayout(self.info_widget.note_score_bonus_layout)
-        self.info_widget.note_score_general_layout.addLayout(self.info_widget.note_combo_bonus_layout)
-        self.info_widget.note_score_general_layout.addLayout(self.info_widget.note_note_score_layout)
-        self.info_widget.note_score_general_layout.addLayout(self.info_widget.note_current_score_layout)
-        
-        self.info_widget.note_score_skill = QTreeWidget()
-        self.info_widget.note_score_skill.header().setVisible(False)
-        self.info_widget.note_score_skill.setFixedHeight(70)
-        self.info_widget.note_combo_skill = QTreeWidget()
-        self.info_widget.note_combo_skill.header().setVisible(False)
-        self.info_widget.note_combo_skill.setFixedHeight(70)
-        
-        self.info_widget.note_skills_layout = QHBoxLayout()
-        self.info_widget.note_skills_layout.addWidget(self.info_widget.note_score_skill)
-        self.info_widget.note_skills_layout.addWidget(self.info_widget.note_combo_skill)
-        
-        self.info_widget.note_score_widget = QWidget()
-        self.info_widget.note_score_layout = QVBoxLayout(self.info_widget.note_score_widget)
-        
-        self.info_widget.note_score_layout.addLayout(self.info_widget.note_score_general_layout)
-        self.info_widget.note_score_layout.addLayout(self.info_widget.note_skills_layout)
-        
-        self.info_widget.note_score_info_widget = QStackedWidget()
-        self.info_widget.note_score_info_widget.addWidget(QWidget())
-        self.info_widget.note_score_info_widget.addWidget(self.info_widget.note_score_widget)
-        self.info_widget.note_score_info_widget.setCurrentIndex(0)
-        
-        self.info_widget.note_layout.addWidget(self.info_widget.note_score_info_widget)
-        self.info_widget.detail_widget.addWidget(self.info_widget.note_widget)
+        self.sublayouts['mode'] = QHBoxLayout()
+        self.sublayouts['mode'].setSpacing(6)
+        self.layout.addLayout(self.sublayouts['mode'])
 
-    def _setup_skill_info(self):
-        self.info_widget.skill_type_layout = QVBoxLayout()
-        self.info_widget.skill_type_label = QLabel("Skill Type")
-        self.info_widget.skill_type_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_type_line = QLineEdit()
-        self.info_widget.skill_type_line.setReadOnly(True)
-        self.info_widget.skill_type_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_type_layout.addWidget(self.info_widget.skill_type_label)
-        self.info_widget.skill_type_layout.addWidget(self.info_widget.skill_type_line)
-        
-        self.info_widget.skill_time_layout = QVBoxLayout()
-        self.info_widget.skill_time_label = QLabel("Skill Time")
-        self.info_widget.skill_time_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_time_line = QLineEdit()
-        self.info_widget.skill_time_line.setReadOnly(True)
-        self.info_widget.skill_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_time_layout.addWidget(self.info_widget.skill_time_label)
-        self.info_widget.skill_time_layout.addWidget(self.info_widget.skill_time_line)
-        
-        self.info_widget.skill_prob_layout = QVBoxLayout()
-        self.info_widget.skill_prob_label = QLabel("Probability")
-        self.info_widget.skill_prob_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_prob_line = QLineEdit()
-        self.info_widget.skill_prob_line.setReadOnly(True)
-        self.info_widget.skill_prob_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_prob_layout.addWidget(self.info_widget.skill_prob_label)
-        self.info_widget.skill_prob_layout.addWidget(self.info_widget.skill_prob_line)
-        
-        self.info_widget.skill_description_label = QLabel("Effect")
-        self.info_widget.skill_description_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_description_line = QTextEdit()
-        fm = QFontMetrics(self.info_widget.skill_description_line.font())
-        self.info_widget.skill_description_line.setMaximumHeight(fm.height() * 2 + fm.leading() + 10)
-        self.info_widget.skill_description_line.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.info_widget.skill_description_line.setReadOnly(True)
-        self.info_widget.skill_description_line.setAlignment(Qt.AlignCenter)
-        
-        self.info_widget.skill_description_layout = QVBoxLayout()
-        self.info_widget.skill_description_layout.addWidget(self.info_widget.skill_description_label)
-        self.info_widget.skill_description_layout.addWidget(self.info_widget.skill_description_line)
-        
-        self.info_widget.skill_detail_widget = QStackedWidget()
-        self.info_widget.skill_detail_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        self.info_widget.skill_detail_widget.addWidget(QWidget())
-        self.info_widget.skill_detail_widget.setCurrentIndex(0)
-        
-        self.info_widget.skill_detail_encore_widget = QWidget()
-        self.info_widget.skill_detail_encore_layout = QVBoxLayout(self.info_widget.skill_detail_encore_widget)
-        
-        self.info_widget.skill_detail_encore_label = QLabel("Encored skill : ")
-        self.info_widget.skill_detail_encore_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_encore_line = QLineEdit()
-        self.info_widget.skill_detail_encore_line.setReadOnly(True)
-        self.info_widget.skill_detail_encore_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_encore_label_ = QLabel("which was activated at")
-        self.info_widget.skill_detail_encore_label_.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_encore_line_ = QLineEdit()
-        self.info_widget.skill_detail_encore_line_.setReadOnly(True)
-        self.info_widget.skill_detail_encore_line_.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_encore_top_layout = QHBoxLayout()
-        self.info_widget.skill_detail_encore_top_layout.addWidget(self.info_widget.skill_detail_encore_label, 2)
-        self.info_widget.skill_detail_encore_top_layout.addWidget(self.info_widget.skill_detail_encore_line, 2)
-        self.info_widget.skill_detail_encore_top_layout.addWidget(self.info_widget.skill_detail_encore_label_, 2)
-        self.info_widget.skill_detail_encore_top_layout.addWidget(self.info_widget.skill_detail_encore_line_, 1)
-        self.info_widget.skill_detail_encore_layout.addLayout(self.info_widget.skill_detail_encore_top_layout)
-        
-        self.info_widget.skill_detail_sparkle_widget = QWidget()
-        self.info_widget.skill_detail_sparkle_layout = QHBoxLayout(self.info_widget.skill_detail_sparkle_widget)
-        
-        self.info_widget.skill_detail_sparkle_life_layout = QHBoxLayout()
-        self.info_widget.skill_detail_sparkle_life_label = QLabel("Current life :")
-        self.info_widget.skill_detail_sparkle_life_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_sparkle_life_line = QLineEdit()
-        self.info_widget.skill_detail_sparkle_life_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_sparkle_life_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_sparkle_life_line.setToolTip("Life Sparkle COMBO BONUS UP value can change while the skill is active.\n" + 
-                                                                     "The default value shown here is the life value at the moment of skill activation.")
-        self.info_widget.skill_detail_sparkle_life_line.setValidator(QIntValidator(1, 9999, None))
-        self.info_widget.skill_detail_sparkle_life_line.editingFinished.connect(lambda: self.update_sparkle_value())
-        self.info_widget.skill_detail_sparkle_combo_layout = QHBoxLayout()
-        self.info_widget.skill_detail_sparkle_combo_label = QLabel("Life Sparkle COMBO BONUS :")
-        self.info_widget.skill_detail_sparkle_combo_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_sparkle_combo_line = QLineEdit()
-        self.info_widget.skill_detail_sparkle_combo_line.setReadOnly(True)
-        self.info_widget.skill_detail_sparkle_combo_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_sparkle_combo_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_sparkle_life_layout.addWidget(self.info_widget.skill_detail_sparkle_life_label)
-        self.info_widget.skill_detail_sparkle_life_layout.addWidget(self.info_widget.skill_detail_sparkle_life_line)
-        self.info_widget.skill_detail_sparkle_combo_layout.addWidget(self.info_widget.skill_detail_sparkle_combo_label)
-        self.info_widget.skill_detail_sparkle_combo_layout.addWidget(self.info_widget.skill_detail_sparkle_combo_line)
-        self.info_widget.skill_detail_sparkle_layout.addLayout(self.info_widget.skill_detail_sparkle_life_layout)
-        self.info_widget.skill_detail_sparkle_layout.addSpacing(12)
-        self.info_widget.skill_detail_sparkle_layout.addLayout(self.info_widget.skill_detail_sparkle_combo_layout)
-        
-        self.info_widget.skill_detail_motif_widget = QWidget()
-        self.info_widget.skill_detail_motif_layout = QHBoxLayout(self.info_widget.skill_detail_motif_widget)
-        
-        self.info_widget.skill_detail_motif_appeal_layout = QHBoxLayout()
-        self.info_widget.skill_detail_motif_appeal_label = QLabel("Appeal of the unit :")
-        self.info_widget.skill_detail_motif_appeal_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_motif_appeal_line = QLineEdit()
-        self.info_widget.skill_detail_motif_appeal_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_motif_appeal_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_motif_appeal_line.setValidator(QIntValidator(0, 99999, None))
-        self.info_widget.skill_detail_motif_appeal_line.editingFinished.connect(lambda: self.update_motif_value())
-        self.info_widget.skill_detail_motif_score_layout = QHBoxLayout()
-        self.info_widget.skill_detail_motif_score_label = QLabel("Motif SCORE UP :")
-        self.info_widget.skill_detail_motif_score_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_motif_score_line = QLineEdit()
-        self.info_widget.skill_detail_motif_score_line.setReadOnly(True)
-        self.info_widget.skill_detail_motif_score_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_motif_score_line.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_motif_appeal_layout.addWidget(self.info_widget.skill_detail_motif_appeal_label)
-        self.info_widget.skill_detail_motif_appeal_layout.addWidget(self.info_widget.skill_detail_motif_appeal_line)
-        self.info_widget.skill_detail_motif_score_layout.addWidget(self.info_widget.skill_detail_motif_score_label)
-        self.info_widget.skill_detail_motif_score_layout.addWidget(self.info_widget.skill_detail_motif_score_line)
-        self.info_widget.skill_detail_motif_layout.addLayout(self.info_widget.skill_detail_motif_appeal_layout)
-        self.info_widget.skill_detail_motif_layout.addSpacing(12)
-        self.info_widget.skill_detail_motif_layout.addLayout(self.info_widget.skill_detail_motif_score_layout)
-        
-        self.info_widget.skill_detail_alt_widget = QWidget()
-        self.info_widget.skill_detail_alt_layout = QHBoxLayout(self.info_widget.skill_detail_alt_widget)
-        
-        self.info_widget.skill_detail_alt_tap_layout = QVBoxLayout()
-        self.info_widget.skill_detail_alt_tap_label = QLabel("TAP")
-        self.info_widget.skill_detail_alt_tap_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_tap_line = QLineEdit()
-        self.info_widget.skill_detail_alt_tap_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_tap_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_tap_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_alt_tap_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_tap_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_tap_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_alt_tap_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_tap_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_tap_layout.addWidget(self.info_widget.skill_detail_alt_tap_label)
-        self.info_widget.skill_detail_alt_tap_layout.addWidget(self.info_widget.skill_detail_alt_tap_line)
-        self.info_widget.skill_detail_alt_tap_layout.addWidget(self.info_widget.skill_detail_alt_tap_update_index_line)
-        self.info_widget.skill_detail_alt_tap_layout.addWidget(self.info_widget.skill_detail_alt_tap_update_time_line)
-        self.info_widget.skill_detail_alt_long_layout = QVBoxLayout()
-        self.info_widget.skill_detail_alt_long_label = QLabel("LONG")
-        self.info_widget.skill_detail_alt_long_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_long_line = QLineEdit()
-        self.info_widget.skill_detail_alt_long_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_long_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_long_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_alt_long_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_long_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_long_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_alt_long_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_long_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_long_layout.addWidget(self.info_widget.skill_detail_alt_long_label)
-        self.info_widget.skill_detail_alt_long_layout.addWidget(self.info_widget.skill_detail_alt_long_line)
-        self.info_widget.skill_detail_alt_long_layout.addWidget(self.info_widget.skill_detail_alt_long_update_index_line)
-        self.info_widget.skill_detail_alt_long_layout.addWidget(self.info_widget.skill_detail_alt_long_update_time_line)
-        self.info_widget.skill_detail_alt_flick_layout = QVBoxLayout()
-        self.info_widget.skill_detail_alt_flick_label = QLabel("FLICK")
-        self.info_widget.skill_detail_alt_flick_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_flick_line = QLineEdit()
-        self.info_widget.skill_detail_alt_flick_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_flick_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_flick_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_alt_flick_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_flick_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_flick_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_alt_flick_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_flick_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_flick_layout.addWidget(self.info_widget.skill_detail_alt_flick_label)
-        self.info_widget.skill_detail_alt_flick_layout.addWidget(self.info_widget.skill_detail_alt_flick_line)
-        self.info_widget.skill_detail_alt_flick_layout.addWidget(self.info_widget.skill_detail_alt_flick_update_index_line)
-        self.info_widget.skill_detail_alt_flick_layout.addWidget(self.info_widget.skill_detail_alt_flick_update_time_line)
-        self.info_widget.skill_detail_alt_slide_layout = QVBoxLayout()
-        self.info_widget.skill_detail_alt_slide_label = QLabel("SLIDE")
-        self.info_widget.skill_detail_alt_slide_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_slide_line = QLineEdit()
-        self.info_widget.skill_detail_alt_slide_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_slide_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_slide_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_alt_slide_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_slide_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_slide_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_alt_slide_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_slide_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_slide_layout.addWidget(self.info_widget.skill_detail_alt_slide_label)
-        self.info_widget.skill_detail_alt_slide_layout.addWidget(self.info_widget.skill_detail_alt_slide_line)
-        self.info_widget.skill_detail_alt_slide_layout.addWidget(self.info_widget.skill_detail_alt_slide_update_index_line)
-        self.info_widget.skill_detail_alt_slide_layout.addWidget(self.info_widget.skill_detail_alt_slide_update_time_line)
-        self.info_widget.skill_detail_alt_great_layout = QVBoxLayout()
-        self.info_widget.skill_detail_alt_great_label = QLabel("GREAT")
-        self.info_widget.skill_detail_alt_great_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_great_line = QLineEdit()
-        self.info_widget.skill_detail_alt_great_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_great_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_great_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_alt_great_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_great_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_great_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_alt_great_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_alt_great_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_alt_great_layout.addWidget(self.info_widget.skill_detail_alt_great_label)
-        self.info_widget.skill_detail_alt_great_layout.addWidget(self.info_widget.skill_detail_alt_great_line)
-        self.info_widget.skill_detail_alt_great_layout.addWidget(self.info_widget.skill_detail_alt_great_update_index_line)
-        self.info_widget.skill_detail_alt_great_layout.addWidget(self.info_widget.skill_detail_alt_great_update_time_line)
-        self.info_widget.skill_detail_alt_layout.addLayout(self.info_widget.skill_detail_alt_tap_layout)
-        self.info_widget.skill_detail_alt_layout.addLayout(self.info_widget.skill_detail_alt_long_layout)
-        self.info_widget.skill_detail_alt_layout.addLayout(self.info_widget.skill_detail_alt_flick_layout)
-        self.info_widget.skill_detail_alt_layout.addLayout(self.info_widget.skill_detail_alt_slide_layout)
-        self.info_widget.skill_detail_alt_layout.addLayout(self.info_widget.skill_detail_alt_great_layout)
-        
-        self.info_widget.skill_detail_ref_widget = QWidget()
-        self.info_widget.skill_detail_ref_layout = QHBoxLayout(self.info_widget.skill_detail_ref_widget)
-        
-        self.info_widget.skill_detail_ref_tap_layout = QVBoxLayout()
-        self.info_widget.skill_detail_ref_tap_label = QLabel("TAP")
-        self.info_widget.skill_detail_ref_tap_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_tap_line = QLineEdit()
-        self.info_widget.skill_detail_ref_tap_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_tap_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_tap_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_ref_tap_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_tap_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_tap_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_ref_tap_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_tap_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_tap_layout.addWidget(self.info_widget.skill_detail_ref_tap_label)
-        self.info_widget.skill_detail_ref_tap_layout.addWidget(self.info_widget.skill_detail_ref_tap_line)
-        self.info_widget.skill_detail_ref_tap_layout.addWidget(self.info_widget.skill_detail_ref_tap_update_index_line)
-        self.info_widget.skill_detail_ref_tap_layout.addWidget(self.info_widget.skill_detail_ref_tap_update_time_line)
-        self.info_widget.skill_detail_ref_long_layout = QVBoxLayout()
-        self.info_widget.skill_detail_ref_long_label = QLabel("LONG")
-        self.info_widget.skill_detail_ref_long_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_long_line = QLineEdit()
-        self.info_widget.skill_detail_ref_long_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_long_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_long_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_ref_long_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_long_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_long_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_ref_long_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_long_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_long_layout.addWidget(self.info_widget.skill_detail_ref_long_label)
-        self.info_widget.skill_detail_ref_long_layout.addWidget(self.info_widget.skill_detail_ref_long_line)
-        self.info_widget.skill_detail_ref_long_layout.addWidget(self.info_widget.skill_detail_ref_long_update_index_line)
-        self.info_widget.skill_detail_ref_long_layout.addWidget(self.info_widget.skill_detail_ref_long_update_time_line)
-        self.info_widget.skill_detail_ref_flick_layout = QVBoxLayout()
-        self.info_widget.skill_detail_ref_flick_label = QLabel("FLICK")
-        self.info_widget.skill_detail_ref_flick_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_flick_line = QLineEdit()
-        self.info_widget.skill_detail_ref_flick_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_flick_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_flick_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_ref_flick_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_flick_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_flick_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_ref_flick_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_flick_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_flick_layout.addWidget(self.info_widget.skill_detail_ref_flick_label)
-        self.info_widget.skill_detail_ref_flick_layout.addWidget(self.info_widget.skill_detail_ref_flick_line)
-        self.info_widget.skill_detail_ref_flick_layout.addWidget(self.info_widget.skill_detail_ref_flick_update_index_line)
-        self.info_widget.skill_detail_ref_flick_layout.addWidget(self.info_widget.skill_detail_ref_flick_update_time_line)
-        self.info_widget.skill_detail_ref_slide_layout = QVBoxLayout()
-        self.info_widget.skill_detail_ref_slide_label = QLabel("SLIDE")
-        self.info_widget.skill_detail_ref_slide_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_slide_line = QLineEdit()
-        self.info_widget.skill_detail_ref_slide_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_slide_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_slide_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_ref_slide_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_slide_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_slide_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_ref_slide_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_slide_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_slide_layout.addWidget(self.info_widget.skill_detail_ref_slide_label)
-        self.info_widget.skill_detail_ref_slide_layout.addWidget(self.info_widget.skill_detail_ref_slide_line)
-        self.info_widget.skill_detail_ref_slide_layout.addWidget(self.info_widget.skill_detail_ref_slide_update_index_line)
-        self.info_widget.skill_detail_ref_slide_layout.addWidget(self.info_widget.skill_detail_ref_slide_update_time_line)
-        self.info_widget.skill_detail_ref_great_layout = QVBoxLayout()
-        self.info_widget.skill_detail_ref_great_label = QLabel("GREAT")
-        self.info_widget.skill_detail_ref_great_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_great_line = QLineEdit()
-        self.info_widget.skill_detail_ref_great_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_great_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_great_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_ref_great_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_great_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_great_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_ref_great_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_great_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_great_layout.addWidget(self.info_widget.skill_detail_ref_great_label)
-        self.info_widget.skill_detail_ref_great_layout.addWidget(self.info_widget.skill_detail_ref_great_line)
-        self.info_widget.skill_detail_ref_great_layout.addWidget(self.info_widget.skill_detail_ref_great_update_index_line)
-        self.info_widget.skill_detail_ref_great_layout.addWidget(self.info_widget.skill_detail_ref_great_update_time_line)
-        self.info_widget.skill_detail_ref_combo_layout = QVBoxLayout()
-        self.info_widget.skill_detail_ref_combo_label = QLabel("COMBO")
-        self.info_widget.skill_detail_ref_combo_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_combo_line = QLineEdit()
-        self.info_widget.skill_detail_ref_combo_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_combo_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_combo_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_ref_combo_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_combo_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_combo_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_ref_combo_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_ref_combo_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_ref_combo_layout.addWidget(self.info_widget.skill_detail_ref_combo_label)
-        self.info_widget.skill_detail_ref_combo_layout.addWidget(self.info_widget.skill_detail_ref_combo_line)
-        self.info_widget.skill_detail_ref_combo_layout.addWidget(self.info_widget.skill_detail_ref_combo_update_index_line)
-        self.info_widget.skill_detail_ref_combo_layout.addWidget(self.info_widget.skill_detail_ref_combo_update_time_line)
-        self.info_widget.skill_detail_ref_layout.addLayout(self.info_widget.skill_detail_ref_tap_layout)
-        self.info_widget.skill_detail_ref_layout.addLayout(self.info_widget.skill_detail_ref_long_layout)
-        self.info_widget.skill_detail_ref_layout.addLayout(self.info_widget.skill_detail_ref_flick_layout)
-        self.info_widget.skill_detail_ref_layout.addLayout(self.info_widget.skill_detail_ref_slide_layout)
-        self.info_widget.skill_detail_ref_layout.addLayout(self.info_widget.skill_detail_ref_great_layout)
-        self.info_widget.skill_detail_ref_layout.addLayout(self.info_widget.skill_detail_ref_combo_layout)
-        
-        self.info_widget.skill_detail_magic_widget = QWidget()
-        self.info_widget.skill_detail_magic_layout = QVBoxLayout(self.info_widget.skill_detail_magic_widget)
-        self.info_widget.skill_detail_magic_note_layout = QHBoxLayout()
-        
-        self.info_widget.skill_detail_magic_tap_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_tap_label = QLabel("TAP")
-        self.info_widget.skill_detail_magic_tap_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_tap_line = QLineEdit()
-        self.info_widget.skill_detail_magic_tap_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_tap_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_tap_layout.addWidget(self.info_widget.skill_detail_magic_tap_label)
-        self.info_widget.skill_detail_magic_tap_layout.addWidget(self.info_widget.skill_detail_magic_tap_line)
-        self.info_widget.skill_detail_magic_long_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_long_label = QLabel("LONG")
-        self.info_widget.skill_detail_magic_long_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_long_line = QLineEdit()
-        self.info_widget.skill_detail_magic_long_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_long_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_long_layout.addWidget(self.info_widget.skill_detail_magic_long_label)
-        self.info_widget.skill_detail_magic_long_layout.addWidget(self.info_widget.skill_detail_magic_long_line)
-        self.info_widget.skill_detail_magic_flick_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_flick_label = QLabel("FLICK")
-        self.info_widget.skill_detail_magic_flick_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_flick_line = QLineEdit()
-        self.info_widget.skill_detail_magic_flick_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_flick_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_flick_layout.addWidget(self.info_widget.skill_detail_magic_flick_label)
-        self.info_widget.skill_detail_magic_flick_layout.addWidget(self.info_widget.skill_detail_magic_flick_line)
-        self.info_widget.skill_detail_magic_slide_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_slide_label = QLabel("SLIDE")
-        self.info_widget.skill_detail_magic_slide_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_slide_line = QLineEdit()
-        self.info_widget.skill_detail_magic_slide_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_slide_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_slide_layout.addWidget(self.info_widget.skill_detail_magic_slide_label)
-        self.info_widget.skill_detail_magic_slide_layout.addWidget(self.info_widget.skill_detail_magic_slide_line)
-        self.info_widget.skill_detail_magic_great_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_great_label = QLabel("GREAT")
-        self.info_widget.skill_detail_magic_great_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_great_line = QLineEdit()
-        self.info_widget.skill_detail_magic_great_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_great_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_great_layout.addWidget(self.info_widget.skill_detail_magic_great_label)
-        self.info_widget.skill_detail_magic_great_layout.addWidget(self.info_widget.skill_detail_magic_great_line)
-        self.info_widget.skill_detail_magic_combo_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_combo_label = QLabel("COMBO")
-        self.info_widget.skill_detail_magic_combo_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_combo_line = QLineEdit()
-        self.info_widget.skill_detail_magic_combo_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_combo_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_combo_layout.addWidget(self.info_widget.skill_detail_magic_combo_label)
-        self.info_widget.skill_detail_magic_combo_layout.addWidget(self.info_widget.skill_detail_magic_combo_line)
-        self.info_widget.skill_detail_magic_life_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_life_label = QLabel("LIFE")
-        self.info_widget.skill_detail_magic_life_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_life_line = QLineEdit()
-        self.info_widget.skill_detail_magic_life_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_life_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_life_layout.addWidget(self.info_widget.skill_detail_magic_life_label)
-        self.info_widget.skill_detail_magic_life_layout.addWidget(self.info_widget.skill_detail_magic_life_line)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_tap_layout)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_long_layout)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_flick_layout)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_slide_layout)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_great_layout)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_combo_layout)
-        self.info_widget.skill_detail_magic_note_layout.addLayout(self.info_widget.skill_detail_magic_life_layout)
-        
-        self.info_widget.skill_detail_magic_support_boost_layout = QHBoxLayout()
-        self.info_widget.skill_detail_magic_support_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_psupport_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_psupport_label = QLabel("PERFECT SUPPORT")
-        self.info_widget.skill_detail_magic_psupport_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_psupport_line = QLineEdit()
-        self.info_widget.skill_detail_magic_psupport_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_psupport_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_psupport_layout.addWidget(self.info_widget.skill_detail_magic_psupport_label)
-        self.info_widget.skill_detail_magic_psupport_layout.addWidget(self.info_widget.skill_detail_magic_psupport_line)
-        self.info_widget.skill_detail_magic_csupport_layout = QVBoxLayout()
-        self.info_widget.skill_detail_magic_csupport_label = QLabel("COMBO SUPPORT")
-        self.info_widget.skill_detail_magic_csupport_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_csupport_line = QLineEdit()
-        self.info_widget.skill_detail_magic_csupport_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_csupport_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_csupport_layout.addWidget(self.info_widget.skill_detail_magic_csupport_label)
-        self.info_widget.skill_detail_magic_csupport_layout.addWidget(self.info_widget.skill_detail_magic_csupport_line)
-        self.info_widget.skill_detail_magic_support_layout.addLayout(self.info_widget.skill_detail_magic_psupport_layout)
-        self.info_widget.skill_detail_magic_support_layout.addSpacing(4)
-        self.info_widget.skill_detail_magic_support_layout.addLayout(self.info_widget.skill_detail_magic_csupport_layout)
-        
-        self.info_widget.skill_detail_magic_boost_layout = QGridLayout()
-        self.info_widget.skill_detail_magic_boost_score_label = QLabel("SCORE")
-        self.info_widget.skill_detail_magic_boost_score_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_combo_label = QLabel("COMBO")
-        self.info_widget.skill_detail_magic_boost_combo_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_life_label = QLabel("LIFE")
-        self.info_widget.skill_detail_magic_boost_life_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_support_label = QLabel("SUPPORT")
-        self.info_widget.skill_detail_magic_boost_support_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_cute_label = QLabel("CUTE")
-        self.info_widget.skill_detail_magic_boost_cute_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_cool_label = QLabel("COOL")
-        self.info_widget.skill_detail_magic_boost_cool_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_passion_label = QLabel("PASSION")
-        self.info_widget.skill_detail_magic_boost_passion_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_score_cute_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_score_cute_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_score_cute_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_score_cool_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_score_cool_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_score_cool_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_score_passion_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_score_passion_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_score_passion_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_combo_cute_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_combo_cute_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_combo_cute_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_combo_cool_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_combo_cool_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_combo_cool_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_combo_passion_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_combo_passion_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_combo_passion_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_life_cute_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_life_cute_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_life_cute_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_life_cool_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_life_cool_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_life_cool_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_life_passion_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_life_passion_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_life_passion_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_support_cute_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_support_cute_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_support_cute_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_support_cool_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_support_cool_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_support_cool_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_support_passion_line = QLineEdit()
-        self.info_widget.skill_detail_magic_boost_support_passion_line.setReadOnly(True)
-        self.info_widget.skill_detail_magic_boost_support_passion_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_score_label, 0, 1, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_combo_label, 0, 2, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_life_label, 0, 3, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_support_label, 0, 4, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_cute_label, 1, 0, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_cool_label, 2, 0, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_passion_label, 3, 0, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_score_cute_line, 1, 1, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_score_cool_line, 2, 1, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_score_passion_line, 3, 1, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_combo_cute_line, 1, 2, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_combo_cool_line, 2, 2, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_combo_passion_line, 3, 2, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_life_cute_line, 1, 3, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_life_cool_line, 2, 3, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_life_passion_line, 3, 3, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_support_cute_line, 1, 4, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_support_cool_line, 2, 4, 1, 1)
-        self.info_widget.skill_detail_magic_boost_layout.addWidget(self.info_widget.skill_detail_magic_boost_support_passion_line, 3, 4, 1, 1)
-        self.info_widget.skill_detail_magic_support_boost_layout.addLayout(self.info_widget.skill_detail_magic_support_layout)
-        self.info_widget.skill_detail_magic_support_boost_layout.addSpacing(8)
-        self.info_widget.skill_detail_magic_support_boost_layout.addLayout(self.info_widget.skill_detail_magic_boost_layout)
+        self.subwidgetgroups['mode_button'] = QButtonGroup(self)
 
-        self.info_widget.skill_detail_magic_misc_layout = QHBoxLayout()
-        self.info_widget.skill_detail_magic_guard_checkbox = QCheckBox("Prevent life decrease")
-        self.info_widget.skill_detail_magic_guard_checkbox.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.info_widget.skill_detail_magic_guard_checkbox.setFocusPolicy(Qt.NoFocus)
-        self.info_widget.skill_detail_magic_guard_checkbox.setStyleSheet("margin-left:50%; margin-right:50%;")
-        self.info_widget.skill_detail_magic_concentration_checkbox = QCheckBox("Halve PERFECT timing window")
-        self.info_widget.skill_detail_magic_concentration_checkbox.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.info_widget.skill_detail_magic_concentration_checkbox.setFocusPolicy(Qt.NoFocus)
-        self.info_widget.skill_detail_magic_concentration_checkbox.setStyleSheet("margin-left:10%; margin-right:10%;")
-        self.info_widget.skill_detail_magic_misc_layout.addWidget(self.info_widget.skill_detail_magic_guard_checkbox)
-        self.info_widget.skill_detail_magic_misc_layout.addWidget(self.info_widget.skill_detail_magic_concentration_checkbox)
-        self.info_widget.skill_detail_magic_layout.addLayout(self.info_widget.skill_detail_magic_note_layout)
-        self.info_widget.skill_detail_magic_layout.addSpacing(8)
-        self.info_widget.skill_detail_magic_layout.addLayout(self.info_widget.skill_detail_magic_support_boost_layout)
-        self.info_widget.skill_detail_magic_layout.addSpacing(8)
-        self.info_widget.skill_detail_magic_layout.addLayout(self.info_widget.skill_detail_magic_misc_layout)
-        
-        self.info_widget.skill_detail_mut_widget = QWidget()
-        self.info_widget.skill_detail_mut_layout = QHBoxLayout(self.info_widget.skill_detail_mut_widget)
-        self.info_widget.skill_detail_mut_combo_label = QLabel("COMBO BONUS")
-        self.info_widget.skill_detail_mut_combo_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_mut_combo_line = QLineEdit()
-        self.info_widget.skill_detail_mut_combo_line.setReadOnly(True)
-        self.info_widget.skill_detail_mut_combo_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_mut_combo_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_mut_combo_update_index_line = QLineEdit()
-        self.info_widget.skill_detail_mut_combo_update_index_line.setReadOnly(True)
-        self.info_widget.skill_detail_mut_combo_update_index_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_mut_combo_update_index_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_mut_combo_update_time_line = QLineEdit()
-        self.info_widget.skill_detail_mut_combo_update_time_line.setReadOnly(True)
-        self.info_widget.skill_detail_mut_combo_update_time_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_detail_mut_combo_update_time_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.skill_detail_mut_layout.addWidget(self.info_widget.skill_detail_mut_combo_label)
-        self.info_widget.skill_detail_mut_layout.addWidget(self.info_widget.skill_detail_mut_combo_line)
-        self.info_widget.skill_detail_mut_layout.addWidget(self.info_widget.skill_detail_mut_combo_update_index_line)
-        self.info_widget.skill_detail_mut_layout.addWidget(self.info_widget.skill_detail_mut_combo_update_time_line)
-        
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_encore_widget)
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_sparkle_widget)
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_motif_widget)
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_alt_widget)
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_ref_widget)
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_magic_widget)
-        self.info_widget.skill_detail_widget.addWidget(self.info_widget.skill_detail_mut_widget)
-        
-        self.info_widget.skill_inactivation_widget = QStackedWidget()
-        self.info_widget.skill_inactivation_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        self.info_widget.skill_inactivation_widget.addWidget(QWidget())
-        self.info_widget.skill_inactivation_widget.setCurrentIndex(0)
-        self.info_widget.skill_inactivation_detail_widget = QWidget()
-        self.info_widget.skill_inactivation_detail_layout = QVBoxLayout(self.info_widget.skill_inactivation_detail_widget)
-        
-        self.info_widget.skill_inactivation_detail_label = QLabel("[！] This skill does not activate because of the following reason:")
-        self.info_widget.skill_inactivation_detail_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_inactivation_detail_line = QLineEdit()
-        self.info_widget.skill_inactivation_detail_line.setReadOnly(True)
-        self.info_widget.skill_inactivation_detail_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.skill_inactivation_detail_layout.addWidget(self.info_widget.skill_inactivation_detail_label)
-        self.info_widget.skill_inactivation_detail_layout.addWidget(self.info_widget.skill_inactivation_detail_line)
-        self.info_widget.skill_inactivation_widget.addWidget(self.info_widget.skill_inactivation_detail_widget)
-        
-        self.info_widget.skill_widget = QWidget()
-        self.info_widget.skill_layout = QVBoxLayout(self.info_widget.skill_widget)
-        
-        self.info_widget.skill_info_layout = QHBoxLayout()
-        self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_type_layout)
-        self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_time_layout)
-        self.info_widget.skill_info_layout.addLayout(self.info_widget.skill_prob_layout)
-        
-        self.info_widget.skill_layout.addSpacing(6)
-        self.info_widget.skill_layout.addLayout(self.info_widget.skill_info_layout)
-        self.info_widget.skill_layout.addSpacing(6)
-        self.info_widget.skill_layout.addLayout(self.info_widget.skill_description_layout)
-        self.info_widget.skill_layout.addWidget(self.info_widget.skill_detail_widget)
-        self.info_widget.skill_layout.addWidget(self.info_widget.skill_inactivation_widget)
-        self.info_widget.detail_widget.addWidget(self.info_widget.skill_widget)
+        self.sublayouts['mode'].addStretch(1)
+
+        self.subwidgets['mode_label'] = QLabel('Chart Mode')
+        self.sublayouts['mode'].addWidget(self.subwidgets['mode_label'], 2)
+
+        self.subwidgets['mode_default'] = QRadioButton('Default')
+        self.subwidgets['mode_default'].setChecked(True)
+        self.subwidgets['mode_default'].toggled.connect(self.chart_viewer.set_chart_mode)
+        self.subwidgetgroups['mode_button'].addButton(self.subwidgets['mode_default'], 0)
+        self.sublayouts['mode'].addWidget(self.subwidgets['mode_default'], 2)
+
+        self.subwidgets['mode_perfect'] = QRadioButton('Perfect')
+        self.subwidgets['mode_perfect'].setCheckable(False)
+        self.subwidgets['mode_perfect'].toggled.connect(self.chart_viewer.set_chart_mode)
+        self.subwidgetgroups['mode_button'].addButton(self.subwidgets['mode_perfect'], 1)
+        self.sublayouts['mode'].addWidget(self.subwidgets['mode_perfect'], 2)
+
+        self.subwidgets['mode_abuse'] = QRadioButton('Abuse')
+        self.subwidgets['mode_abuse'].setCheckable(False)
+        self.subwidgets['mode_abuse'].toggled.connect(self.chart_viewer.set_chart_mode)
+        self.subwidgetgroups['mode_button'].addButton(self.subwidgets['mode_abuse'], 2)
+        self.sublayouts['mode'].addWidget(self.subwidgets['mode_abuse'], 2)
+
+        self.subwidgets['mode_custom'] = QRadioButton('Custom')
+        self.subwidgets['mode_custom'].setCheckable(False)
+        self.subwidgets['mode_custom'].toggled.connect(self.chart_viewer.set_chart_mode)
+        self.subwidgetgroups['mode_button'].addButton(self.subwidgets['mode_custom'], 3)
+        self.sublayouts['mode'].addWidget(self.subwidgets['mode_custom'], 2)
 
     def _setup_custom(self):
-        self.info_widget.custom_total_layout = QVBoxLayout()
-        self.info_widget.custom_total_label = QLabel("Total Score")
-        self.info_widget.custom_total_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_total_line = QLineEdit()
-        self.info_widget.custom_total_line.setReadOnly(True)
-        self.info_widget.custom_total_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_total_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.custom_total_layout.addWidget(self.info_widget.custom_total_label)
-        self.info_widget.custom_total_layout.addWidget(self.info_widget.custom_total_line)
-        
-        self.info_widget.custom_theoretic_layout = QVBoxLayout()
-        self.info_widget.custom_theoretic_label = QLabel("Theoretical Score")
-        self.info_widget.custom_theoretic_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_theoretic_line = QLineEdit()
-        self.info_widget.custom_theoretic_line.setReadOnly(True)
-        self.info_widget.custom_theoretic_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_theoretic_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.custom_theoretic_layout.addWidget(self.info_widget.custom_theoretic_label)
-        self.info_widget.custom_theoretic_layout.addWidget(self.info_widget.custom_theoretic_line)
-        self.info_widget.custom_score_layout = QHBoxLayout()
-        
-        self.info_widget.custom_skill_prob_layout = QVBoxLayout()
-        self.info_widget.custom_skill_prob_label = QLabel("Probability")
-        self.info_widget.custom_skill_prob_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_skill_prob_line = QLineEdit()
-        self.info_widget.custom_skill_prob_line.setReadOnly(True)
-        self.info_widget.custom_skill_prob_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_skill_prob_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.custom_skill_prob_layout.addWidget(self.info_widget.custom_skill_prob_label)
-        self.info_widget.custom_skill_prob_layout.addWidget(self.info_widget.custom_skill_prob_line)
-        self.info_widget.custom_score_layout = QHBoxLayout()
-        self.info_widget.custom_score_layout.addLayout(self.info_widget.custom_total_layout)
-        self.info_widget.custom_score_layout.addLayout(self.info_widget.custom_theoretic_layout)
-        self.info_widget.custom_score_layout.addLayout(self.info_widget.custom_skill_prob_layout)
-        
-        self.info_widget.custom_button_layout = QVBoxLayout()
-        self.info_widget.custom_update_button = QPushButton("Update")
-        self.info_widget.custom_update_button.clicked.connect(lambda: self.simulate_custom())
-        self.info_widget.custom_button_bottom_layout = QHBoxLayout()
-        self.info_widget.custom_reset_button = QPushButton("Reset All")
-        self.info_widget.custom_reset_button.clicked.connect(lambda: self.reset_all_custom_settings())
-        self.info_widget.custom_abuse_button = QPushButton("Toggle abuse")
-        self.info_widget.custom_abuse_button.clicked.connect(lambda: self.toggle_custom_abuse())
-        self.info_widget.custom_button_layout.addWidget(self.info_widget.custom_update_button)
-        self.info_widget.custom_button_bottom_layout.addWidget(self.info_widget.custom_reset_button)
-        self.info_widget.custom_button_bottom_layout.addWidget(self.info_widget.custom_abuse_button)
-        self.info_widget.custom_button_layout.addLayout(self.info_widget.custom_button_bottom_layout)
-        
-        self.info_widget.custom_general_layout = QHBoxLayout()
-        self.info_widget.custom_general_layout.addLayout(self.info_widget.custom_score_layout)
-        self.info_widget.custom_general_layout.addLayout(self.info_widget.custom_button_layout)
-        
-        self.info_widget.custom_skill_widget = QWidget()
-        self.info_widget.custom_skill_layout = QHBoxLayout(self.info_widget.custom_skill_widget)
-        self.info_widget.custom_skill_active_line = QLineEdit()
-        self.info_widget.custom_skill_active_line.setReadOnly(True)
-        self.info_widget.custom_skill_active_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_skill_active_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.custom_skill_active_button = QPushButton("Change Activation")
-        self.info_widget.custom_skill_active_button.clicked.connect(lambda: self.change_skill_activation())
-        self.info_widget.custom_skill_layout.addWidget(self.info_widget.custom_skill_active_line)
-        self.info_widget.custom_skill_layout.addWidget(self.info_widget.custom_skill_active_button)
-        
-        self.info_widget.custom_note_widget = QWidget()
-        self.info_widget.custom_note_layout = QHBoxLayout(self.info_widget.custom_note_widget)
-        self.info_widget.custom_note_offset_label = QLabel("Offset")
-        self.info_widget.custom_note_offset_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_note_offset_spinbox = QSpinBox()
-        self.info_widget.custom_note_offset_spinbox.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_note_offset_spinbox.setSingleStep(10)
-        self.info_widget.custom_note_offset_spinbox.setRange(0, 0)
-        self.info_widget.custom_note_offset_spinbox.valueChanged.connect(lambda: self.change_note_offset())
-        self.info_widget.custom_note_judgement_label = QLabel("Judgement")
-        self.info_widget.custom_note_judgement_label.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_note_judgement_line = QLineEdit()
-        self.info_widget.custom_note_judgement_line.setReadOnly(True)
-        self.info_widget.custom_note_judgement_line.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.info_widget.custom_note_judgement_line.setAlignment(Qt.AlignCenter)
-        self.info_widget.custom_note_reset_button = QPushButton("Reset")
-        self.info_widget.custom_note_reset_button.clicked.connect(lambda: self.reset_note_offset())
-        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_offset_label)
-        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_offset_spinbox)
-        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_judgement_label)
-        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_judgement_line)
-        self.info_widget.custom_note_layout.addWidget(self.info_widget.custom_note_reset_button)
-        
-        self.info_widget.custom_detail_widget = QStackedWidget()
-        self.info_widget.custom_detail_widget.addWidget(QWidget())
-        self.info_widget.custom_detail_widget.addWidget(self.info_widget.custom_skill_widget)
-        self.info_widget.custom_detail_widget.addWidget(self.info_widget.custom_note_widget)
-        
-        self.info_widget.custom_setting_widget = QWidget()
-        self.info_widget.custom_setting_layout = QVBoxLayout(self.info_widget.custom_setting_widget)
-        
-        self.info_widget.custom_setting_layout.addSpacing(6)
-        self.info_widget.custom_setting_layout.addLayout(self.info_widget.custom_general_layout)
-        self.info_widget.custom_setting_layout.addWidget(self.info_widget.custom_detail_widget)
-        
-        self.info_widget.custom_widget.addWidget(self.info_widget.custom_setting_widget)
-        self.info_widget.custom_widget.setCurrentIndex(0)
+        self.subwidgets['custom'] = QStackedWidget()
+        self.subwidgets['custom'].setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.layout.addWidget(self.subwidgets['custom'])
+
+        self.subwidgets['custom'].addWidget(QWidget())
+        self.subwidgets['custom'].setCurrentIndex(0)
+
+        self.subwidgets['custom_'] = QWidget()
+        self.sublayouts['custom_'] = QVBoxLayout(self.subwidgets['custom_'])
+        self.sublayouts['custom_'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['custom'].addWidget(self.subwidgets['custom_'])
+
+        self.sublayouts['custom_'].addSpacing(6)
+
+        self.sublayouts['custom_general'] = QHBoxLayout()
+        self.sublayouts['custom_'].addLayout(self.sublayouts['custom_general'])
+
+        self.sublayouts['custom_general_score'] = QHBoxLayout()
+        self.sublayouts['custom_general'].addLayout(self.sublayouts['custom_general_score'])
+
+        self.subwidgets['custom_general_score_total'] = QLabelTextLineWidget("Total Score")
+        self.subwidgets['custom_general_score_total'].textbox[0].setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.sublayouts['custom_general_score'].addWidget(self.subwidgets['custom_general_score_total'])
+
+        self.subwidgets['custom_general_score_theoretic'] = QLabelTextLineWidget("Theoretical Score")
+        self.subwidgets['custom_general_score_theoretic'].textbox[0].setSizePolicy(QSizePolicy.Minimum,
+                                                                                   QSizePolicy.Fixed)
+        self.sublayouts['custom_general_score'].addWidget(self.subwidgets['custom_general_score_theoretic'])
+
+        self.subwidgets['custom_general_score_prob'] = QLabelTextLineWidget("Probability")
+        self.subwidgets['custom_general_score_prob'].textbox[0].setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.sublayouts['custom_general_score'].addWidget(self.subwidgets['custom_general_score_prob'])
+
+        self.sublayouts['custom_general_button'] = QGridLayout()
+        self.sublayouts['custom_general'].addLayout(self.sublayouts['custom_general_button'])
+
+        self.subwidgets['custom_general_button_update'] = QPushButton("Update")
+        self.subwidgets['custom_general_button_update'].clicked.connect(lambda: self.chart_viewer.simulate_custom())
+        self.sublayouts['custom_general_button'].addWidget(self.subwidgets['custom_general_button_update'], 0, 0, 1, 2)
+
+        self.subwidgets['custom_general_button_reset'] = QPushButton("Reset All")
+        self.subwidgets['custom_general_button_reset'].clicked.connect(
+            lambda: self.chart_viewer.reset_custom_chart())
+        self.sublayouts['custom_general_button'].addWidget(self.subwidgets['custom_general_button_reset'], 1, 0, 1, 1)
+
+        self.subwidgets['custom_general_button_abuse'] = QPushButton("Toggle abuse")
+        self.subwidgets['custom_general_button_abuse'].clicked.connect(
+            lambda: self.chart_viewer.toggle_custom_abuse())
+        self.sublayouts['custom_general_button'].addWidget(self.subwidgets['custom_general_button_abuse'], 1, 1, 1, 1)
+
+        self.subwidgets['custom_detail'] = QStackedWidget()
+        self.sublayouts['custom_'].addWidget(self.subwidgets['custom_detail'])
+
+        self.subwidgets['custom_detail'].addWidget(QWidget())
+
+        self.subwidgets['custom_detail_skill'] = QWidget()
+        self.sublayouts['custom_detail_skill'] = QHBoxLayout(self.subwidgets['custom_detail_skill'])
+        self.sublayouts['custom_detail_skill'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['custom_detail'].addWidget(self.subwidgets['custom_detail_skill'])
+
+        self.subwidgets['custom_detail_skill_status'] = QLineReadOnly()
+        self.subwidgets['custom_detail_skill_status'].setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.sublayouts['custom_detail_skill'].addWidget(self.subwidgets['custom_detail_skill_status'])
+
+        self.subwidgets['custom_detail_skill_button'] = QPushButton("Change Activation")
+        self.subwidgets['custom_detail_skill_button'].clicked.connect(
+            lambda: self.chart_viewer.change_skill_activation())
+        self.sublayouts['custom_detail_skill'].addWidget(self.subwidgets['custom_detail_skill_button'])
+
+        self.subwidgets['custom_detail_note'] = QWidget()
+        self.sublayouts['custom_detail_note'] = QHBoxLayout(self.subwidgets['custom_detail_note'])
+        self.sublayouts['custom_detail_note'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['custom_detail'].addWidget(self.subwidgets['custom_detail_note'])
+
+        self.subwidgets['custom_detail_note_offset-label'] = QLabel("Offset")
+        self.subwidgets['custom_detail_note_offset-label'].setAlignment(Qt.AlignCenter)
+        self.subwidgets['custom_detail_note_offset-label'].setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.sublayouts['custom_detail_note'].addWidget(self.subwidgets['custom_detail_note_offset-label'], 1)
+
+        self.subwidgets['custom_detail_note_offset-spinbox'] = QSpinBox()
+        self.subwidgets['custom_detail_note_offset-spinbox'].setAlignment(Qt.AlignCenter)
+        self.subwidgets['custom_detail_note_offset-spinbox'].setSingleStep(10)
+        self.subwidgets['custom_detail_note_offset-spinbox'].setRange(0, 0)
+        self.subwidgets['custom_detail_note_offset-spinbox'].setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.subwidgets['custom_detail_note_offset-spinbox'].valueChanged.connect(
+            lambda: self.chart_viewer.change_note_offset())
+        self.sublayouts['custom_detail_note'].addWidget(self.subwidgets['custom_detail_note_offset-spinbox'], 1)
+
+        self.subwidgets['custom_detail_note_judgement'] = QLabelTextLineWidget("Judgement", horizontal=True)
+        self.subwidgets['custom_detail_note_judgement'].layout.setStretch(0, 1)
+        self.subwidgets['custom_detail_note_judgement'].layout.setStretch(1, 2)
+        self.sublayouts['custom_detail_note'].addWidget(self.subwidgets['custom_detail_note_judgement'], 3)
+
+        self.subwidgets['custom_detail_note_reset'] = QPushButton("Reset")
+        self.subwidgets['custom_detail_note_reset'].clicked.connect(lambda: self.chart_viewer.reset_note_offset())
+        self.sublayouts['custom_detail_note'].addWidget(self.subwidgets['custom_detail_note_reset'], 1)
+
+        resize_stacked_widget(self.subwidgets['custom_detail'], 0)
+
+        resize_stacked_widget(self.subwidgets['custom'], 0)
+
+    def _setup_note_skill_detail(self):
+        self.subwidgets['detail'] = QStackedWidget()
+        self.subwidgets['detail'].setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.layout.addWidget(self.subwidgets['detail'])
+
+        self.subwidgets['detail'].addWidget(QWidget())
+
+        self.subwidgets['detail_note'] = QWidget()
+        self.sublayouts['detail_note'] = QVBoxLayout(self.subwidgets['detail_note'])
+        self.sublayouts['detail_note'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail'].addWidget(self.subwidgets['detail_note'])
+
+        self.sublayouts['detail_note'].addSpacing(6)
+
+        self.sublayouts['detail_note_general'] = QHBoxLayout()
+        self.sublayouts['detail_note'].addLayout(self.sublayouts['detail_note_general'])
+
+        self.subwidgets['detail_note_general_number'] = QLabelTextLineWidget("Note Number")
+        self.sublayouts['detail_note_general'].addWidget(self.subwidgets['detail_note_general_number'])
+
+        self.subwidgets['detail_note_general_time'] = QLabelTextLineWidget("Note Time")
+        self.sublayouts['detail_note_general'].addWidget(self.subwidgets['detail_note_general_time'])
+
+        self.subwidgets['detail_note_general_type'] = QLabelTextLineWidget("Note Type")
+        self.sublayouts['detail_note_general'].addWidget(self.subwidgets['detail_note_general_type'])
+
+        self.subwidgets['detail_note_score'] = QStackedWidget()
+        self.sublayouts['detail_note'].addWidget(self.subwidgets['detail_note_score'])
+
+        self.subwidgets['detail_note_score'].addWidget(QWidget())
+        self.subwidgets['detail_note_score'].setCurrentIndex(0)
+
+        self.subwidgets['detail_note_score_'] = QWidget()
+        self.sublayouts['detail_note_score_'] = QVBoxLayout(self.subwidgets['detail_note_score_'])
+        self.sublayouts['detail_note_score_'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_note_score'].addWidget(self.subwidgets['detail_note_score_'])
+
+        self.sublayouts['detail_note_score_general'] = QHBoxLayout()
+        self.sublayouts['detail_note_score_'].addLayout(self.sublayouts['detail_note_score_general'])
+
+        self.subwidgets['detail_note_score_general_life'] = QLabelTextLineWidget("Life")
+        self.sublayouts['detail_note_score_general'].addWidget(self.subwidgets['detail_note_score_general_life'])
+
+        self.subwidgets['detail_note_score_general_combo'] = QLabelTextLineWidget("Combo")
+        self.sublayouts['detail_note_score_general'].addWidget(self.subwidgets['detail_note_score_general_combo'])
+
+        self.subwidgets['detail_note_score_general_score-bonus'] = QLabelTextLineWidget("Score bonus")
+        self.sublayouts['detail_note_score_general'].addWidget(self.subwidgets['detail_note_score_general_score-bonus'])
+
+        self.subwidgets['detail_note_score_general_combo-bonus'] = QLabelTextLineWidget("Combo bonus")
+        self.sublayouts['detail_note_score_general'].addWidget(self.subwidgets['detail_note_score_general_combo-bonus'])
+
+        self.subwidgets['detail_note_score_general_note-score'] = QLabelTextLineWidget("Note Score")
+        self.sublayouts['detail_note_score_general'].addWidget(self.subwidgets['detail_note_score_general_note-score'])
+
+        self.subwidgets['detail_note_score_general_current-score'] = QLabelTextLineWidget("Current Score")
+        self.sublayouts['detail_note_score_general'].addWidget(
+            self.subwidgets['detail_note_score_general_current-score'])
+
+        self.sublayouts['detail_note_score_skill'] = QHBoxLayout()
+        self.sublayouts['detail_note_score_'].addLayout(self.sublayouts['detail_note_score_skill'])
+
+        self.subwidgets['detail_note_score_skill_score'] = QTreeWidget()
+        self.subwidgets['detail_note_score_skill_score'].header().setVisible(False)
+        self.subwidgets['detail_note_score_skill_score'].setFixedHeight(70)
+        self.sublayouts['detail_note_score_skill'].addWidget(self.subwidgets['detail_note_score_skill_score'])
+
+        self.subwidgets['detail_note_score_skill_combo'] = QTreeWidget()
+        self.subwidgets['detail_note_score_skill_combo'].header().setVisible(False)
+        self.subwidgets['detail_note_score_skill_combo'].setFixedHeight(70)
+        self.sublayouts['detail_note_score_skill'].addWidget(self.subwidgets['detail_note_score_skill_combo'])
+
+        resize_stacked_widget(self.subwidgets['detail_note_score'], 0)
+
+        self.subwidgets['detail_skill'] = QWidget()
+        self.sublayouts['detail_skill'] = QVBoxLayout(self.subwidgets['detail_skill'])
+        self.sublayouts['detail_skill'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail'].addWidget(self.subwidgets['detail_skill'])
+
+        self.sublayouts['detail_skill'].addSpacing(6)
+
+        self.sublayouts['detail_skill_general'] = QHBoxLayout()
+        self.sublayouts['detail_skill'].addLayout(self.sublayouts['detail_skill_general'])
+
+        self.subwidgets['detail_skill_general_type'] = QLabelTextLineWidget("Skill Type")
+        self.sublayouts['detail_skill_general'].addWidget(self.subwidgets['detail_skill_general_type'])
+
+        self.subwidgets['detail_skill_general_time'] = QLabelTextLineWidget("Skill Time")
+        self.sublayouts['detail_skill_general'].addWidget(self.subwidgets['detail_skill_general_time'])
+
+        self.subwidgets['detail_skill_general_prob'] = QLabelTextLineWidget("Probability")
+        self.sublayouts['detail_skill_general'].addWidget(self.subwidgets['detail_skill_general_prob'])
+
+        self.sublayouts['detail_skill'].addSpacing(6)
+
+        self.subwidgets['detail_skill_description'] = QLabelTextBoxWidget("Effect")
+        fm = QFontMetrics(self.subwidgets['detail_skill_description'].textbox[0].font())
+        self.subwidgets['detail_skill_description'].textbox[0].setMaximumHeight(fm.height() * 2 + fm.leading() + 10)
+        self.sublayouts['detail_skill'].addWidget(self.subwidgets['detail_skill_description'])
+
+        self.subwidgets['detail_skill_detail'] = QStackedWidget()
+        self.subwidgets['detail_skill_detail'].setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.sublayouts['detail_skill'].addWidget(self.subwidgets['detail_skill_detail'])
+
+        self.subwidgets['detail_skill_detail'].addWidget(QWidget())
+        self.subwidgets['detail_skill_detail'].setCurrentIndex(0)
+
+        self.subwidgets['detail_skill_detail_encore'] = QWidget()
+        self.sublayouts['detail_skill_detail_encore'] = QHBoxLayout(self.subwidgets['detail_skill_detail_encore'])
+        self.sublayouts['detail_skill_detail_encore'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_encore'])
+
+        self.subwidgets['detail_skill_detail_encore_skill'] = QLabelTextLineWidget("Encored skill : ", horizontal=True)
+        self.sublayouts['detail_skill_detail_encore'].addWidget(self.subwidgets['detail_skill_detail_encore_skill'], 4)
+
+        self.subwidgets['detail_skill_detail_encore_time'] = QLabelTextLineWidget("which was activated at",
+                                                                                  horizontal=True)
+        self.subwidgets['detail_skill_detail_encore_time'].layout.setStretch(0, 2)
+        self.subwidgets['detail_skill_detail_encore_time'].layout.setStretch(1, 1)
+        self.sublayouts['detail_skill_detail_encore'].addWidget(self.subwidgets['detail_skill_detail_encore_time'], 3)
+
+        self.subwidgets['detail_skill_detail_sparkle'] = QWidget()
+        self.sublayouts['detail_skill_detail_sparkle'] = QHBoxLayout(self.subwidgets['detail_skill_detail_sparkle'])
+        self.sublayouts['detail_skill_detail_sparkle'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_sparkle'])
+
+        self.subwidgets['detail_skill_detail_sparkle_life'] = QLabelTextLineWidget("Current life :", horizontal=True)
+        self.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].setSizePolicy(QSizePolicy.Preferred,
+                                                                                     QSizePolicy.Fixed)
+        self.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].setToolTip(
+            "Life Sparkle COMBO BONUS UP value can change while the skill is active.\n" +
+            "The default value shown here is the life value at the moment of skill activation.")
+        self.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].setReadOnly(False)
+        self.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].setValidator(QIntValidator(1, 2000, None))
+        self.subwidgets['detail_skill_detail_sparkle_life'].textbox[0].textEdited.connect(
+            lambda: self.chart_viewer.update_sparkle_value())
+        self.sublayouts['detail_skill_detail_sparkle'].addWidget(self.subwidgets['detail_skill_detail_sparkle_life'])
+
+        self.sublayouts['detail_skill_detail_sparkle'].addSpacing(12)
+
+        self.subwidgets['detail_skill_detail_sparkle_combo'] = QLabelTextLineWidget("Life Sparkle COMBO BONUS :",
+                                                                                    horizontal=True)
+        self.subwidgets['detail_skill_detail_sparkle_combo'].textbox[0].setSizePolicy(QSizePolicy.Preferred,
+                                                                                      QSizePolicy.Fixed)
+        self.sublayouts['detail_skill_detail_sparkle'].addWidget(self.subwidgets['detail_skill_detail_sparkle_combo'])
+
+        self.subwidgets['detail_skill_detail_motif'] = QWidget()
+        self.sublayouts['detail_skill_detail_motif'] = QHBoxLayout(self.subwidgets['detail_skill_detail_motif'])
+        self.sublayouts['detail_skill_detail_motif'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_motif'])
+
+        self.subwidgets['detail_skill_detail_motif_appeal'] = QLabelTextLineWidget("Appeal of the unit :",
+                                                                                   horizontal=True)
+        self.subwidgets['detail_skill_detail_motif_appeal'].textbox[0].setSizePolicy(QSizePolicy.Preferred,
+                                                                                     QSizePolicy.Fixed)
+        self.subwidgets['detail_skill_detail_motif_appeal'].textbox[0].setReadOnly(False)
+        self.subwidgets['detail_skill_detail_motif_appeal'].textbox[0].setValidator(QIntValidator(0, 99999, None))
+        self.subwidgets['detail_skill_detail_motif_appeal'].textbox[0].textEdited.connect(
+            lambda: self.chart_viewer.update_motif_value())
+        self.sublayouts['detail_skill_detail_motif'].addWidget(self.subwidgets['detail_skill_detail_motif_appeal'])
+
+        self.sublayouts['detail_skill_detail_motif'].addSpacing(12)
+
+        self.subwidgets['detail_skill_detail_motif_score'] = QLabelTextLineWidget("Motif SCORE UP :", horizontal=True)
+        self.subwidgets['detail_skill_detail_motif_score'].textbox[0].setSizePolicy(QSizePolicy.Preferred,
+                                                                                    QSizePolicy.Fixed)
+        self.sublayouts['detail_skill_detail_motif'].addWidget(self.subwidgets['detail_skill_detail_motif_score'])
+
+        self.subwidgets['detail_skill_detail_alt'] = QWidget()
+        self.sublayouts['detail_skill_detail_alt'] = QHBoxLayout(self.subwidgets['detail_skill_detail_alt'])
+        self.sublayouts['detail_skill_detail_alt'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_alt'])
+
+        self.subwidgets['detail_skill_detail_alt_tap'] = QLabelTextLineWidget("TAP", box_num=3)
+        self.sublayouts['detail_skill_detail_alt'].addWidget(self.subwidgets['detail_skill_detail_alt_tap'])
+
+        self.subwidgets['detail_skill_detail_alt_long'] = QLabelTextLineWidget("LONG", box_num=3)
+        self.sublayouts['detail_skill_detail_alt'].addWidget(self.subwidgets['detail_skill_detail_alt_long'])
+
+        self.subwidgets['detail_skill_detail_alt_flick'] = QLabelTextLineWidget("FLICK", box_num=3)
+        self.sublayouts['detail_skill_detail_alt'].addWidget(self.subwidgets['detail_skill_detail_alt_flick'])
+
+        self.subwidgets['detail_skill_detail_alt_slide'] = QLabelTextLineWidget("SLIDE", box_num=3)
+        self.sublayouts['detail_skill_detail_alt'].addWidget(self.subwidgets['detail_skill_detail_alt_slide'])
+
+        self.subwidgets['detail_skill_detail_alt_great'] = QLabelTextLineWidget("GREAT", box_num=3)
+        self.sublayouts['detail_skill_detail_alt'].addWidget(self.subwidgets['detail_skill_detail_alt_great'])
+
+        self.subwidgets['detail_skill_detail_ref'] = QWidget()
+        self.sublayouts['detail_skill_detail_ref'] = QHBoxLayout(self.subwidgets['detail_skill_detail_ref'])
+        self.sublayouts['detail_skill_detail_ref'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_ref'])
+
+        self.subwidgets['detail_skill_detail_ref_tap'] = QLabelTextLineWidget("TAP", box_num=3)
+        self.sublayouts['detail_skill_detail_ref'].addWidget(self.subwidgets['detail_skill_detail_ref_tap'])
+
+        self.subwidgets['detail_skill_detail_ref_long'] = QLabelTextLineWidget("LONG", box_num=3)
+        self.sublayouts['detail_skill_detail_ref'].addWidget(self.subwidgets['detail_skill_detail_ref_long'])
+
+        self.subwidgets['detail_skill_detail_ref_flick'] = QLabelTextLineWidget("FLICK", box_num=3)
+        self.sublayouts['detail_skill_detail_ref'].addWidget(self.subwidgets['detail_skill_detail_ref_flick'])
+
+        self.subwidgets['detail_skill_detail_ref_slide'] = QLabelTextLineWidget("SLIDE", box_num=3)
+        self.sublayouts['detail_skill_detail_ref'].addWidget(self.subwidgets['detail_skill_detail_ref_slide'])
+
+        self.subwidgets['detail_skill_detail_ref_great'] = QLabelTextLineWidget("GREAT", box_num=3)
+        self.sublayouts['detail_skill_detail_ref'].addWidget(self.subwidgets['detail_skill_detail_ref_great'])
+
+        self.subwidgets['detail_skill_detail_ref_combo'] = QLabelTextLineWidget("COMBO", box_num=3)
+        self.sublayouts['detail_skill_detail_ref'].addWidget(self.subwidgets['detail_skill_detail_ref_combo'])
+
+        self.subwidgets['detail_skill_detail_magic'] = QWidget()
+        self.sublayouts['detail_skill_detail_magic'] = QVBoxLayout(self.subwidgets['detail_skill_detail_magic'])
+        self.sublayouts['detail_skill_detail_magic'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_magic'])
+
+        self.sublayouts['detail_skill_detail_magic_score'] = QHBoxLayout()
+        self.sublayouts['detail_skill_detail_magic'].addLayout(self.sublayouts['detail_skill_detail_magic_score'])
+
+        self.subwidgets['detail_skill_detail_magic_score_tap'] = QLabelTextLineWidget("TAP")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_tap'])
+
+        self.subwidgets['detail_skill_detail_magic_score_long'] = QLabelTextLineWidget("LONG")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_long'])
+
+        self.subwidgets['detail_skill_detail_magic_score_flick'] = QLabelTextLineWidget("FLICK")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_flick'])
+
+        self.subwidgets['detail_skill_detail_magic_score_slide'] = QLabelTextLineWidget("SLIDE")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_slide'])
+
+        self.subwidgets['detail_skill_detail_magic_score_great'] = QLabelTextLineWidget("GREAT")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_great'])
+
+        self.subwidgets['detail_skill_detail_magic_score_combo'] = QLabelTextLineWidget("COMBO")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_combo'])
+
+        self.subwidgets['detail_skill_detail_magic_score_life'] = QLabelTextLineWidget("LIFE")
+        self.subwidgets['detail_skill_detail_magic_score_life'].textbox[0].setToolTip(
+            "Life consumed on skill activation / Life recovered on PERFECT note")
+        self.sublayouts['detail_skill_detail_magic_score'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_score_life'])
+
+        self.sublayouts['detail_skill_detail_magic'].addSpacing(8)
+
+        self.sublayouts['detail_skill_detail_magic_middle'] = QHBoxLayout()
+        self.sublayouts['detail_skill_detail_magic'].addLayout(self.sublayouts['detail_skill_detail_magic_middle'])
+
+        self.sublayouts['detail_skill_detail_magic_middle_support'] = QVBoxLayout()
+        self.sublayouts['detail_skill_detail_magic_middle'].addLayout(
+            self.sublayouts['detail_skill_detail_magic_middle_support'])
+
+        self.subwidgets['detail_skill_detail_magic_middle_support_perfect'] = QLabelTextLineWidget("PERFECT SUPPORT")
+        self.sublayouts['detail_skill_detail_magic_middle_support'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_middle_support_perfect'])
+
+        self.sublayouts['detail_skill_detail_magic_middle_support'].addSpacing(4)
+
+        self.subwidgets['detail_skill_detail_magic_middle_support_combo'] = QLabelTextLineWidget("COMBO SUPPORT")
+        self.sublayouts['detail_skill_detail_magic_middle_support'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_middle_support_combo'])
+
+        self.sublayouts['detail_skill_detail_magic_middle'].addSpacing(8)
+
+        self.subwidgets['detail_skill_detail_magic_middle_boost'] = QLabelTextGridWidget(["CUTE", "COOL", "PASSION"],
+                                                                                         ["SCORE", "COMBO", "LIFE",
+                                                                                          "SUPPORT"])
+        self.sublayouts['detail_skill_detail_magic_middle'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_middle_boost'])
+
+        self.sublayouts['detail_skill_detail_magic'].addSpacing(8)
+
+        self.sublayouts['detail_skill_detail_magic_misc'] = QHBoxLayout()
+        self.sublayouts['detail_skill_detail_magic'].addLayout(self.sublayouts['detail_skill_detail_magic_misc'])
+
+        self.subwidgets['detail_skill_detail_magic_misc_guard'] = QCheckBoxReadOnly("Prevent life decrease")
+        self.subwidgets['detail_skill_detail_magic_misc_guard'].setStyleSheet("margin-left:50%; margin-right:50%;")
+        self.sublayouts['detail_skill_detail_magic_misc'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_misc_guard'])
+
+        self.subwidgets['detail_skill_detail_magic_misc_concentration'] = QCheckBoxReadOnly(
+            "Halve PERFECT timing window")
+        self.subwidgets['detail_skill_detail_magic_misc_concentration'].setStyleSheet(
+            "margin-left:10%; margin-right:10%;")
+        self.sublayouts['detail_skill_detail_magic_misc'].addWidget(
+            self.subwidgets['detail_skill_detail_magic_misc_concentration'])
+
+        self.subwidgets['detail_skill_detail_mut'] = QWidget()
+        self.sublayouts['detail_skill_detail_mut'] = QHBoxLayout(self.subwidgets['detail_skill_detail_mut'])
+        self.sublayouts['detail_skill_detail_mut'].setContentsMargins(0, 6, 0, 0)
+        self.subwidgets['detail_skill_detail'].addWidget(self.subwidgets['detail_skill_detail_mut'])
+
+        self.subwidgets['detail_skill_detail_mut_combo'] = QLabelTextLineWidget("COMBO BONUS", box_num=3,
+                                                                                horizontal=True)
+        self.sublayouts['detail_skill_detail_mut'].addWidget(self.subwidgets['detail_skill_detail_mut_combo'])
+
+        resize_stacked_widget(self.subwidgets['detail_skill_detail'], 0)
+
+        self.subwidgets['detail_skill_inactivation'] = QStackedWidget()
+        self.subwidgets['detail_skill_inactivation'].setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.sublayouts['detail_skill'].addWidget(self.subwidgets['detail_skill_inactivation'])
+
+        self.subwidgets['detail_skill_inactivation'].addWidget(QWidget())
+        self.subwidgets['detail_skill_inactivation'].setCurrentIndex(0)
+
+        self.subwidgets['detail_skill_inactivation_detail'] = QLabelTextLineWidget(
+            "[！] This skill does not activate because of the following reason:")
+        self.subwidgets['detail_skill_inactivation'].addWidget(self.subwidgets['detail_skill_inactivation_detail'])
+
+        resize_stacked_widget(self.subwidgets['detail_skill_inactivation'], 0)
+
+        resize_stacked_widget(self.subwidgets['detail'], 0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        delta = event.oldSize().height() - self.height()
+        chart_widget = self.chart_viewer.chart_widget
+        chart_widget.verticalScrollBar().setValue(chart_widget.verticalScrollBar().value() - delta)
+
+
+class QLineReadOnly(QLineEdit):
+    def __init__(self, halign=Qt.AlignHCenter, *args):
+        super().__init__(*args)
+
+        self.setReadOnly(True)
+        self.setAlignment(halign)
+        self.setCursorPosition(0)
+
+
+class QLabelTextLineWidget(QWidget):
+    def __init__(self, label_text: str, halign=Qt.AlignHCenter, box_num: int = 1, horizontal: bool = False, *args):
+        super().__init__(*args)
+
+        self.layout = QVBoxLayout(self) if not horizontal else QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+
+        self.label = QLabel(label_text)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.layout.addWidget(self.label)
+
+        self.textbox = list()
+        self._setup_textbox(halign, box_num)
+
+    def _setup_textbox(self, halign, box_num: int):
+        for i in range(box_num):
+            self.textbox.append(QLineReadOnly(halign=halign))
+            self.layout.addWidget(self.textbox[i])
+
+
+class QLabelTextBoxWidget(QLabelTextLineWidget):
+    def _setup_textbox(self, halign, box_num: int):
+        for i in range(box_num):
+            self.textbox.append(QTextEdit())
+            self.textbox[i].setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.textbox[i].setReadOnly(True)
+            self.textbox[i].setAlignment(Qt.AlignCenter)
+            self.layout.addWidget(self.textbox[i])
+
+
+class QLabelTextGridWidget(QWidget):
+    def __init__(self, row_label: List[str], column_label: List[str], *args):
+        super().__init__(*args)
+
+        self.layout = QGridLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+
+        self._setup_label(row_label, True)
+        self._setup_label(column_label, False)
+
+        self.textbox = [[]]
+        self._setup_textbox()
+
+    def _setup_label(self, labels: List[str], is_row: bool = True):
+        for index, text in enumerate(labels):
+            label_widget = QLabel(text)
+            label_widget.setAlignment(Qt.AlignCenter)
+            if is_row:
+                self.layout.addWidget(label_widget, index + 1, 0)
+            else:
+                self.layout.addWidget(label_widget, 0, index + 1)
+
+    def _setup_textbox(self):
+        row_count = self.layout.rowCount()
+        column_count = self.layout.columnCount()
+        for row in range(1, row_count):
+            self.textbox.append([None])
+            for column in range(1, column_count):
+                self.textbox[row].append(QLineReadOnly())
+                self.layout.addWidget(self.textbox[row][column], row, column)
+
+
+class QCheckBoxReadOnly(QCheckBox):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setFocusPolicy(Qt.NoFocus)
+
+
+def set_stacked_widget_index(widget: QStackedWidget, idx: int):
+    resize_stacked_widget(widget, idx)
+    widget.setCurrentIndex(idx)
+    if idx == 0:
+        widget.hide()
+    else:
+        widget.show()
+
+
+def resize_stacked_widget(widget: QStackedWidget, idx: int):
+    for i in range(widget.count()):
+        if i == idx:
+            widget.widget(i).setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        else:
+            widget.widget(i).setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+
+def get_song_info_from_id(song_id: int, diff: Difficulty) -> Tuple[str, str, str, str]:
+    data = db.cachedb.execute_and_fetchone("""
+                SELECT  name,
+                        level,
+                        CAST(Tap + Long + Flick + Slide AS INTEGER)
+                FROM live_detail_cache WHERE live_id = ? AND difficulty = ?
+            """, [song_id, diff.value])
+    diff_text = db.cachedb.execute_and_fetchone("SELECT text FROM difficulty_text WHERE id = ?", [diff.value])
+    return data[0], diff_text[0], data[1], data[2]
+
+
+def dict_have_nonzero(d: dict) -> bool:
+    return len(d) == 0 or not any(d.values())

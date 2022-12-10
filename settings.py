@@ -1,5 +1,8 @@
+import datetime
+
 from chihiro import ROOT_DIR
-import platform
+
+UPDATE_DATE = datetime.date(2022, 12, 8)
 
 LOGGER_NAME = "chihiro"
 LOG_DIR = ROOT_DIR / "logs"
@@ -21,11 +24,6 @@ PROFILE_PATH = DATA_PATH / "profiles"
 
 STATIC_PATH = ROOT_DIR
 TOOL_EXE = STATIC_PATH / "tool.exe"
-if platform.system() == "Darwin": # Mac
-    TOOL_EXE = STATIC_PATH / "tool_mac"
-elif platform.system() == "Linux": # Mac
-    TOOL_EXE = STATIC_PATH / "tool_linux"
-
 TEMP_PATH = STATIC_PATH / "temppp"
 
 RHYTHM_ICONS_PATH = ROOT_DIR / "img"

@@ -1,4 +1,9 @@
-from PyQt5.QtWidgets import QTableWidget, QAbstractItemView
+from __future__ import annotations
+
+from typing import Union, Optional, List, Tuple
+
+from PyQt5.QtWidgets import QTableWidget, QAbstractItemView, QHeaderView, QWidget
+from numpy import ndarray
 
 from exceptions import InvalidUnit
 from gui.events.calculator_view_events import SetSupportCardsEvent, RequestSupportTeamEvent, SupportTeamSetMusicEvent
@@ -8,15 +13,20 @@ from gui.events.utils.eventbus import subscribe
 from gui.events.value_accessor_events import GetCustomPotsEvent, GetCustomBonusEvent, GetGrooveSongColor
 from gui.viewmodels.simulator.calculator import CardsWithUnitUuidAndExtraData
 from gui.viewmodels.utils import NumericalTableWidgetItem, ImageWidget
+from logic.card import Card
 from logic.grandlive import GrandLive
 from logic.grandunit import GrandUnit
 from logic.live import Live
 from logic.unit import Unit
 from settings import IMAGE_PATH64
+from static.song_difficulty import Difficulty
 
 
 class SupportView:
-    def __init__(self, main):
+    widget: QTableWidget
+    model: SupportModel
+
+    def __init__(self, main: QWidget):
         self.widget = QTableWidget(main)
         self.widget.setSelectionMode(QAbstractItemView.NoSelection)
         self.widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -24,17 +34,17 @@ class SupportView:
         self.widget.verticalHeader().setVisible(False)
         self.widget.setRowCount(10)
         self.widget.setColumnCount(5)
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
         self.widget.setColumnWidth(0, 72)
-        self.widget.horizontalHeader().setSectionResizeMode(1)
-        self.widget.horizontalHeader().setSectionResizeMode(0, 2)  # Not allow change icon column size
+        self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)  # Not allow change icon column size
         self.widget.setHorizontalHeaderLabels(["", "Vocal", "Dance", "Visual", "Total"])
         self.widget.verticalHeader().setDefaultSectionSize(72)
 
-    def set_model(self, model):
+    def set_model(self, model: SupportModel):
         self.model = model
 
-    def display_support(self, support):
+    def display_support(self, support: ndarray):
         support[:, [2, 3]] = support[:, [3, 2]]
         for r in range(len(support)):
             card_id = support[r][0]
@@ -45,19 +55,22 @@ class SupportView:
 
 
 class SupportModel:
-    extended_cards_data: CardsWithUnitUuidAndExtraData
+    view: SupportView
+    live: Union[Live, GrandLive]
+    music: Optional[Tuple[int, Difficulty]]
+    cards: List[Optional[Card]]
+    extended_cards_data: Optional[CardsWithUnitUuidAndExtraData]
 
-    def __init__(self, view):
+    def __init__(self, view: SupportView):
         self.view = view
         self.live = Live()
         self.music = None
-        self.card_ids = None
         self.cards = list()
         self.extended_cards_data = None
         eventbus.eventbus.register(self)
 
     @subscribe(SetSupportCardsEvent)
-    def set_cards(self, event: SetSupportCardsEvent):
+    def set_cards(self, event: SetSupportCardsEvent) -> bool:
         self.extended_cards_data = event.extended_cards_data
         self.cards = self.extended_cards_data.cards
         try:
@@ -78,17 +91,18 @@ class SupportModel:
         return True
 
     @subscribe(SupportTeamSetMusicEvent)
-    def set_music(self, event):
+    def set_music(self, event: SupportTeamSetMusicEvent):
         score_id = event.score_id
         difficulty = event.difficulty
         self.live.set_music(score_id=score_id, difficulty=difficulty, skip_load_notes=True)
         self.music = (score_id, difficulty)
 
     @subscribe(RequestSupportTeamEvent)
-    def generate_support(self, event):
+    def generate_support(self, event) -> Optional[Tuple[int, int, int]]:
         if self.live.unit is None:
             return
-        if self.extended_cards_data.lock_chart and self.extended_cards_data is not None and self.extended_cards_data.score_id is not None:
+        if self.extended_cards_data.lock_chart and self.extended_cards_data is not None \
+                and self.extended_cards_data.score_id is not None:
             self.live.set_music(score_id=self.extended_cards_data.score_id, difficulty=self.extended_cards_data.diff_id)
         else:
             if self.music is not None:
@@ -112,5 +126,5 @@ class SupportModel:
         return self.live.get_appeals(), self.live.get_support(), self.live.get_life()
 
     @subscribe(GetSupportLiveObjectEvent)
-    def get_support_live_object(self, event):
+    def get_support_live_object(self, event) -> Union[Live, GrandLive]:
         return self.live

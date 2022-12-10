@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import itertools
+from typing import TYPE_CHECKING, Union, cast, List, Tuple
 
 from PyQt5.QtCore import QSize, Qt, QMimeData
 from PyQt5.QtGui import QDrag
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QApplication, QSizePolicy, QTableWidgetItem
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QApplication, QSizePolicy, QTableWidgetItem, QWidget
 
 import customlogger as logger
 from gui.events.calculator_view_events import AddEmptyUnitEvent, TurnOffRunningLabelFromUuidGrandEvent
@@ -12,13 +15,21 @@ from gui.viewmodels.simulator.calculator import CalculatorView, CalculatorModel,
     CalculatorUnitWidgetWithExtraData
 from gui.viewmodels.unit import UnitCard
 from gui.viewmodels.utils import UniversalUniqueIdentifiable
+from logic.card import Card
 from settings import IMAGE_PATH32
+
+if TYPE_CHECKING:
+    from gui.viewmodels.simulator.wide_smart import MainView
 
 
 class GrandCalculatorUnitWidget(CalculatorUnitWidgetWithExtraData, UniversalUniqueIdentifiable):
-    def __init__(self, unit_view, parent=None, size=32, *args, **kwargs):
+    unit_view: GrandCalculatorView
+    vertical_layout: QVBoxLayout
+    card_layouts: List[QHBoxLayout]
+
+    def __init__(self, unit_view: GrandCalculatorView, parent: QWidget = None, size: int = 32, *args, **kwargs):
         super().__init__(unit_view, parent, size, *args, **kwargs)
-        del self.unitName
+        del self.unit_name
 
         self.unit_view = unit_view
 
@@ -34,17 +45,17 @@ class GrandCalculatorUnitWidget(CalculatorUnitWidgetWithExtraData, UniversalUniq
             self.cards.append(card)
         self.path = IMAGE_PATH32
 
-        self.verticalLayout = QVBoxLayout()
-        self.cardLayouts = [QHBoxLayout(), QHBoxLayout(), QHBoxLayout()]
+        self.vertical_layout = QVBoxLayout()
+        self.card_layouts = [QHBoxLayout(), QHBoxLayout(), QHBoxLayout()]
 
         for idx, card in enumerate(self.cards):
             card.setMinimumSize(QSize(self.icon_size + 2, self.icon_size + 2))
-            self.cardLayouts[idx // 5].addWidget(card)
-        for card_layout in self.cardLayouts:
-            self.verticalLayout.addLayout(card_layout)
+            self.card_layouts[idx // 5].addWidget(card)
+        for card_layout in self.card_layouts:
+            self.vertical_layout.addLayout(card_layout)
 
         self.card_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_widget.setLayout(self.verticalLayout)
+        self.card_widget.setLayout(self.vertical_layout)
 
     def permute_units(self):
         self.unit_view.permute_units()
@@ -54,7 +65,7 @@ class GrandCalculatorUnitWidget(CalculatorUnitWidgetWithExtraData, UniversalUniq
 
 
 class GrandCalculatorTableWidget(DroppableCalculatorWidget):
-    def __init__(self, calculator_view, *args, **kwargs):
+    def __init__(self, calculator_view: GrandCalculatorView, *args, **kwargs):
         super(GrandCalculatorTableWidget, self).__init__(calculator_view, *args, **kwargs)
 
     def mouseMoveEvent(self, event):
@@ -74,14 +85,14 @@ class GrandCalculatorTableWidget(DroppableCalculatorWidget):
 
 
 class GrandCalculatorView(CalculatorView):
-    def __init__(self, main, main_view):
+    def __init__(self, main: QWidget, main_view: MainView):
         super().__init__(main, main_view)
         self.widget.verticalHeader().setDefaultSectionSize(120)
 
-    def initialize_widget(self, main):
+    def initialize_widget(self, main: QWidget):
         self.widget = GrandCalculatorTableWidget(self, main)
 
-    def set_unit(self, cards, unit, row=None):
+    def set_unit(self, cards: List[Union[int, Card, None]], row: int = None, unit: int = 0):
         if row is None:
             row = self.widget.rowCount() - 1
         for idx, card in enumerate(cards):
@@ -91,7 +102,7 @@ class GrandCalculatorView(CalculatorView):
         logger.info("Unit insert: {} - {} row {}".format(self.widget.cellWidget(row, 0).get_short_uuid(),
                                                          " ".join(map(str, cards)), row))
 
-    def insert_unit(self):
+    def insert_unit(self, **kwargs):
         self.widget.insertRow(self.widget.rowCount())
         self.widget.setVerticalHeaderItem(self.widget.rowCount() - 1, QTableWidgetItem(""))
         self.widget.verticalHeader().setFixedWidth(25)
@@ -100,7 +111,7 @@ class GrandCalculatorView(CalculatorView):
         logger.debug("Inserted empty unit at {}".format(self.widget.rowCount()))
         self.widget.setColumnWidth(0, 40 * 6)
 
-    def add_unit(self, cards):
+    def add_unit(self, cards: List[Union[int, Card, None]]):
         if len(cards) == 6:
             cards = cards[:5]
         if len(cards) == 15:
@@ -108,20 +119,20 @@ class GrandCalculatorView(CalculatorView):
             for r in range(self.widget.rowCount()):
                 if self.widget.cellWidget(r, 0).card_ids == [None] * 15:
                     logger.debug("Empty calculator unit at row {}".format(r))
-                    self.set_unit(row=r, unit=0, cards=cards)
+                    self.set_unit(cards=cards, row=r, unit=0)
                     return
             self.model.add_empty_unit(AddEmptyUnitEvent(self.model))
-            self.set_unit(row=self.widget.rowCount() - 1, unit=0, cards=cards)
+            self.set_unit(cards=cards, row=self.widget.rowCount() - 1, unit=0)
             return
         for r in range(self.widget.rowCount()):
             card_ids = self.widget.cellWidget(r, 0).card_ids
             for u_id in range(3):
                 if card_ids[u_id * 5: (u_id + 1) * 5] == [None] * 5:
                     logger.debug("Empty calculator unit at row {}.{}".format(r, u_id))
-                    self.set_unit(row=r, unit=u_id, cards=cards)
+                    self.set_unit(cards=cards, row=r, unit=u_id)
                     return
         self.model.add_empty_unit(AddEmptyUnitEvent(self.model))
-        self.set_unit(row=self.widget.rowCount() - 1, unit=0, cards=cards)
+        self.set_unit(cards=cards, row=self.widget.rowCount() - 1, unit=0)
 
     def permute_units(self):
         n = self.widget.rowCount()
@@ -138,7 +149,7 @@ class GrandCalculatorView(CalculatorView):
             all_units_card_ids.append(units)
         for zipped in all_units:
             for permutation in itertools.permutations(zipped, 3):
-                permutation = list(permutation)
+                permutation = cast(List[Tuple[List[int], List[Union[Card, None]]]], list(permutation))
                 unit_card_ids = [_[0] for _ in permutation]
                 unit_internal = permutation[0][1] + permutation[1][1] + permutation[2][1]
                 for idx, _ in enumerate(unit_internal):
@@ -150,9 +161,8 @@ class GrandCalculatorView(CalculatorView):
 
 
 class GrandCalculatorModel(CalculatorModel):
-    
     @subscribe(TurnOffRunningLabelFromUuidGrandEvent)
-    def turn_off_running_label_from_uuid_grand(self, event):
+    def turn_off_running_label_from_uuid_grand(self, event: TurnOffRunningLabelFromUuidGrandEvent):
         row_to_change = self.get_row_from_uuid(event.uuid)
         if row_to_change == -1:
             return

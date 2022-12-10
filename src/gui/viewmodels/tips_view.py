@@ -13,5 +13,5 @@ class TipView(QLabel):
         start_tip_refresher_service()
 
     @subscribe(SetTipTextEvent)
-    def set_text(self, event):
+    def set_text(self, event: SetTipTextEvent):
         self.setText(event.text)
