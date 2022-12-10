@@ -1,12 +1,16 @@
+from __future__ import annotations
+
+from typing import Any, Optional, List, Dict, Tuple
+
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import Qt, QMimeData
+from PyQt5.QtCore import Qt, QMimeData, QPoint, QModelIndex
 from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import QTableWidget, QAbstractItemView, QTableWidgetItem, QApplication
 
 import customlogger as logger
 from db import db
 from gui.events.calculator_view_events import RequestSupportTeamEvent, SupportTeamSetMusicEvent
-from gui.events.chart_viewer_events import SendMusicEvent, PopupChartViewerEvent
+from gui.events.chart_viewer_events import SendMusicEvent
 from gui.events.song_view_events import GetSongDetailsEvent
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
@@ -15,10 +19,20 @@ from gui.viewmodels.utils import NumericalTableWidgetItem
 from static.color import Color
 from static.song_difficulty import Difficulty
 
+DATA_COLS = ["LDID", "LiveID", "DifficultyInt", "ID", "Name", "Color", "Difficulty", "Level", "Duration (s)",
+                     "Note Count", "Tap", "Long", "Flick", "Slide", "Tap %", "Long %", "Flick %", "Slide %",
+                     "7h %", "9h %", "11h %", "12m %", "6m %", "7m %", "9m %", "11m %", "13h %"]
+
 
 class SongViewWidget(QTableWidget):
-    def __init__(self, main, song_view, *args, **kwargs):
-        super(SongViewWidget, self).__init__(main, *args, **kwargs)
+    main: QtWidgets.QWidget
+    song_view: SongView
+
+    drag_start_position: QPoint
+    selected: List[QModelIndex]
+
+    def __init__(self, main: QtWidgets.QWidget, song_view: SongView):
+        super(SongViewWidget, self).__init__(main)
         self.song_view = song_view
 
     def mousePressEvent(self, event):
@@ -56,12 +70,16 @@ class SongViewWidget(QTableWidget):
         if event.key() == Qt.Key_Shift:
             self.song_view.shifting = False
 
+
 class SongView:
-    def __init__(self, main):
+    widget: SongViewWidget
+    model: SongModel
+
+    def __init__(self, main: QtWidgets.QWidget):
         self.widget = SongViewWidget(main, self)
         self.widget.setEditTriggers(QAbstractItemView.NoEditTriggers)  # Disable edit
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
-        self.widget.setHorizontalScrollMode(1)  # Smooth scroll
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
+        self.widget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
         self.widget.verticalHeader().setVisible(False)
         self.widget.setSortingEnabled(True)
         self.widget.setDragEnabled(True)
@@ -69,18 +87,16 @@ class SongView:
         self.widget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.widget.setToolTip("Right click to toggle note types between number and percentage.\n"
                                "Shift-right click to toggle timer percentages.")
-        self.model = False
         self.percentage = False
         self.timers = False
         self.shifting = False
         self.chart_viewer = None
 
-    def set_model(self, model):
+    def set_model(self, model: SongModel):
         self.model = model
         self.widget.cellClicked.connect(lambda r, _: self.model.ping_support(r))
-        self.widget.cellDoubleClicked.connect(lambda r, _: self.model.popup_and_load_chart(r))
 
-    def show_only_ids(self, live_detail_ids):
+    def show_only_ids(self, live_detail_ids: List[int]):
         if not live_detail_ids:
             live_detail_ids = set()
         else:
@@ -91,10 +107,7 @@ class SongView:
             else:
                 self.widget.setRowHidden(r_idx, True)
 
-    def load_data(self, data):
-        DATA_COLS = ["LDID", "LiveID", "DifficultyInt", "ID", "Name", "Color", "Difficulty", "Level", "Duration (s)",
-                     "Note Count", "Tap", "Long", "Flick", "Slide", "Tap %", "Long %", "Flick %", "Slide %",
-                     "7h %", "9h %", "11h %", "12m %", "6m %", "9m %", "11m %", "13h %"]
+    def load_data(self, data: List[Dict[str, Any]]):
         self.widget.setColumnCount(len(DATA_COLS))
         self.widget.setRowCount(len(data))
         self.widget.setHorizontalHeaderLabels(DATA_COLS)
@@ -117,17 +130,17 @@ class SongView:
         self.toggle_timers(change=False)
         self.toggle_auto_resize(True)
 
-    def toggle_timers(self, change=True):
+    def toggle_timers(self, change: bool = True):
         if change:
             self.timers = not self.timers
         if self.timers:
-            for r_idx in range(18, 26):
+            for r_idx in range(18, 27):
                 self.widget.setColumnHidden(r_idx, False)
         else:
-            for r_idx in range(18, 26):
+            for r_idx in range(18, 27):
                 self.widget.setColumnHidden(r_idx, True)
 
-    def toggle_percentage(self, change=True):
+    def toggle_percentage(self, change: bool = True):
         if change:
             self.percentage = not self.percentage
         if not self.percentage:
@@ -141,7 +154,7 @@ class SongView:
             for r_idx in range(10, 14):
                 self.widget.setColumnHidden(r_idx, True)
 
-    def toggle_auto_resize(self, on=False):
+    def toggle_auto_resize(self, on: bool = False):
         if on:
             self.widget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
             size = self.widget.horizontalHeader().sectionSize(4)
@@ -152,8 +165,9 @@ class SongView:
 
 
 class SongModel:
+    view: SongView
 
-    def __init__(self, view):
+    def __init__(self, view: SongView):
         assert isinstance(view, SongView)
         self.view = view
         eventbus.eventbus.register(self)
@@ -183,7 +197,8 @@ class SongModel:
                             ldc.Timer_11h as Timer11h,
                             ldc.Timer_12m as Timer12m,
                             ldc.Timer_6m as Timer6m,
-                            ldc.Timer_9m as Timer9m, 
+                            ldc.Timer_7m as Timer7m,
+                            ldc.Timer_9m as Timer9m,
                             ldc.Timer_11m as Timer11m,
                             ldc.Timer_13h as Timer13h
                     FROM live_detail_cache as ldc
@@ -205,7 +220,7 @@ class SongModel:
         data = [
             _ for _ in data if _['DifficultyInt'] != 5 or _['LiveID'] not in to_be_hidden
         ]
-        timers = ['7h', '9h', '11h', '12m', '6m', '9m', '11m', '13h']
+        timers = ['7h', '9h', '11h', '12m', '6m', '7m', '9m', '11m', '13h']
         for _ in data:
             _['Color'] = Color(_['Color'] - 1).name
             _['Difficulty'] = Difficulty(_['Difficulty']).name
@@ -220,7 +235,7 @@ class SongModel:
         self.view.load_data(data)
 
     @subscribe(GetSongDetailsEvent)
-    def get_song(self, event=None):
+    def get_song(self, event=None) -> Tuple[Optional[int], Optional[int], Optional[int], Optional[str], Optional[str]]:
         row_idx = self.view.widget.selectionModel().currentIndex().row()
         if row_idx == -1:
             return None, None, None, None, None
@@ -228,17 +243,11 @@ class SongModel:
         score_id = int(self.view.widget.item(row_idx, 1).text())
         diff_id = int(self.view.widget.item(row_idx, 2).text())
         return score_id, diff_id, live_detail_id, \
-               self.view.widget.item(row_idx, 4).text(), self.view.widget.item(row_idx, 6).text()
+            self.view.widget.item(row_idx, 4).text(), self.view.widget.item(row_idx, 6).text()
 
-    def ping_support(self, r):
+    def ping_support(self, r: int):
         song_id = int(self.view.widget.item(r, 1).text())
-        difficulty = int(self.view.widget.item(r, 2).text())
+        difficulty = Difficulty(int(self.view.widget.item(r, 2).text()))
         eventbus.eventbus.post(SendMusicEvent(song_id, difficulty))
         eventbus.eventbus.post(SupportTeamSetMusicEvent(song_id, difficulty))
         eventbus.eventbus.post(RequestSupportTeamEvent())
-
-    def popup_and_load_chart(self, r):
-        eventbus.eventbus.post(PopupChartViewerEvent())
-        song_id = int(self.view.widget.item(r, 1).text())
-        difficulty = int(self.view.widget.item(r, 2).text())
-        eventbus.eventbus.post(SendMusicEvent(song_id, difficulty))

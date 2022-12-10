@@ -1,16 +1,24 @@
+from __future__ import annotations
+
+from typing import Dict
+
 from PyQt5.QtCore import QSize, Qt
-from PyQt5.QtWidgets import QCheckBox, QLineEdit, QApplication
+from PyQt5.QtWidgets import QCheckBox, QLineEdit, QApplication, QWidget, QLayout
 
 import customlogger as logger
 from gui.events.quicksearch_events import PushCardIndexEvent, ToggleQuickSearchOptionEvent
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
+from gui.viewmodels.card import CardView
+from gui.viewmodels.song import SongView
 from logic.search import search_engine
 
 
 class ShortcutQuickSearchWidget(QLineEdit):
     def __init__(self, parent, *__args):
         super().__init__(parent, *__args)
+
+        self.model_id = 0
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -27,10 +35,10 @@ class ShortcutQuickSearchWidget(QLineEdit):
             Qt.Key_0: 9
         }
         if QApplication.keyboardModifiers() == Qt.AltModifier and key in match_dict:
-            eventbus.eventbus.post(PushCardIndexEvent(match_dict[key], False))
+            eventbus.eventbus.post(PushCardIndexEvent(match_dict[key], False, self.model_id))
             return
         if QApplication.keyboardModifiers() == Qt.ControlModifier and key in match_dict:
-            eventbus.eventbus.post(PushCardIndexEvent(match_dict[key], True))
+            eventbus.eventbus.post(PushCardIndexEvent(match_dict[key], True, self.model_id))
             return
         if QApplication.keyboardModifiers() == (Qt.ControlModifier | Qt.ShiftModifier) and key == Qt.Key_Q:
             eventbus.eventbus.post(ToggleQuickSearchOptionEvent("ssr"))
@@ -48,16 +56,21 @@ class ShortcutQuickSearchWidget(QLineEdit):
 
 
 class QuickSearchView:
-    def __init__(self, main):
+    widget: ShortcutQuickSearchWidget
+    model: QuickSearchModel
+
+    def __init__(self, main: QWidget):
         self.widget = ShortcutQuickSearchWidget(main)
         self.widget.setPlaceholderText("Search for card")
         self.widget.setMaximumSize(QSize(2000, 25))
-        self.model = None
 
-    def set_model(self, model):
+    def set_model(self, model: QuickSearchModel):
         assert isinstance(model, QuickSearchModel)
         self.model = model
         self.widget.textChanged.connect(lambda: self.trigger())
+
+    def set_model_id(self, model_id: int):
+        self.widget.model_id = model_id
 
     def trigger(self):
         self.model.call_searchengine(self.widget.text().strip())
@@ -67,13 +80,17 @@ class QuickSearchView:
 
 
 class QuickSearchModel:
-    def __init__(self, view, card_view):
+    view: QuickSearchView
+    card_view: CardView
+    options: Dict[str, QCheckBox]
+
+    def __init__(self, view: QuickSearchView, card_view: CardView):
         self.view = view
-        self._card_view = card_view
+        self.card_view = card_view
         self.options = dict()
         eventbus.eventbus.register(self)
 
-    def call_searchengine(self, query):
+    def call_searchengine(self, query: str):
         if query == "" \
                 and not self.options["ssr"].isChecked() \
                 and not self.options["idolized"].isChecked() \
@@ -88,20 +105,20 @@ class QuickSearchModel:
         )
         logger.debug("Query: {}".format(query))
         logger.debug("Result: {}".format(card_ids))
-        self._card_view.show_only_ids(card_ids)
+        self.card_view.show_only_ids(card_ids)
 
-    def _add_option(self, option, option_text, parent_layout, main):
+    def _add_option(self, option: str, option_text: str, parent_layout: QLayout, main: QWidget):
         check_box = QCheckBox(main)
         check_box.setText(option_text)
-        trigger = lambda: self.call_searchengine(self.view.widget.text().strip())
-        check_box.stateChanged.connect(trigger)
+        check_box.stateChanged.connect(lambda: self.call_searchengine(self.view.widget.text().strip()))
         self.options[option] = check_box
         parent_layout.addWidget(check_box)
 
-    def add_options(self, parent_layout, main):
+    def add_options(self, parent_layout: QLayout, main: QWidget):
         for option, option_text in zip(
-                ["ssr", "idolized", "owned_only", "partial_match", "potential_stat"],
-                ["SSR only", "Idolized only", "Owned cards only", "Partial match", "Include potential stat"]):
+                ["ssr", "idolized", "owned_only", "partial_match", "potential_stat", "carnival"],
+                ["SSR only", "Idolized only", "Owned cards only", "Partial match",
+                 "Include potential stat", "Highlight Carnival Idols"]):
             self._add_option(option, option_text, parent_layout, main)
         self.options['ssr'].setToolTip("Only show SSR and SSR+.")
         self.options['idolized'].setToolTip("Only show N+, R+, SR+, and SSR+.")
@@ -109,14 +126,21 @@ class QuickSearchModel:
         self.options['partial_match'].setToolTip("This option might significantly increase query time!")
         self.options['potential_stat'].setToolTip("Add stats from idol potential.")
         self.options['partial_match'].setChecked(True)
-        self.options['potential_stat'].stateChanged.connect(lambda: self.toggle_potential(self.options['potential_stat'].isChecked()))
+        self.options['potential_stat'].stateChanged.connect(
+            lambda: self.toggle_potential(self.options['potential_stat'].isChecked()))
+        self.options['carnival'].stateChanged.connect(lambda _: self.card_view.model.highlight_event_cards(_))
 
     @subscribe(ToggleQuickSearchOptionEvent)
     def toggle_option(self, event: ToggleQuickSearchOptionEvent):
-        self.options[event.option].nextCheckState()
+        if type(self.options[event.option]) == QCheckBox:
+            self.options[event.option].nextCheckState()
 
-    def toggle_potential(self, potential):
-        self._card_view.model.initialize_cards(potential=potential)
+    def toggle_potential(self, potential: bool):
+        self.card_view.disconnect_cell_change()
+        self.card_view.model.set_potential_inclusion(potential)
+        self.card_view.model.initialize_cards(potential=potential)
+        self.call_searchengine(self.view.widget.text().strip())
+        self.card_view.connect_cell_change()
 
 
 class SongShortcutQuickSearchWidget(ShortcutQuickSearchWidget):
@@ -125,13 +149,15 @@ class SongShortcutQuickSearchWidget(ShortcutQuickSearchWidget):
 
 
 class SongQuickSearchView:
-    def __init__(self, main):
+    widget: SongShortcutQuickSearchWidget
+    model: SongQuickSearchModel
+
+    def __init__(self, main: QWidget):
         self.widget = SongShortcutQuickSearchWidget(main)
         self.widget.setMaximumSize(QSize(2000, 25))
         self.widget.setPlaceholderText("Search for song")
-        self.model = None
 
-    def set_model(self, model):
+    def set_model(self, model: SongQuickSearchModel):
         assert isinstance(model, SongQuickSearchModel)
         self.model = model
         self.widget.textChanged.connect(lambda: self.trigger())
@@ -144,15 +170,18 @@ class SongQuickSearchView:
 
 
 class SongQuickSearchModel:
-    def __init__(self, view, song_view):
-        self.view = view
-        self._song_view = song_view
+    view: SongQuickSearchView
+    song_view: SongView
 
-    def call_searchengine(self, query):
+    def __init__(self, view: SongQuickSearchView, song_view: SongView):
+        self.view = view
+        self.song_view = song_view
+
+    def call_searchengine(self, query: str):
         if query == "":
             live_detail_ids = search_engine.song_query("*")
         else:
             live_detail_ids = search_engine.song_query(query)
         logger.debug("Query: {}".format(query))
         logger.debug("Result: {}".format(live_detail_ids))
-        self._song_view.show_only_ids(live_detail_ids)
+        self.song_view.show_only_ids(live_detail_ids)

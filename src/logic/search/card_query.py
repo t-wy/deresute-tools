@@ -1,6 +1,5 @@
-import os
-import sys
 from collections import defaultdict
+from typing import Union, Dict, List
 
 from db import db
 from network import kirara_query
@@ -15,13 +14,13 @@ ALIASES = {
 queried_to_kirara = False
 
 
-def get_chara_dict():
+def get_chara_dict() -> Dict[int, str]:
     global queried_to_kirara
     # Prevent query if debugging
     if not queried_to_kirara and (
             not is_debug_mode() or not db.cachedb.execute_and_fetchone("""
             SELECT name FROM sqlite_master WHERE type='table' AND name='chara_cache'
-        """)):
+            """)):
         kirara_query.update_chara_data()
         # Prevent redundant queries
         queried_to_kirara = True
@@ -46,7 +45,7 @@ def generate_short_names():
         chara_id INTEGER NOT NULL,
         card_rarity INTEGER NOT NULL,
         card_short_name TEXT NOT NULL,
-        FOREIGN KEY (chara_id) REFERENCES chara_cache(chara_id) 
+        FOREIGN KEY (chara_id) REFERENCES chara_cache(chara_id)
         )
     """)
     for chara_id, card_ids, card_rarities in card_chara_rarity:
@@ -81,7 +80,7 @@ def generate_short_names():
     db.cachedb.commit()
 
 
-def convert_short_name_to_id(query):
+def convert_short_name_to_id(query: Union[List[str], str]) -> List[int]:
     if isinstance(query, list):
         tokens = query
     elif isinstance(query, str):
@@ -101,7 +100,7 @@ def convert_short_name_to_id(query):
     return results
 
 
-def convert_id_to_short_name(query):
+def convert_id_to_short_name(query: Union[List[str], str]) -> List[str]:
     if isinstance(query, list):
         tokens = query
     elif isinstance(query, str):
@@ -113,7 +112,7 @@ def convert_id_to_short_name(query):
         query_res = db.cachedb.execute_and_fetchone("""
                 SELECT card_short_name FROM card_name_cache WHERE card_id IN (?);
             """, [token])
-        query_res = query_res[0] if query_res != None else "MyCard"
+        query_res = query_res[0] if query_res is not None else "MyCard"
         results.append(query_res)
     return results
 

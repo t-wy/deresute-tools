@@ -1,21 +1,24 @@
 import csv
 import time
+from typing import Optional, Union, cast, Dict, List, Set, DefaultDict, Tuple
 
 import numpy as np
+import pandas as pd
 import pyximport
 
 import customlogger as logger
+from logic.grandlive import GrandLive
+from logic.live import Live
 from settings import ABUSE_CHARTS_PATH
-from statemachine import StateMachine, AbuseData
+from statemachine import StateMachine, AbuseData, LiveDetail
 from static.live_values import WEIGHT_RANGE, DIFF_MULTIPLIERS
 from static.note_type import NoteType
 from utils.storage import get_writer
 
 pyximport.install(language_level=3)
-SPECIAL_OFFSET = 0.075
 
 
-def check_long(notes_data, mask):
+def check_long(notes_data: pd.DataFrame, mask: pd.Series):
     stack = dict()
     for idx, row in notes_data.iterrows():
         if not mask[idx]:
@@ -34,10 +37,9 @@ class BaseSimulationResult:
 
 
 class SimulationResult(BaseSimulationResult):
-    def __init__(self, total_appeal, perfect_score, perfect_score_array, base, deltas, total_life, fans,
-                 full_roll_chance,
-                 abuse_score, abuse_data: AbuseData, cc_fr_base, cc_great_num, cc_base,
-                 perfect_detail = None):
+    def __init__(self, total_appeal: int, perfect_score: int, perfect_score_array: List[int],
+                 base: int, deltas: np.ndarray, total_life: int, fans: int, full_roll_chance: float,
+                 abuse_score: int, abuse_data: AbuseData, perfect_detail: LiveDetail):
         super().__init__()
         self.total_appeal = total_appeal
         self.perfect_score = perfect_score
@@ -49,15 +51,12 @@ class SimulationResult(BaseSimulationResult):
         self.full_roll_chance = full_roll_chance
         self.abuse_score = abuse_score
         self.abuse_data = abuse_data
-        self.cc_fr_base = cc_fr_base
-        self.cc_great_num = cc_great_num
-        self.cc_base = cc_base
         self.perfect_detail = perfect_detail
 
 
 class AutoSimulationResult(BaseSimulationResult):
-    def __init__(self, total_appeal, total_life, score, perfects, misses, max_combo, lowest_life, lowest_life_time,
-                 all_100):
+    def __init__(self, total_appeal: int, total_life: int, score: int, perfects: int, misses: int, max_combo: int,
+                 lowest_life: int, lowest_life_time: float, all_100: bool):
         super().__init__()
         self.total_appeal = total_appeal
         self.total_life = total_life
@@ -70,49 +69,47 @@ class AutoSimulationResult(BaseSimulationResult):
         self.all_100 = all_100
 
 
-class LiveDetail():
-    def __init__(self, skill_probability, note_number, checkpoint, note_offset, judgement, skill_inactive,
-                 life, combo, weight, score_bonus_skill, score_great_bonus_skill, combo_bonus_skill, note_score_list,
-                 encore_skill, amr_bonus, magic_bonus, skill_inactivation_reason):
-        self.skill_probability = skill_probability
-        self.note_number = note_number
-        self.checkpoint = checkpoint
-        self.note_offset = note_offset
-        self.judgement = judgement
-        self.skill_inactive = skill_inactive
-        self.life = life
-        self.combo = combo
-        self.weight = weight
-        self.score_bonus_skill = score_bonus_skill
-        self.score_great_bonus_skill = score_great_bonus_skill
-        self.combo_bonus_skill = combo_bonus_skill
-        self.note_score_list = note_score_list
-        self.encore_skill = encore_skill
-        self.amr_bonus = amr_bonus
-        self.magic_bonus = magic_bonus
-        self.skill_inactivation_reason = skill_inactivation_reason
-
-
 class Simulator:
-    def __init__(self, live=None, special_offset=None, left_inclusive=False, right_inclusive=True,
-                 force_encore_amr_cache_to_encore_unit=False,
-                 force_encore_magic_to_encore_unit=False,
-                 allow_encore_magic_to_escape_max_agg=True,
-                 cc_great=0):
+    live: Union[Live, GrandLive]
+
+    left_inclusive: bool
+    right_inclusive: bool
+    force_encore_amr_cache_to_encore_unit: bool
+    force_encore_magic_to_encore_unit: bool
+    allow_encore_magic_to_escape_max_agg: bool
+
+    special_offset: float
+
+    support: int
+    total_appeal: int
+
+    base_score: float
+    helen_base_score: float
+
+    note_count: int
+    notes_data: pd.DataFrame
+    song_duration: float
+    weight_range: List[float]
+
+    def __init__(self, live: Union[Live, GrandLive] = None, special_offset: float = None,
+                 left_inclusive: bool = False, right_inclusive: bool = True,
+                 force_encore_amr_cache_to_encore_unit: bool = False,
+                 force_encore_magic_to_encore_unit: bool = False,
+                 allow_encore_magic_to_escape_max_agg: bool = True):
         self.live = live
         self.left_inclusive = left_inclusive
         self.right_inclusive = right_inclusive
         self.force_encore_amr_cache_to_encore_unit = force_encore_amr_cache_to_encore_unit
         self.force_encore_magic_to_encore_unit = force_encore_magic_to_encore_unit
         self.allow_encore_magic_to_escape_max_agg = allow_encore_magic_to_escape_max_agg
-        self.cc_great = cc_great
         if special_offset is None:
             self.special_offset = 0
         else:
             self.special_offset = special_offset
 
-    def _setup_simulator(self, appeals=None, support=None, extra_bonus=None, chara_bonus_set=None, chara_bonus_value=0,
-                         special_option=None, special_value=None, mirror=False):
+    def _setup_simulator(self, appeals: int = None, support: int = None, extra_bonus: np.ndarray = None,
+                         chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
+                         special_option: int = None, special_value: int = None, mirror: bool = False):
         self.live.set_chara_bonus(chara_bonus_set, chara_bonus_value)
         if extra_bonus is not None or special_option is not None:
             if extra_bonus is not None:
@@ -131,7 +128,8 @@ class Simulator:
         is_long = self.notes_data['note_type'] == NoteType.LONG
         is_slide = self.notes_data['note_type'] == NoteType.SLIDE
         is_slide = np.logical_or(is_slide, np.logical_and(self.notes_data['type'] == 3, is_flick))
-        is_slide = np.logical_or(is_slide, np.logical_and(np.logical_or(self.notes_data['type'] == 6, self.notes_data['type'] == 7), self.notes_data['groupId'] != 0))
+        is_slide = np.logical_or(is_slide, np.logical_and(
+            np.logical_or(self.notes_data['type'] == 6, self.notes_data['type'] == 7), self.notes_data['groupId'] != 0))
         self.notes_data['is_flick'] = is_flick
         self.notes_data['is_long'] = is_long
         self.notes_data['is_slide'] = is_slide
@@ -163,33 +161,27 @@ class Simulator:
             self.notes_data.loc[group.iloc[-1].name, 'checkpoints'] = False
             self.notes_data.loc[group.iloc[0].name, 'checkpoints'] = False
 
-    def simulate(self, times=100, appeals=None, extra_bonus=None, support=None, perfect_play=False,
-                 chara_bonus_set=None, chara_bonus_value=0, special_option=None, special_value=None,
-                 doublelife=False, perfect_only=True, abuse=False, output=False, auto=False, mirror=False,
-                 time_offset=0, inactive_skill=None, note_offset=None, note_miss=None):
+    def simulate(self, times: int = 100, appeals: int = None,
+                 extra_bonus: np.ndarray = None, support: int = None, perfect_play: bool = False,
+                 chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
+                 special_option: int = None, special_value: int = None, doublelife: bool = False,
+                 perfect_only: bool = True, auto: bool = False, mirror: bool = False, time_offset: int = 0,
+                 deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
+                 note_misses: List[int] = None) -> Union[SimulationResult, AutoSimulationResult]:
         start = time.time()
         logger.debug("Unit: {}".format(self.live.unit))
         logger.debug("Song: {} - {} - Lv {}".format(self.live.music_name, self.live.difficulty, self.live.level))
         if perfect_play or auto:
             times = 1
             logger.debug("Only need 1 simulation for perfect play or auto.")
-        
-        if inactive_skill is not None or note_offset is not None or note_miss is not None :
-            res = self._simulate_custom(appeals=appeals, extra_bonus=extra_bonus, support=support,
-                                         chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
-                                         special_option=special_option, special_value=special_value,
-                                         doublelife=doublelife, inactive_skill=inactive_skill,
-                                         note_offset=note_offset, note_miss=note_miss)
-            return res
-        
         if not auto:
             res = self._simulate(times, appeals=appeals, extra_bonus=extra_bonus, support=support,
                                  perfect_play=perfect_play,
                                  chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
                                  special_option=special_option, special_value=special_value,
-                                 doublelife=doublelife, perfect_only=perfect_only, abuse=abuse)
-            if output:
-                self.save_to_file(res.perfect_score_array, res.abuse_data)
+                                 doublelife=doublelife, perfect_only=perfect_only,
+                                 deact_skills=deact_skills, note_offsets=note_offsets, note_misses=note_misses)
+            self.save_to_file(res.perfect_score_array, res.abuse_data)
         else:
             res = self._simulate_auto(appeals=appeals, extra_bonus=extra_bonus, support=support,
                                       chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
@@ -198,96 +190,37 @@ class Simulator:
         logger.debug("Total run time for {} trials: {:04.2f}s".format(times, time.time() - start))
         return res
 
-    def save_to_file(self, perfect_scores, abuse_data):
-        with get_writer(ABUSE_CHARTS_PATH / "{}.csv".format(self.live.score_id), 'w', newline='') as fw:
-            csv_writer = csv.writer(fw)
-            csv_writer.writerow(["Card Name", "Card ID", "Vo", "Da", "Vi", "Lf", "Sk"])
-            for card in self.live.unit.all_cards():
-                csv_writer.writerow(
-                    [str(card), card.card_id, card.vo_pots, card.da_pots, card.vi_pots, card.li_pots, card.sk_pots])
-            csv_writer.writerow(["Support", self.support])
-            csv_writer.writerow([])
-            csv_writer.writerow(["Note", "Time", "Type", "Lane", "Perfect Score", "Left", "Right", "Delta", "Window",
-                                 "Cumulative Perfect Score", "Cumulative Max Score"])
-            cumsum_pft = 0
-            cumsum_max = 0
-            for idx, row in self.notes_data.iterrows():
-                l = abuse_data.window_l[idx]
-                r = abuse_data.window_r[idx]
-                window = r - l
-                delta = abuse_data.score_delta[idx]
-                cumsum_pft += perfect_scores[idx]
-                cumsum_max += perfect_scores[idx] + delta
-                csv_writer.writerow([idx, row['sec'], row['note_type'],
-                                     row['finishPos'],
-                                     perfect_scores[idx],
-                                     l, r,
-                                     delta,
-                                     window,
-                                     cumsum_pft,
-                                     cumsum_max
-                                     ])
-
-    def _simulate(self,
-                  times=1000,
-                  appeals=None,
-                  extra_bonus=None,
-                  support=None,
-                  perfect_play=False,
-                  chara_bonus_set=None,
-                  chara_bonus_value=0,
-                  special_option=None,
-                  special_value=None,
-                  doublelife=False,
-                  perfect_only=True,
-                  abuse=False
-                  ):
-
+    def _simulate(self, times: int = 100, appeals: int = None,
+                  extra_bonus: np.ndarray = None, support: int = None, perfect_play: bool = False,
+                  chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
+                  special_option: int = None, special_value: int = None,
+                  doublelife: bool = False, perfect_only: bool = True,
+                  deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
+                  note_misses: List[int] = None) -> SimulationResult:
         self._setup_simulator(appeals=appeals, support=support, extra_bonus=extra_bonus,
                               chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
                               special_option=special_option, special_value=special_value)
         grand = self.live.is_grand
 
-        if self.cc_great > 0:
-            cc_fr_results = self._simulate_internal(times=times, grand=grand, fail_simulate=False,
-                                              doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
-            _, _, cc_fr_random_simulation_results, _, _, _, cc_great_num_list, _ = cc_fr_results
-            
-            cc_results = self._simulate_internal(times=times, grand=grand, fail_simulate=True,
-                                              doublelife=doublelife, perfect_only=False, abuse=False, cc_great=self.cc_great)
-            _, _, cc_random_simulation_results, _, _, _, _, _ = cc_results
-                        
-            cc_fr_array = np.array([_[0] for _ in cc_fr_random_simulation_results])
-            cc_fr_num_score_list = [(cc_great_num_list[_], cc_fr_array[_]) for _ in range(len(cc_great_num_list))]
-            cc_fr_num_score_list.sort()
-            if len(cc_fr_num_score_list) % 2 == 0:
-                cc_fr_num_score_list = cc_fr_num_score_list[:-1]
-            m = cc_fr_num_score_list[len(cc_fr_num_score_list)//2]
-            cc_great_num = m[0]
-            cc_fr_base = int(m[1])
-            cc_array = np.array([_[0] for _ in cc_random_simulation_results])
-            cc_base = int(np.median(cc_array))
-        else:
-            cc_fr_base, cc_great_num, cc_base = 0, 0, 0
-        
         results = self._simulate_internal(times=times, grand=grand, fail_simulate=not perfect_play,
-                                          doublelife=doublelife, perfect_only=perfect_only, abuse=abuse, cc_great=0)
-        
-        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, abuse_score, abuse_data, _, perfect_detail = results
-        
+                                          doublelife=doublelife, perfect_only=perfect_only,
+                                          deact_skills=deact_skills, note_offsets=note_offsets, note_misses=note_misses)
+        perfect_score, perfect_score_array, random_simulation_results, full_roll_chance, \
+            abuse_score, abuse_data, perfect_detail = results
+
         if perfect_play:
             base = perfect_score
             deltas = np.zeros(1)
         else:
-            score_array = np.array([_[0] for _ in random_simulation_results])
+            score_array = np.array([simulation_result[0] for simulation_result in random_simulation_results])
             base = int(score_array.mean())
             deltas = score_array - base
 
         total_fans = 0
         if grand:
             base_fan = base / 3 * 0.001 * 1.1
-            for _ in self.live.unit_lives:
-                total_fans += int(np.ceil(base_fan * (1 + _.fan / 100))) * 5
+            for unit_live in self.live.unit_lives:
+                total_fans += int(np.ceil(base_fan * (1 + unit_live.fan / 100))) * 5
         else:
             total_fans = int(base * 0.001 * (1.1 + self.live.fan / 100)) * 5
 
@@ -298,8 +231,8 @@ class Simulator:
         logger.debug("Perfect: {}".format(int(perfect_score)))
         logger.debug("Mean: {}".format(int(base + np.round(deltas.mean()))))
         logger.debug("Median: {}".format(int(base + np.round(np.median(deltas)))))
-        logger.debug("Max: {}".format(int(base + deltas.max())))
-        logger.debug("Min: {}".format(int(base + deltas.min())))
+        logger.debug("Max: {}".format(int(base + deltas.max(initial=0))))
+        logger.debug("Min: {}".format(int(base + deltas.min(initial=0))))
         logger.debug("Deviation: {}".format(int(np.round(np.std(deltas)))))
         return SimulationResult(
             total_appeal=self.total_appeal,
@@ -312,47 +245,24 @@ class Simulator:
             fans=total_fans,
             abuse_score=int(abuse_score),
             abuse_data=abuse_data,
-            cc_fr_base=cc_fr_base,
-            cc_great_num=cc_great_num,
-            cc_base=cc_base,
-            perfect_detail=LiveDetail(perfect_detail['skill_probability'],
-                                      perfect_detail['note_number'],
-                                      perfect_detail['checkpoint'],
-                                      perfect_detail['note_offset'],
-                                      perfect_detail['judgement'],
-                                      perfect_detail['skill_inactive'],
-                                      perfect_detail['life'],
-                                      perfect_detail['combo'],
-                                      perfect_detail['weight'],
-                                      perfect_detail['score_bonus_skill'],
-                                      perfect_detail['score_great_bonus_skill'],
-                                      perfect_detail['combo_bonus_skill'],
-                                      perfect_detail['score_list'],
-                                      perfect_detail['encore_skill'],
-                                      perfect_detail['amr_bonus'],
-                                      perfect_detail['magic_bonus'],
-                                      perfect_detail['skill_inactivation_reason']
-                                      )
+            perfect_detail=perfect_detail
         )
 
-    def _simulate_internal(self, grand, times, fail_simulate=False, doublelife=False, perfect_only=True, abuse=False,
-                           auto=False, time_offset=0, cc_great=0):
-        impl = StateMachine(
-            grand=grand,
-            difficulty=self.live.difficulty,
-            doublelife=doublelife,
-            live=self.live,
-            notes_data=self.notes_data,
-            left_inclusive=self.left_inclusive,
-            right_inclusive=self.right_inclusive,
-            base_score=self.base_score,
-            helen_base_score=self.helen_base_score,
-            weights=self.weight_range,
-            force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
-            force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
-            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
-            cc_great=cc_great
-        )
+    def _simulate_internal(self, grand: bool, times: int, fail_simulate: bool = False, doublelife: bool = False,
+                           perfect_only: bool = True, auto: bool = False, time_offset: int = 0,
+                           deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
+                           note_misses: List[int] = None) \
+            -> Union[Tuple[np.ndarray, int, int, int, int, int, bool, int],
+                     Tuple[int, List[int], List[tuple], float, int, Optional[AbuseData], LiveDetail]]:
+        impl = StateMachine(grand=grand, difficulty=self.live.difficulty, doublelife=doublelife, live=self.live,
+                            notes_data=self.notes_data, left_inclusive=self.left_inclusive,
+                            right_inclusive=self.right_inclusive, base_score=self.base_score,
+                            helen_base_score=self.helen_base_score, weights=self.weight_range,
+                            force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
+                            force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
+                            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
+                            custom_deact_skills=deact_skills, custom_note_offsets=note_offsets,
+                            custom_note_misses=note_misses)
 
         if auto:
             impl.reset_machine(time_offset=time_offset, special_offset=self.special_offset, auto=True)
@@ -364,114 +274,22 @@ class Simulator:
         full_roll_chance = impl.get_full_roll_chance()
 
         scores = list()
-        if cc_great == 0 and fail_simulate:
+        if fail_simulate:
             for _ in range(times):
                 impl.reset_machine(perfect_play=False, perfect_only=perfect_only)
                 scores.append(impl.simulate_impl()[0:2])
 
-        cc_great_num = list()
-        if cc_great > 0:
-            if not fail_simulate: #fr
-                for _ in range(times):
-                    impl.reset_machine(perfect_play=True, perfect_only=True)
-                    scores.append(impl.simulate_impl()[0:2])
-                    cc_great_num.append(impl.get_cc_great_num())
-            else: #not fr
-                for _ in range(times):
-                    impl.reset_machine(perfect_play=False, perfect_only=True)
-                    scores.append(impl.simulate_impl()[0:2])
-                    
-        abuse_result_score = 0
-        abuse_data: AbuseData = None
-        if abuse:
-            impl.reset_machine(perfect_play=True, abuse=True, perfect_only=False)
-            abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
-            logger.debug("Total abuse: {}".format(int(abuse_result_score)))
-            logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
-        return perfect_score, perfect_score_array, scores, full_roll_chance, abuse_result_score, abuse_data, \
-            cc_great_num, perfect_detail
-
-    def _simulate_custom(self,
-                  appeals=None,
-                  extra_bonus=None,
-                  support=None,
-                  chara_bonus_set=None,
-                  chara_bonus_value=0,
-                  special_option=None,
-                  special_value=None,
-                  doublelife=False,
-                  inactive_skill=[],
-                  note_offset={},
-                  note_miss=[]
-                  ):
-        self._setup_simulator(appeals=appeals, support=support, extra_bonus=extra_bonus,
-                              chara_bonus_set=chara_bonus_set, chara_bonus_value=chara_bonus_value,
-                              special_option=special_option, special_value=special_value)
-        grand = self.live.is_grand
-        
-        impl = StateMachine(
-            grand=grand,
-            difficulty=self.live.difficulty,
-            doublelife=doublelife,
-            live=self.live,
-            notes_data=self.notes_data,
-            left_inclusive=self.left_inclusive,
-            right_inclusive=self.right_inclusive,
-            base_score=self.base_score,
-            helen_base_score=self.helen_base_score,
-            weights=self.weight_range,
-            force_encore_amr_cache_to_encore_unit=self.force_encore_amr_cache_to_encore_unit,
-            force_encore_magic_to_encore_unit=self.force_encore_magic_to_encore_unit,
-            allow_encore_magic_to_escape_max_agg=self.allow_encore_magic_to_escape_max_agg,
-            cc_great=0,
-            custom_inactive_skill=inactive_skill,
-            custom_note_offset=note_offset,
-            custom_note_miss=note_miss
-        )
-        impl.reset_machine(perfect_play=True, perfect_only=True)
-        score, _, detail = impl.simulate_impl()
-        
-        score_detail = LiveDetail(detail['skill_probability'],
-                                  detail['note_number'],
-                                  detail['checkpoint'],
-                                  detail['note_offset'],
-                                  detail['judgement'],
-                                  detail['skill_inactive'],
-                                  detail['life'],
-                                  detail['combo'],
-                                  detail['weight'],
-                                  detail['score_bonus_skill'],
-                                  detail['score_great_bonus_skill'],
-                                  detail['combo_bonus_skill'],
-                                  detail['score_list'],
-                                  detail['encore_skill'],
-                                  detail['amr_bonus'],
-                                  detail['magic_bonus'],
-                                  detail['skill_inactivation_reason']
-                                )
-        
-        abuse_result_score = 0
-        abuse_data: AbuseData = None
         impl.reset_machine(perfect_play=True, abuse=True, perfect_only=False)
         abuse_result_score, abuse_data = impl.simulate_impl(skip_activation_initialization=True)
         logger.debug("Total abuse: {}".format(int(abuse_result_score)))
         logger.debug("Abuse deltas: " + " ".join(map(str, abuse_data.score_delta)))
-        
-        return (score, score_detail, abuse_result_score, abuse_data, impl.full_roll_chance)
+        return perfect_score, perfect_score_array, scores, full_roll_chance, \
+            abuse_result_score, abuse_data, perfect_detail
 
-    def _simulate_auto(self,
-                       appeals=None,
-                       extra_bonus=None,
-                       support=None,
-                       chara_bonus_set=None,
-                       chara_bonus_value=0,
-                       special_option=None,
-                       special_value=None,
-                       time_offset=0,
-                       mirror=False,
-                       doublelife=False
-                       ):
-
+    def _simulate_auto(self, appeals: int = None, extra_bonus: np.ndarray = None, support: int = None,
+                       chara_bonus_set: Set[int] = None, chara_bonus_value: int = 0,
+                       special_option: int = None, special_value: int = None,
+                       time_offset: int = 0, mirror: bool = False, doublelife: bool = False) -> AutoSimulationResult:
         if time_offset >= 200:
             self.special_offset = 0
         elif 125 >= time_offset > 100:
@@ -513,3 +331,27 @@ class Simulator:
             all_100=all_100
         )
         return ret
+
+    def save_to_file(self, perfect_scores: List[int], abuse_data: AbuseData):
+        with get_writer(ABUSE_CHARTS_PATH / "{}.csv".format(self.live.score_id), 'w', newline='') as fw:
+            csv_writer = csv.writer(fw)
+            csv_writer.writerow(["Card Name", "Card ID", "Vo", "Da", "Vi", "Lf", "Sk"])
+            for card in self.live.unit.all_cards():
+                csv_writer.writerow(
+                    [str(card), card.card_id, card.vo_pots, card.da_pots, card.vi_pots, card.li_pots, card.sk_pots])
+            csv_writer.writerow(["Support", self.support])
+            csv_writer.writerow([])
+            csv_writer.writerow(["Note", "Time", "Type", "Lane", "Perfect Score", "Left", "Right", "Delta", "Window",
+                                 "Cumulative Perfect Score", "Cumulative Max Score"])
+            cumsum_pft = 0
+            cumsum_max = 0
+            for idx, row in self.notes_data.iterrows():
+                idx = cast(int, idx)
+                l = abuse_data.window_l[idx]
+                r = abuse_data.window_r[idx]
+                window = r - l
+                delta = abuse_data.score_delta[idx]
+                cumsum_pft += perfect_scores[idx]
+                cumsum_max += perfect_scores[idx] + delta
+                csv_writer.writerow([idx, row['sec'], row['note_type'], row['finishPos'], perfect_scores[idx],
+                                     l, r, delta, window, cumsum_pft, cumsum_max])

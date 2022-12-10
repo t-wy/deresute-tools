@@ -1,14 +1,22 @@
 import uuid
+from pathlib import Path
+from typing import Any, Callable, Union
 
-from PyQt5.QtCore import QRectF
+from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath
 from PyQt5.QtWidgets import QWidget, QTableWidgetItem
 from numpy import int32
 
 
 class ImageWidget(QWidget):
+    picture: QPixmap
+    padding: int
+    border: bool
+    border_length: int
+    color: str
+    card_idx: int
 
-    def __init__(self, path=None, parent=None, card_idx=None):
+    def __init__(self, path: Union[str, Path] = None, parent: QWidget = None, card_idx: int = None):
         super(ImageWidget, self).__init__(parent)
         self.set_path(path)
         self.set_padding()
@@ -17,17 +25,17 @@ class ImageWidget(QWidget):
         self.color = 'black'
         self.card_idx = card_idx
 
-    def set_path(self, path):
+    def set_path(self, path: Union[str, Path, None]):
         if path is None:
             self.picture = QPixmap(0, 0)
         else:
             self.picture = QPixmap(str(path))
 
-    def toggle_border(self, value=False, border_length=0):
+    def toggle_border(self, value: bool = False, border_length: int = 0):
         self.border = value
         self.border_length = border_length + 1
 
-    def set_padding(self, padding=5):
+    def set_padding(self, padding: int = 5):
         self.padding = padding
 
     def paintEvent(self, event):
@@ -45,7 +53,7 @@ class ImageWidget(QWidget):
 
 
 class NumericalTableWidgetItem(QTableWidgetItem):
-    def __init__(self, value):
+    def __init__(self, value: Any):
         if isinstance(value, int) or isinstance(value, float) or isinstance(value, int32):
             self.number = value
         QTableWidgetItem.__init__(self, str(value))
@@ -57,40 +65,40 @@ class NumericalTableWidgetItem(QTableWidgetItem):
             comparatee = other.number
         return self.number < comparatee
 
-    def setData(self, p_int, Any, class_type=int):
-        super().setData(p_int, Any)
+    def setData(self, role: Qt.ItemDataRole, value: Any, class_type: type = int):
+        super().setData(role, value)
         try:
-            class_type(Any)
+            class_type(value)
         except ValueError:
             return
-        self.number = class_type(Any)
+        self.number = class_type(value)
 
 
 class ValidatableNumericalTableWidgetItem(NumericalTableWidgetItem):
-    def __init__(self, value, validator, class_type):
+    def __init__(self, value: Any, validator: Callable[[int], bool], class_type: type):
         super().__init__(value)
         self.validator = validator
         self.class_type = class_type
 
-    def setData(self, p_int, Any):
+    def setData(self, role: Qt.ItemDataRole, value: Any, class_type: type = int):
         passed = False
         try:
-            self.class_type(Any)
+            self.class_type(value)
             passed = True
-        except:
+        except Exception:
             pass
-        if passed and self.validator(self.class_type(Any)):
-            super().setData(p_int, Any, self.class_type)
+        if passed and self.validator(self.class_type(value)):
+            super().setData(role, value, self.class_type)
         else:
-            super().setData(p_int, self.number, self.class_type)
+            super().setData(role, self.number, self.class_type)
 
 
 class UniversalUniqueIdentifiable:
     def __init__(self):
         self.__uuid = uuid.uuid4().hex
 
-    def get_uuid(self):
+    def get_uuid(self) -> str:
         return self.__uuid
 
-    def get_short_uuid(self):
+    def get_short_uuid(self) -> str:
         return self.__uuid[:6]

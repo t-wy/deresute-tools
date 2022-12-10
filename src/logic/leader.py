@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Union
+
 import numpy as np
 import pyximport
 
@@ -7,8 +11,9 @@ pyximport.install(language_level=3)
 
 
 class Leader:
-    def __init__(self, bonuses=np.zeros((5, 3)), song_bonuses=None, min_requirements=None, max_requirements=None,
-                 resonance=False, unison=False, bless=False, duet=False, fan=0):
+    def __init__(self, bonuses: np.ndarray = np.zeros((5, 3)), song_bonuses: np.ndarray = None,
+                 min_requirements: Union[list, np.array] = None, max_requirements: Union[list, np.array] = None,
+                 resonance: bool = False, unison: bool = False, bless: bool = False, duet: bool = False, fan: int = 0):
         assert isinstance(bonuses, np.ndarray)
         assert bonuses.shape == (5, 3)
         if min_requirements is not None:
@@ -32,7 +37,7 @@ class Leader:
         self.fan = fan
 
     @classmethod
-    def from_id(cls, leader_id):
+    def from_id(cls, leader_id: int) -> Leader:
         if leader_id == 0:
             return cls()  # Default leader with 0 bonus
         leader_data = db.masterdb.execute_and_fetchone(

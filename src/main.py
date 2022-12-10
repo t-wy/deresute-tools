@@ -39,5 +39,5 @@ def main():
     from gui.main import setup_gui
 
     app, main = setup_gui(sys.argv)
-    main.show()
+    main.showMaximized()
     app.exec_()

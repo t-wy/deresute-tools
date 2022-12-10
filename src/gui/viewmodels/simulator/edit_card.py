@@ -1,8 +1,13 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QAbstractItemView
+from PyQt5.QtWidgets import QAbstractItemView, QWidget, QHeaderView
 
 from gui.viewmodels.utils import ValidatableNumericalTableWidgetItem
+from logic.card import Card
 from static.color import Color
 
 COLOR_KEY = "Color"
@@ -27,8 +32,11 @@ HEADERS = [COLOR_KEY,
            STAR_RANK_KEY]
 
 
-class CustomCardView:
-    def __init__(self, main):
+class EditCardView:
+    widget: QtWidgets.QTableWidget
+    model: EditCardModel
+
+    def __init__(self, main: QWidget):
         self.widget = QtWidgets.QTableWidget(main)
         self.widget.setSelectionMode(QAbstractItemView.NoSelection)
         self.widget.setSortingEnabled(False)
@@ -36,19 +44,19 @@ class CustomCardView:
         self.widget.horizontalHeader().setVisible(False)
         self.widget.setRowCount(len(HEADERS))
         self.widget.setColumnCount(1)
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
-        self.widget.horizontalHeader().setSectionResizeMode(1)  # Not allow change icon column size
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
+        self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)  # Not allow change icon column size
         self.widget.setVerticalHeaderLabels(HEADERS)
         self.widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
-    def set_model(self, model):
+    def set_model(self, model: EditCardModel):
         self.model = model
 
-    def set_values(self, values):
+    def set_values(self, values: list):
         self.disconnect_cell_changed()
         if len(values) != len(HEADERS):
             return
-        for _, header in enumerate(HEADERS):
+        for idx, header in enumerate(HEADERS):
             class_type = int
             if header == COLOR_KEY:
                 validator = lambda x: 0 <= x <= 2
@@ -61,7 +69,7 @@ class CustomCardView:
                 validator = lambda x: True
             if header in {SKILL_DURATION_KEY, SKILL_INTERVAL_KEY}:
                 class_type = float
-            self.widget.setItem(_, 0, ValidatableNumericalTableWidgetItem(values[_], validator, class_type))
+            self.widget.setItem(idx, 0, ValidatableNumericalTableWidgetItem(values[idx], validator, class_type))
         self.connect_cell_changed()
 
     def connect_cell_changed(self):
@@ -74,14 +82,15 @@ class CustomCardView:
             pass
 
 
-class CustomCardModel:
-    view: CustomCardView
+class EditCardModel:
+    view: EditCardView
+    card: Optional[Card]
 
-    def __init__(self, view):
+    def __init__(self, view: EditCardView):
         self.view = view
         self.card = None
 
-    def set_card_object(self, card):
+    def set_card_object(self, card: Card):
         self.card = card
         if card is None:
             self.view.set_values([""] * len(HEADERS))
@@ -108,7 +117,7 @@ class CustomCardModel:
                 item = self.view.widget.item(_, 0)
                 item.setFlags(item.flags() ^ Qt.ItemIsEditable)
 
-    def handle_cell_change(self, r_idx):
+    def handle_cell_change(self, r_idx: int):
         v = self.view.widget.item(r_idx, 0).text()
         if r_idx == 0:
             self.card.color = Color(int(v))

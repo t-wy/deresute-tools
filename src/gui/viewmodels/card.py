@@ -1,6 +1,12 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import cast, Any, Optional, Dict, List
+
 from PyQt5.QtCore import QSize, QMimeData, Qt, QPoint
 from PyQt5.QtGui import QDrag, QPixmap, QPainter, QColor
-from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QComboBox, QAbstractItemView, QApplication
+from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QComboBox, QAbstractItemView, QApplication, QWidget, \
+    QHeaderView
 
 import customlogger as logger
 from db import db
@@ -20,6 +26,9 @@ from static.skill import SKILL_COLOR_BY_NAME
 
 
 class CustomCardTable(QTableWidget):
+    drag_start_position: QPoint
+    selected: List[QTableWidgetItem]
+
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -41,7 +50,7 @@ class CustomCardTable(QTableWidget):
         drag = QDrag(self)
         card_row = self.row(self.selected[0])
         card_id = self.item(card_row, 2).text()
-        card_img = self.cellWidget(card_row, 1).picture
+        card_img = cast(ImageWidget, self.cellWidget(card_row, 1)).picture
         mimedata = QMimeData()
         mimedata.setText(CARD + card_id)
         pixmap = QPixmap(card_img.size())
@@ -55,20 +64,22 @@ class CustomCardTable(QTableWidget):
 
 
 class CardView:
+    widget: CustomCardTable
+    model: CardModel
+    size: int
 
-    def __init__(self, main):
+    def __init__(self, main: QWidget):
         self.widget = CustomCardTable(main)
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
-        self.widget.setHorizontalScrollMode(1)  # Smooth scroll
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
+        self.widget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
         self.widget.setDragEnabled(True)
         self.widget.setSelectionMode(QAbstractItemView.SingleSelection)
         self.widget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.widget.setSortingEnabled(True)
         self.widget.verticalHeader().setVisible(False)
-        self.model = None
         self.size = 20
 
-    def set_model(self, model):
+    def set_model(self, model: CardModel):
         self.model = model
 
     def connect_cell_change(self):
@@ -83,19 +94,19 @@ class CardView:
             self.widget.setCellWidget(r_idx, 1, image)
         self.connect_cell_change()
 
-    def toggle_auto_resize(self, on=False):
+    def toggle_auto_resize(self, on: bool = False):
         if on:
-            self.widget.horizontalHeader().setSectionResizeMode(4)  # Auto fit
-            self.widget.horizontalHeader().setSectionResizeMode(4, 1)  # Auto fit
+            self.widget.horizontalHeader().setSectionResizeMode(cast(QHeaderView.ResizeMode, 4))  # Auto fit
+            self.widget.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)  # Auto fit
         else:
             name_col_width = self.widget.columnWidth(4)
-            self.widget.horizontalHeader().setSectionResizeMode(0)  # Resize
+            self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)  # Resize
             self.widget.setColumnWidth(4, name_col_width)
 
-    def load_data(self, data, card_list=None):
+    def load_data(self, data: List[Dict[str, Any]], card_list: List[int] = None):
         if card_list is None:
             self.widget.setColumnCount(len(data[0]) + 2)
-            self.widget.horizontalHeader().setSectionResizeMode(1, 2)  # Not allow change icon column size
+            self.widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)  # Fix icon column size
             self.widget.setRowCount(len(data))
             self.widget.setHorizontalHeaderLabels(['#', ''] + list(data[0].keys()))
             rows = range(len(data))
@@ -136,10 +147,10 @@ class CardView:
                 self.widget.setItem(r_idx, c_idx + 2, item)
         logger.info("Loaded {} cards".format(len(data)))
         self.widget.setSortingEnabled(True)
-        # Turn on auto fit once to make it look better then turn it off to render faster during resize
+        # Turn on auto-fit once to make it look better than turn it off to render faster during resize
         self.toggle_auto_resize(card_list is None)
 
-    def show_only_ids(self, card_ids):
+    def show_only_ids(self, card_ids: List[int]):
         if not card_ids:
             card_ids = set()
         else:
@@ -154,7 +165,7 @@ class CardView:
                 self.widget.setRowHidden(r_idx, True)
         self.refresh_spacing()
 
-    def draw_icons(self, icons, size):
+    def draw_icons(self, icons: Optional[Dict[str, Path]], size: Optional[int]):
         if size is None:
             self.size = 20
         else:
@@ -162,27 +173,34 @@ class CardView:
         for r_idx in range(self.widget.rowCount()):
             if icons:
                 card_id = self.widget.item(r_idx, 2).text()
-                self.widget.cellWidget(r_idx, 1).set_path(icons[card_id])
+                cast(ImageWidget, self.widget.cellWidget(r_idx, 1)).set_path(icons[card_id])
             else:
-                self.widget.cellWidget(r_idx, 1).set_path(None)
+                cast(ImageWidget, self.widget.cellWidget(r_idx, 1)).set_path(None)
         self.refresh_spacing()
 
     def refresh_spacing(self):
         self.widget.verticalHeader().setDefaultSectionSize(self.size + 10)
-        self.widget.horizontalHeader().setSectionResizeMode(1, 2)
+        self.widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
         self.widget.setColumnWidth(1, self.size + 10)
 
 
 class CardModel:
+    view: CardView
+    images: Dict[str, Path]
+    owned: Dict[int, int]
+    model_id: int
+    potential: bool
 
-    def __init__(self, view):
+    def __init__(self, view: CardView, model_id: int):
         assert isinstance(view, CardView)
         self.view = view
         self.images = dict()
         self.owned = dict()
+        self.model_id = model_id
+        self.potential = False
         eventbus.eventbus.register(self)
 
-    def load_images(self, size=None):
+    def load_images(self, size: int = None):
         logger.info("Card list thumbnail size: {}".format(size))
         if size is None:
             self.images = dict()
@@ -194,23 +212,24 @@ class CardModel:
                 path = IMAGE_PATH32
             elif size == 64:
                 path = IMAGE_PATH64
-            elif size == 124:
+            else:
                 path = IMAGE_PATH
             for image_path in path.iterdir():
                 self.images[image_path.name.split(".")[0]] = image_path
             self.view.draw_icons(self.images, size)
+
+    def set_potential_inclusion(self, potential: bool):
+        self.potential = potential
 
     @subscribe(PotentialUpdatedEvent)
     def initialize_cards_from_event(self, event: PotentialUpdatedEvent):
         if self.potential:
             self.initialize_cards(event.card_list, potential=True)
 
-    def initialize_cards(self, card_list=None, potential=False):
-        self.potential = potential
-        
+    def initialize_cards(self, card_list: List[int] = None, potential: bool = False):
         db.cachedb.execute("""ATTACH DATABASE "{}" AS masterdb""".format(meta_updater.get_masterdb_path()))
         db.cachedb.commit()
-        query = query = """
+        query = """
             SELECT  cdc.id as ID,
                     oc.number as Owned,
                     cdc.name as Name,
@@ -261,7 +280,7 @@ class CardModel:
             self.owned[int(card['ID'])] = int(card['Owned'])
         self.view.load_data(data, card_list)
 
-    def handle_cell_change(self, r_idx, c_idx):
+    def handle_cell_change(self, r_idx: int, c_idx: int):
         if c_idx != 3:
             return
         card_id = int(self.view.widget.item(r_idx, 2).text())
@@ -271,7 +290,7 @@ class CardModel:
         try:
             new_value = int(new_value)
             assert new_value >= 0
-        except:
+        except Exception:
             logger.error("Owned value {} invalid for card ID {}".format(new_value, card_id))
             # Revert value
             self.view.disconnect_cell_change()
@@ -283,6 +302,8 @@ class CardModel:
 
     @subscribe(PushCardIndexEvent)
     def push_card(self, event: PushCardIndexEvent):
+        if event.model_id != self.model_id:
+            return
         idx = event.idx
         skip_guest_push = event.skip_guest_push
         count = 0
@@ -300,7 +321,7 @@ class CardModel:
             return
         eventbus.eventbus.post(PushCardEvent(int(cell_widget.text()), skip_guest_push))
 
-    def highlight_event_cards(self, checked):
+    def highlight_event_cards(self, checked: bool):
         highlight_set = Live.static_get_chara_bonus_set(get_name=True)
         for r_idx in range(self.view.widget.rowCount()):
             if self.view.widget.item(r_idx, 5).text() not in highlight_set:
@@ -314,7 +335,10 @@ class CardModel:
 
 
 class IconLoaderView:
-    def __init__(self, main):
+    widget: QComboBox
+    model: IconLoaderModel
+
+    def __init__(self, main: QWidget):
         self.widget = QComboBox(main)
         self.widget.setMaximumSize(QSize(1000, 25))
 
@@ -322,23 +346,25 @@ class IconLoaderView:
         self.widget.addItem("Small icon")
         self.widget.addItem("Medium icon")
         self.widget.addItem("Large icon")
-        self.model = None
 
-    def set_model(self, model):
+    def set_model(self, model: IconLoaderModel):
         assert isinstance(model, IconLoaderModel)
         self.model = model
         self.widget.currentIndexChanged.connect(lambda x: self.trigger(x))
 
-    def trigger(self, idx):
+    def trigger(self, idx: int):
         self.model.load_image(idx)
 
 
 class IconLoaderModel:
-    def __init__(self, view, card_model):
+    view: IconLoaderView
+    card_model: CardModel
+
+    def __init__(self, view: IconLoaderView, card_model: CardModel):
         self.view = view
         self._card_model = card_model
 
-    def load_image(self, idx):
+    def load_image(self, idx: int):
         if idx == 0:
             self._card_model.load_images(size=None)
         elif idx == 1:
@@ -347,3 +373,68 @@ class IconLoaderModel:
             self._card_model.load_images(size=64)
         elif idx == 3:
             self._card_model.load_images(size=124)
+
+
+class CardSmallView(CardView):
+    def __init__(self, main: QWidget):
+        super().__init__(main)
+
+        self.widget.horizontalHeader().setMinimumSectionSize(0)
+
+    def load_data(self, data: List[Dict[str, Any]], card_list: List[int] = None):
+        super().load_data(data, card_list)
+
+        for i in range(1, 4):
+            self.widget.setColumnHidden(i, True)
+
+
+class CardSmallModel(CardModel):
+    def initialize_cards(self, card_list: List[int] = None, potential: bool = False):
+        db.cachedb.execute("""ATTACH DATABASE "{}" AS masterdb""".format(meta_updater.get_masterdb_path()))
+        db.cachedb.commit()
+        query = """
+            SELECT  cdc.id as ID,
+                    oc.number as Owned,
+                    cdc.name as Name,
+                    cc.full_name as Character,
+                    REPLACE(UPPER(rt.text) || "+", "U+", "") as Rare,
+                    ct.text as Color,
+                    sk.skill_name as Skill,
+                    lk.keywords as Leader,
+                    sd.condition as Int,
+                    REPLACE(pk.keywords, "Medium", "Med") as Prob,
+        """
+        if potential:
+            query += """
+                    CAST(cdc.vocal_max + cdc.bonus_vocal AS INTEGER) as Vo,
+                    CAST(cdc.dance_max + cdc.bonus_dance AS INTEGER) as Da,
+                    CAST(cdc.visual_max + cdc.bonus_visual AS INTEGER) as Vi,
+                    CAST(cdc.hp_max + cdc.bonus_hp AS INTEGER) as Li
+            """
+        else:
+            query += """
+                    CAST(cdc.vocal_max + cd.bonus_vocal AS INTEGER) as Vo,
+                    CAST(cdc.dance_max + cd.bonus_dance AS INTEGER) as Da,
+                    CAST(cdc.visual_max + cd.bonus_visual AS INTEGER) as Vi,
+                    CAST(cdc.hp_max + cd.bonus_hp AS INTEGER) as Li
+            """
+        query += """
+            FROM card_data_cache as cdc
+            INNER JOIN chara_cache cc on cdc.chara_id = cc.chara_id
+            INNER JOIN rarity_text rt on cdc.rarity = rt.id
+            INNER JOIN color_text ct on cdc.attribute = ct.id
+            LEFT JOIN owned_card oc on cdc.id = oc.card_id
+            LEFT JOIN masterdb.skill_data sd on cdc.skill_id = sd.id
+            LEFT JOIN probability_keywords pk on pk.id = sd.probability_type
+            LEFT JOIN skill_keywords sk on sd.skill_type = sk.id
+            LEFT JOIN leader_keywords lk on cdc.leader_skill_id = lk.id
+            LEFT JOIN masterdb.card_data cd on cdc.id = cd.id
+        """
+        if card_list is not None:
+            query += "WHERE cdc.id IN ({})".format(','.join(['?'] * len(card_list)))
+            data = db.cachedb.execute_and_fetchall(query, card_list, out_dict=True)
+        else:
+            data = db.cachedb.execute_and_fetchall(query, out_dict=True)
+        db.cachedb.execute("DETACH DATABASE masterdb")
+        db.cachedb.commit()
+        self.view.load_data(data, card_list)

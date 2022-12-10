@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QAbstractItemView, QTableWidgetItem
+from PyQt5.QtWidgets import QAbstractItemView, QTableWidgetItem, QHeaderView
 
 from db import db
 from gui.events.unit_details_events import HookUnitToUnitDetailsEvent, GetSupportLiveObjectEvent
@@ -23,7 +25,11 @@ HEADERS = [
 
 
 class UnitDetailsView:
-    def __init__(self, main):
+    main: QtWidgets.QWidget
+    widget: QtWidgets.QTableWidget
+    model: UnitDetailsModel
+
+    def __init__(self, main: QtWidgets.QWidget):
         self.main = main
         self.widget = QtWidgets.QTableWidget(main)
         self.widget.setSelectionMode(QAbstractItemView.NoSelection)
@@ -32,23 +38,20 @@ class UnitDetailsView:
         self.widget.horizontalHeader().setVisible(True)
         self.widget.setRowCount(len(HEADERS))
         self.widget.setColumnCount(1)
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
-        self.widget.horizontalHeader().setSectionResizeMode(1)
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
+        self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
         self.widget.setVerticalHeaderLabels(HEADERS)
         self.widget.setHorizontalHeaderLabels(["Unit"])
         self.widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
-    def set_model(self, model):
+    def set_model(self, model: UnitDetailsModel):
         self.model = model
-
-    def hook_live(self, live):
-        self.model.hook_live(live)
 
 
 class UnitDetailsModel:
     view: UnitDetailsView
 
-    def __init__(self, view):
+    def __init__(self, view: UnitDetailsView):
         self.view = view
         self.live = None
         eventbus.eventbus.register(self)

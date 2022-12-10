@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 import ast
 import pickle
 import threading
 from abc import abstractmethod
-from datetime import datetime
+from typing import Optional, cast, TYPE_CHECKING, Union, List
 
 import numpy as np
-from PyQt5.QtCore import QSize, Qt, QMimeData
+from PyQt5.QtCore import QSize, Qt, QMimeData, QPoint, QModelIndex
 from PyQt5.QtGui import QDrag, QFont, QFontMetrics
 from PyQt5.QtWidgets import QHBoxLayout, QAbstractItemView, QTableWidget, QApplication, QTableWidgetItem, \
-    QWidget, QLabel, QSizePolicy, QStackedLayout, QVBoxLayout, QCheckBox
+    QWidget, QLabel, QSizePolicy, QStackedLayout, QVBoxLayout, QCheckBox, QHeaderView
 
 import customlogger as logger
 from gui.events.calculator_view_events import GetAllCardsEvent, DisplaySimulationResultEvent, \
@@ -16,7 +18,7 @@ from gui.events.calculator_view_events import GetAllCardsEvent, DisplaySimulatio
     TurnOffRunningLabelFromUuidEvent, ToggleUnitLockingOptionsVisibilityEvent
 from gui.events.chart_viewer_events import HookUnitToChartViewerEvent
 from gui.events.song_view_events import GetSongDetailsEvent
-from gui.events.state_change_events import AutoFlagChangeEvent, ShutdownTriggeredEvent
+from gui.events.state_change_events import AutoFlagChangeEvent, ShutdownTriggeredEvent, CustomCardUpdatedEvent
 from gui.events.unit_details_events import HookUnitToUnitDetailsEvent
 from gui.events.utils import eventbus
 from gui.events.utils.eventbus import subscribe
@@ -26,12 +28,17 @@ from gui.events.value_accessor_events import GetAppealsEvent, GetSupportEvent, G
 from gui.viewmodels.mime_headers import CALCULATOR_UNIT, UNIT_EDITOR_UNIT, MUSIC
 from gui.viewmodels.unit import UnitView, UnitWidget
 from gui.viewmodels.utils import NumericalTableWidgetItem, UniversalUniqueIdentifiable
+from logic.card import Card
 from settings import BACKUP_PATH
 from simulator import SimulationResult, AutoSimulationResult
+from static.color import Color
 from utils.storage import get_writer, get_reader
 
+if TYPE_CHECKING:
+    from gui.viewmodels.simulator.wide_smart import MainView
+
 UNIVERSAL_HEADERS = ["Unit", "Appeals", "Life"]
-NORMAL_SIM_HEADERS = ["Perfect", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%", "Theo. Max", "Full Roll Chance (%)", "CC Full Roll", "CC GREAT", "CC Mean"]
+NORMAL_SIM_HEADERS = ["Perfect", "Theo. Max", "All Act %", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%"]
 AUTOPLAY_SIM_HEADERS = ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time (s)",
                         "All Skills 100%?"]
 ALL_HEADERS = UNIVERSAL_HEADERS + NORMAL_SIM_HEADERS + AUTOPLAY_SIM_HEADERS
@@ -40,7 +47,8 @@ mutex = threading.Lock()
 
 
 class BackupUnit:
-    def __init__(self, card_ids, cards_internal, lock_unit, lock_chart, extended_cards_data, text):
+    def __init__(self, card_ids: List[int], cards_internal: List[Card], lock_unit: bool, lock_chart: bool,
+                 extended_cards_data: CardsWithUnitUuidAndExtraData, text: str):
         self.card_ids = card_ids
         self.cards_internal = cards_internal
         self.lock_unit = lock_unit
@@ -50,17 +58,37 @@ class BackupUnit:
 
 
 class CalculatorUnitWidgetWithExtraData(UnitWidget):
-    def __init__(self, unit_view, parent=None, size=32, *args, **kwargs):
-        super().__init__(unit_view, parent, size, *args, **kwargs)
+    unit_view: CalculatorView
+    card_widget: QWidget
+    master_layout: QVBoxLayout
+
+    running_label: QLabel
+    stacked_layout: QStackedLayout
+    song_name_label: QLabel
+    checkbox_container_widget: QWidget
+    lock_chart_checkbox: QCheckBox
+    lock_unit_checkbox: QCheckBox
+
+    lock_unit: bool
+    extra_bonus: Optional[np.ndarray]
+    special_option: Optional[int]
+    special_value: Optional[int]
+
+    lock_chart: bool
+    score_id: Optional[int]
+    diff_id: Optional[int]
+    live_detail_id: Optional[int]
+    extra_bonus: Optional[Color]
+
+    def __init__(self, unit_view: CalculatorView, parent: QWidget = None, size: int = 32, *args, **kwargs):
+        super().__init__(unit_view, parent, size)
         self.setAcceptDrops(True)
         self.setStyleSheet("padding: 0px")
 
         self.card_widget = QWidget(self)
 
         self.master_layout = QVBoxLayout()
-
-        # Abstract
-        self.create_card_layout()
+        self.create_card_layout()  # Abstract
 
         self.initialize_running_label()
         self.stack_card_layout_and_running_label()
@@ -88,6 +116,7 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
 
     @property
     def extended_cards_data(self):
+        self: CalculatorUnitWidget
         return CardsWithUnitUuidAndExtraData(self.get_uuid(),
                                              self.get_short_uuid(),
                                              self.cards_internal,
@@ -101,7 +130,7 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
                                              self.live_detail_id,
                                              self.groove_song_color)
 
-    def clone_extended_cards_data(self, extended_card_data):
+    def clone_extended_cards_data(self, extended_card_data: CardsWithUnitUuidAndExtraData):
         self.lock_unit = extended_card_data.lock_unit
         self.extra_bonus = extended_card_data.extra_bonus
         self.special_option = extended_card_data.special_option
@@ -137,24 +166,24 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
         groove_song_color = eventbus.eventbus.post_and_get_first(GetGrooveSongColor())
         self.groove_song_color = groove_song_color
 
-    def handle_hooked_chart(self, score_id, diff_id, live_detail_id, song_name, diff_name):
+    def handle_hooked_chart(self, score_id: int, diff_id: int, live_detail_id: int, song_name: str, diff_name: str):
         if not self.lock_chart:
             return
         try:
             self.score_id = int(score_id)
-        except:
+        except ValueError:
             self.score_id = score_id
         try:
             self.diff_id = int(diff_id)
-        except:
+        except ValueError:
             self.diff_id = diff_id
         try:
             self.live_detail_id = int(live_detail_id)
-        except:
+        except ValueError:
             self.live_detail_id = live_detail_id
         self.display_chart_name(diff_name, song_name)
 
-    def display_chart_name(self, diff_name, song_name):
+    def display_chart_name(self, diff_name: str, song_name: str):
         string = "{} - {}".format(diff_name, song_name)
         self.set_text(string)
 
@@ -163,7 +192,7 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
         elided_text = metrics.elidedText(label.text(), Qt.ElideRight, self.song_name_label.width())
         self.song_name_label.setText(elided_text)
 
-    def set_text(self, string, width=None):
+    def set_text(self, string: str, width: int = None):
         metrics = QFontMetrics(self.song_name_label.font())
         if width is None:
             width = self.song_name_label.width()
@@ -215,7 +244,7 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
         self.song_name_label.setVisible(state)
         self.checkbox_container_widget.setVisible(state)
 
-    def toggle_running_simulation(self, running=False):
+    def toggle_running_simulation(self, running: bool = False):
         self.running_label.setVisible(running)
         self.running_simulation = running
 
@@ -223,7 +252,7 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
     def create_card_layout(self):
         pass
 
-    def toggle_unit_locking_options_visibility(self, flag):
+    def toggle_unit_locking_options_visibility(self, flag: bool):
         self.song_name_label.setVisible(flag)
         self.checkbox_container_widget.setVisible(flag)
 
@@ -248,25 +277,31 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
 
 
 class CalculatorUnitWidget(CalculatorUnitWidgetWithExtraData, UniversalUniqueIdentifiable):
-    def __init__(self, unit_view, parent=None, size=32):
+    card_layout: QHBoxLayout
+
+    def __init__(self, unit_view: CalculatorView, parent: QWidget = None, size: int = 32):
         super(CalculatorUnitWidget, self).__init__(unit_view, parent, size)
 
-    def handle_lost_mime(self, mime_text):
+    def handle_lost_mime(self, mime_text: str):
         if type(self.unit_view) == UnitView:
-            self.unit_view.handle_lost_mime(mime_text)
+            cast(self.unit_view, UnitView).handle_lost_mime(mime_text)
 
     def create_card_layout(self):
         self.card_widget = QWidget(self)
-        self.cardLayout = QHBoxLayout()
+        self.card_layout = QHBoxLayout()
         for idx, card in enumerate(self.cards):
             card.setMinimumSize(QSize(self.icon_size + 2, self.icon_size + 2))
-            self.cardLayout.addWidget(card)
+            self.card_layout.addWidget(card)
         self.card_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_widget.setLayout(self.cardLayout)
+        self.card_widget.setLayout(self.card_layout)
 
 
 class DroppableCalculatorWidget(QTableWidget):
-    def __init__(self, calculator_view, *args, **kwargs):
+    calculator_view: CalculatorView
+    drag_start_position: QPoint
+    selected: List[QModelIndex]
+
+    def __init__(self, calculator_view: CalculatorView, *args, **kwargs):
         super(DroppableCalculatorWidget, self).__init__(*args, **kwargs)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -313,7 +348,8 @@ class DroppableCalculatorWidget(QTableWidget):
             return
         drag = QDrag(self)
         mimedata = QMimeData()
-        mimedata.setText(CALCULATOR_UNIT + str(self.cellWidget(self.selected[0].row(), 0).card_ids))
+        mimedata.setText(CALCULATOR_UNIT
+                         + str(cast(CalculatorUnitWidget, self.cellWidget(self.selected[0].row(), 0)).card_ids))
         drag.setMimeData(mimedata)
         drag.exec_(Qt.CopyAction | Qt.MoveAction)
 
@@ -332,33 +368,40 @@ class DroppableCalculatorWidget(QTableWidget):
         else:
             e.acceptProposedAction()
 
-    def handle_lost_mime(self, mimetext):
+    def handle_lost_mime(self, mimetext: str):
         card_ids = ast.literal_eval(mimetext[len(UNIT_EDITOR_UNIT):])
         logger.debug("Dragged {} into calculator".format(card_ids))
         self.calculator_view.add_unit(card_ids)
 
+    def cellWidget(self, row: int, column: int) -> Union[List[QWidget], CalculatorUnitWidget]:
+        return super().cellWidget(row, column)
+
 
 class CalculatorView:
-    def __init__(self, main, main_view):
+    main_view: MainView
+    widget: DroppableCalculatorWidget
+    model: CalculatorModel
+
+    def __init__(self, main: QWidget, main_view: MainView):
         self.main_view = main_view
         self.initialize_widget(main)
         self.setup_widget()
 
-    def initialize_widget(self, main):
+    def initialize_widget(self, main: QWidget):
         self.widget = DroppableCalculatorWidget(self, main)
 
     def setup_widget(self):
-        self.widget.setHorizontalScrollMode(1)  # Smooth scroll
-        self.widget.setVerticalScrollMode(1)  # Smooth scroll
+        self.widget.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
+        self.widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # Smooth scroll
         self.widget.setColumnCount(len(ALL_HEADERS))
         self.widget.setRowCount(0)
         self.widget.verticalHeader().setDefaultSectionSize(75)
-        self.widget.verticalHeader().setSectionResizeMode(3)
-        self.widget.horizontalHeader().setSectionResizeMode(0)
+        self.widget.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.widget.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.widget.setHorizontalHeaderLabels(ALL_HEADERS)
         self.widget.setColumnWidth(0, 40 * 6)
-        self.widget.horizontalHeader().resizeSections(3)  # Auto fit
-        self.widget.horizontalHeader().setSectionResizeMode(0, 2)
+        self.widget.horizontalHeader().resizeSections(QHeaderView.ResizeToContents)  # Auto fit
+        self.widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
         self.widget.horizontalHeader().setMinimumSectionSize(65)
         self.widget.horizontalHeader().setMinimumSectionSize(0)
         self.widget.setColumnWidth(2, 30)
@@ -367,7 +410,7 @@ class CalculatorView:
         self.widget.cellClicked.connect(lambda r, _: self.handle_unit_click(r))
         self.widget.cellDoubleClicked.connect(lambda r, _: self.main_view.simulate(r))
 
-    def toggle_auto(self, auto_flag=True):
+    def toggle_auto(self, auto_flag: bool = True):
         if auto_flag:
             for r_idx in range(len(UNIVERSAL_HEADERS) + len(NORMAL_SIM_HEADERS), len(ALL_HEADERS) + 1):
                 self.widget.setColumnHidden(r_idx, False)
@@ -379,11 +422,11 @@ class CalculatorView:
             for r_idx in range(len(UNIVERSAL_HEADERS), len(UNIVERSAL_HEADERS) + len(NORMAL_SIM_HEADERS)):
                 self.widget.setColumnHidden(r_idx, False)
 
-    def set_model(self, model):
+    def set_model(self, model: CalculatorModel):
         self.model = model
         self._restore_from_backup()
 
-    def insert_unit(self, row=None):
+    def insert_unit(self, row: int = None):
         if row is None:
             row = self.widget.rowCount()
         self.widget.insertRow(row)
@@ -401,7 +444,7 @@ class CalculatorView:
         selected_row = self.widget.selectionModel().selectedRows()[0].row()
         self.widget.removeRow(selected_row)
 
-    def duplicate_unit(self, custom_card_data=False):
+    def duplicate_unit(self, custom_card_data: bool = False):
         selected_row = self.widget.selectionModel().selectedRows()[0].row()
         cell_widget = self.widget.cellWidget(selected_row, 0)
         card_ids = cell_widget.card_ids
@@ -418,31 +461,31 @@ class CalculatorView:
                 if card is None:
                     continue
                 card.refresh_values()
-    
-    def swap_unit(self, dir_up):
+
+    def swap_unit(self, dir_up: bool):
         selected_row = self.widget.selectionModel().selectedRows()[0].row()
         cell_widget = self.widget.cellWidget(selected_row, 0)
         card_ids = cell_widget.card_ids
-        
+
         if (dir_up and selected_row == 0) or (not dir_up and selected_row == self.widget.rowCount() - 1):
             return
         if dir_up:
             self.insert_unit(selected_row - 1)
             self.set_unit(card_ids, selected_row - 1)
-            self.swap_unit_int(selected_row - 1)
+            self.duplicate_unit_to_swap(selected_row - 1)
             self.widget.removeRow(selected_row + 1)
             self.widget.setCurrentCell(selected_row, 0)
         else:
             self.insert_unit(selected_row + 2)
             self.set_unit(card_ids, selected_row + 2)
-            self.swap_unit_int(selected_row + 2)
+            self.duplicate_unit_to_swap(selected_row + 2)
             self.widget.removeRow(selected_row)
             self.widget.setCurrentCell(selected_row + 1, 0)
-    
-    def swap_unit_int(self, row):
+
+    def duplicate_unit_to_swap(self, row: int):
         selected_row = self.widget.selectionModel().selectedRows()[0].row()
         cell_widget = self.widget.cellWidget(selected_row, 0)
-        
+
         cloned_card_internals = cell_widget.clone_internal()
         new_unit = self.widget.cellWidget(row, 0)
         new_unit.cards_internal = cloned_card_internals
@@ -455,7 +498,7 @@ class CalculatorView:
                 continue
             card.refresh_values()
 
-    def set_unit(self, cards, row=None):
+    def set_unit(self, cards: List[int], row: int = None):
         if row is None:
             row = self.widget.rowCount() - 1
         for idx, card in enumerate(cards):
@@ -465,14 +508,14 @@ class CalculatorView:
         logger.info("Unit insert: {} - {} row {}".format(self.widget.cellWidget(row, 0).get_short_uuid(),
                                                          " ".join(map(str, cards)), row))
 
-    def add_unit(self, cards):
+    def add_unit(self, cards: List[int, None]):
         if len(cards) == 15:
             for _ in range(3):
-                self.add_unit_int(cards[_ * 5: (_ + 1) * 5])
+                self.add_unit_internal(cards[_ * 5: (_ + 1) * 5])
         else:
-            self.add_unit_int(cards)
+            self.add_unit_internal(cards)
 
-    def add_unit_int(self, cards):
+    def add_unit_internal(self, cards: List[int, None]):
         for r in range(self.widget.rowCount()):
             if self.widget.cellWidget(r, 0).card_ids == [None] * 6:
                 logger.debug("Empty calculator unit at row {}".format(r))
@@ -481,7 +524,7 @@ class CalculatorView:
         self.model.add_empty_unit(AddEmptyUnitEvent(self.model))
         self.set_unit(row=self.widget.rowCount() - 1, cards=cards)
 
-    def create_support_team(self, r):
+    def create_support_team(self, r: int):
         if not eventbus.eventbus.post_and_get_first(
                 SetSupportCardsEvent(self.widget.cellWidget(r, 0).extended_cards_data)):
             logger.info("Invalid unit to evaluate support team")
@@ -497,7 +540,7 @@ class CalculatorView:
             support = custom_support
         self.widget.setItem(r, 1, NumericalTableWidgetItem(int(appeals + support)))
 
-    def fill_column(self, autoplay, c, row, value):
+    def fill_column(self, autoplay: bool, c: int, row: int, value):
         if c >= len(UNIVERSAL_HEADERS) - 1 and autoplay:
             column = c + 1 + len(NORMAL_SIM_HEADERS)
         else:
@@ -512,7 +555,7 @@ class CalculatorView:
             for c in range(len(ALL_HEADERS) - 1):
                 self.widget.removeCellWidget(r, c + 1)
 
-    def handle_unit_click(self, r):
+    def handle_unit_click(self, r: int):
         eventbus.eventbus.post(HookUnitToChartViewerEvent(self.widget.cellWidget(r, 0).cards_internal))
         self.create_support_team(r)
         if self.widget.cellWidget(r, 0).extended_cards_data.lock_chart:
@@ -522,18 +565,12 @@ class CalculatorView:
             self.widget.cellWidget(r, 0).display_chart_name(diff_name, song_name)
         eventbus.eventbus.post(HookUnitToUnitDetailsEvent())
 
-    def replace_changed_custom_card(self, custom_card_id, new_custom_card = None):
-        for row in range(self.widget.rowCount()-1, -1, -1):
-            for idx, card in enumerate(self.widget.cellWidget(row, 0).cards_internal):
-                if card is not None and card.card_id == custom_card_id:
-                    self.widget.cellWidget(row, 0).set_card(idx, new_custom_card)
-    
     def backup(self):
         logger.info("{} backing up unit for next session...".format(type(self).__name__))
         try:
             units = [self.widget.cellWidget(r, 0).backup() for r in range(self.widget.rowCount())]
             pickle.dump(units, get_writer(BACKUP_PATH / "{}.bk".format(type(self).__name__)))
-        except:
+        except Exception:
             logger.error("Failed to back up session units")
 
     def _restore_from_backup(self):
@@ -542,7 +579,7 @@ class CalculatorView:
                 return
             logger.info("Restoring last session")
             units = pickle.load(get_reader(BACKUP_PATH / "{}.bk".format(type(self).__name__)))
-        except:
+        except Exception:
             logger.error("Failed to load units from last session")
             return
         unit: BackupUnit
@@ -562,19 +599,20 @@ class CalculatorView:
 
 class CalculatorModel:
     view: CalculatorView
+    unit_locking_options_visibility: bool
 
-    def __init__(self, view):
+    def __init__(self, view: CalculatorView):
         self.view = view
         eventbus.eventbus.register(self)
         self.unit_locking_options_visibility = True
         self.add_empty_unit(AddEmptyUnitEvent(self))
 
     @subscribe(AutoFlagChangeEvent)
-    def toggle_auto(self, event):
+    def toggle_auto(self, event: AutoFlagChangeEvent):
         self.view.toggle_auto(event.flag)
 
     @subscribe(GetAllCardsEvent)
-    def get_all_cards(self, event):
+    def get_all_cards(self, event: GetAllCardsEvent):
         if event.model is not self:
             return
         res = list()
@@ -590,7 +628,7 @@ class CalculatorModel:
         return res
 
     @subscribe(DisplaySimulationResultEvent)
-    def display_simulation_result(self, event):
+    def display_simulation_result(self, event: DisplaySimulationResultEvent):
         payload: BaseSimulationResultWithUuid = event.payload
 
         row_to_change = self.get_row_from_uuid(payload.uuid)
@@ -610,7 +648,7 @@ class CalculatorModel:
             self._process_auto_results(payload.results, row_to_change)
         self.view.widget.setSortingEnabled(True)
 
-    def get_row_from_uuid(self, check_uuid):
+    def get_row_from_uuid(self, check_uuid: str):
         row_to_change = -1
         for r in range(self.view.widget.rowCount()):
             uuid = self.view.widget.cellWidget(r, 0).get_uuid()
@@ -620,14 +658,14 @@ class CalculatorModel:
         return row_to_change
 
     @subscribe(TurnOffRunningLabelFromUuidEvent)
-    def turn_off_running_label_from_uuid(self, event):
+    def turn_off_running_label_from_uuid(self, event: TurnOffRunningLabelFromUuidEvent):
         row_to_change = self.get_row_from_uuid(event.uuid)
         if row_to_change == -1:
             return
         self.view.widget.cellWidget(row_to_change, 0).toggle_running_simulation(False)
 
     @subscribe(AddEmptyUnitEvent)
-    def add_empty_unit(self, event):
+    def add_empty_unit(self, event: AddEmptyUnitEvent):
         if event.active_tab is not self:
             return
         self.view.insert_unit()
@@ -656,7 +694,7 @@ class CalculatorModel:
         for row in range(self.view.widget.rowCount()):
             cell_widget = self.view.widget.cellWidget(row, 0)
             cell_widget.toggle_unit_locking_options_visibility(self.unit_locking_options_visibility)
-        self.view.widget.verticalHeader().setSectionResizeMode(3)
+        self.view.widget.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
     @subscribe(GetUnitLockingOptionsVisibilityEvent)
     def get_unit_locking_options_visibility(self, event):
@@ -667,27 +705,22 @@ class CalculatorModel:
     def backup(self, event):
         self.view.backup()
 
-    def _process_normal_results(self, results: SimulationResult, row=None):
-        # ["Perfect", "Mean", "Max", "Min", "Fans", "Theoretical Max", "90%", "75%", "50%"])
+    def _process_normal_results(self, results: SimulationResult, row: int = None):
+        # ["Perfect", "Theo. Max", "All Act %", "Mean", "Max", "Min", "Fans", "90%", "75%", "50%"]
         self.view.fill_column(False, 0, row, int(results.total_appeal))
         self.view.fill_column(False, 1, row, int(results.total_life))
         self.view.fill_column(False, 2, row, int(results.perfect_score))
-        self.view.fill_column(False, 3, row, int(results.base))
-        self.view.fill_column(False, 4, row, int(results.base + results.deltas.max()))
-        self.view.fill_column(False, 5, row, int(results.base + results.deltas.min()))
-        self.view.fill_column(False, 6, row, int(results.fans))
-        self.view.fill_column(False, 7, row, int(results.base + np.percentile(results.deltas, 90)))
-        self.view.fill_column(False, 8, row, int(results.base + np.percentile(results.deltas, 75)))
-        self.view.fill_column(False, 9, row, int(results.base + np.percentile(results.deltas, 50)))
-        if results.abuse_data is not None:
-            self.view.fill_column(False, 10, row, int(results.abuse_score))
-        self.view.fill_column(False, 11, row, float(int(results.full_roll_chance * 10000) / 100))
-        if results.cc_great_num > 0:
-            self.view.fill_column(False, 12, row, results.cc_fr_base)
-            self.view.fill_column(False, 13, row, results.cc_great_num)
-            self.view.fill_column(False, 14, row, results.cc_base)
+        self.view.fill_column(False, 3, row, int(results.abuse_score))
+        self.view.fill_column(False, 4, row, float(int(results.full_roll_chance * 10000) / 100))
+        self.view.fill_column(False, 5, row, int(results.base))
+        self.view.fill_column(False, 6, row, int(results.base + results.deltas.max(initial=0)))
+        self.view.fill_column(False, 7, row, int(results.base + results.deltas.min(initial=0)))
+        self.view.fill_column(False, 8, row, int(results.fans))
+        self.view.fill_column(False, 9, row, int(results.base + np.percentile(results.deltas, 90)))
+        self.view.fill_column(False, 10, row, int(results.base + np.percentile(results.deltas, 75)))
+        self.view.fill_column(False, 11, row, int(results.base + np.percentile(results.deltas, 50)))
 
-    def _process_auto_results(self, results: AutoSimulationResult, row=None):
+    def _process_auto_results(self, results: AutoSimulationResult, row: int = None):
         # ["Auto Score", "Perfects", "Misses", "Max Combo", "Lowest Life", "Lowest Life Time", "All Skills 100%?"]
         self.view.fill_column(True, 0, row, int(results.total_appeal))
         self.view.fill_column(True, 1, row, int(results.total_life))
@@ -699,12 +732,27 @@ class CalculatorModel:
         self.view.fill_column(True, 7, row, float(results.lowest_life_time))
         self.view.fill_column(True, 8, row, "Yes" if results.all_100 else "No")
 
+    @subscribe(CustomCardUpdatedEvent)
+    def replace_changed_custom_card(self, event: CustomCardUpdatedEvent):
+        for row in range(self.view.widget.rowCount()-1, -1, -1):
+            unit_widget = self.view.widget.cellWidget(row, 0)
+            for idx, card in enumerate(unit_widget.cards_internal):
+                if card is not None and card.card_id == event.card_id:
+                    unit_widget.set_card(idx, event.card_id if not event.delete else None)
+                    if not event.image_changed:
+                        unit_widget.cards_internal[idx].vo_pots = card.vo_pots
+                        unit_widget.cards_internal[idx].da_pots = card.da_pots
+                        unit_widget.cards_internal[idx].vi_pots = card.vi_pots
+                        unit_widget.cards_internal[idx].li_pots = card.li_pots
+                        unit_widget.cards_internal[idx].sk_pots = card.sk_pots
+                        unit_widget.cards_internal[idx].star = card.star
+                        unit_widget.cards_internal[idx].sk.skill_level = card.sk.skill_level
+
 
 class CardsWithUnitUuidAndExtraData:
-    def __init__(self, uuid, short_uuid, cards,
-                 lock_unit, extra_bonus, special_option, special_value,
-                 lock_chart, score_id, diff_id, live_detail_id,
-                 groove_song_color):
+    def __init__(self, uuid: str, short_uuid: str, cards: List[Card],
+                 lock_unit: bool, extra_bonus: np.ndarray, special_option: int, special_value: int,
+                 lock_chart: bool, score_id: int, diff_id: int, live_detail_id: int, groove_song_color: Color):
         self.uuid = uuid
         self.short_uuid = short_uuid
         self.cards = cards

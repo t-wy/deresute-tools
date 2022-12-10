@@ -53,11 +53,6 @@ class GetSkillBoundaryEvent:
         pass
 
 
-class GetTheoreticalMaxFlagEvent:
-    def __init__(self):
-        pass
-
-
 class GetUnitLockingOptionsVisibilityEvent:
     def __init__(self):
         pass

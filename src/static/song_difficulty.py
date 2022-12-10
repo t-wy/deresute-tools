@@ -17,6 +17,7 @@ class Difficulty(Enum):
     PIANO = 21
     FORTE = 22
 
+
 FLICK_DRAIN = {
     Difficulty.LIGHT: 0,
     Difficulty.TRICK: 8,

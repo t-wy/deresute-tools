@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import pandas as pd
 
 import customlogger as logger
@@ -17,13 +19,13 @@ def initialize_potential_db():
             da INTEGER NOT NULL,
             li INTEGER NOT NULL,
             sk INTEGER NOT NULL,
-            FOREIGN KEY (chara_id) REFERENCES chara_cache(chara_id) 
+            FOREIGN KEY (chara_id) REFERENCES chara_cache(chara_id)
         )
     """)
     db.cachedb.commit()
 
 
-def copy_card_data_from_master(update_all=True, chara_id=None):
+def copy_card_data_from_master(update_all: bool = True, chara_id: int = None):
     if update_all:
         db.cachedb.execute("DROP TABLE IF EXISTS card_data_cache")
         all_cards = db.masterdb.execute_and_fetchall("SELECT * FROM card_data", out_dict=True)
@@ -69,11 +71,12 @@ def copy_card_data_from_master(update_all=True, chara_id=None):
                     bonus_visual = ?,
                     bonus_skill = ?
                 WHERE id = ?
-            """, [row['bonus_hp'], row['bonus_vocal'], row['bonus_dance'], row['bonus_visual'], row['bonus_skill'], row['id']])
+            """, [row['bonus_hp'], row['bonus_vocal'], row['bonus_dance'],
+                  row['bonus_visual'], row['bonus_skill'], row['id']])
     db.cachedb.commit()
 
 
-def update_potential(chara_id, pots):
+def update_potential(chara_id: int, pots: Tuple[int]):
     assert len(pots) == 5
     db.cachedb.execute("""
         INSERT OR REPLACE INTO potential_cache (chara_id, vo, vi, da, li, sk)
