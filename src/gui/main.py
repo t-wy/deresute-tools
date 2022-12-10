@@ -80,6 +80,7 @@ class UiMainWindow:
         self.setup_base()
         self.setup_unit_layout()
         self.setup_simulator_layout()
+        self.calculator_view.setUserID(self.import_text)
         self.setup_tip_view()
         self.main.setCentralWidget(self.central_widget)
         self.retranslate_ui(self.main)
@@ -267,7 +268,7 @@ class UiMainWindow:
         self.tip_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.tip_layout.addWidget(self.tip_view)
 
-        text = "Deresute-tools modified by @oayimikagakat" + " " * 8
+        text = "Deresute-tools modified by @oayimikagakat with features added by @t-wy" + " " * 8
         self.credit_label = QLabel(text)
         self.credit_label.setAlignment(Qt.AlignRight)
         self.tip_layout.addWidget(self.credit_label)

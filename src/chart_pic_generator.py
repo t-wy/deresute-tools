@@ -24,10 +24,17 @@ from static.skill import SKILL_BASE
 from static.song_difficulty import Difficulty
 from utils import storage
 
+_QFont = QFont
+def QFont():
+    qf = _QFont('Sans Serif')
+    qf.setStyleHint(_QFont.SansSerif)
+    return qf
+
 if TYPE_CHECKING:
     from gui.viewmodels.chart_viewer import ChartViewer
 
 X_MARGIN = 110
+LEFT_MARGIN = 50
 LANE_DISTANCE = 70
 SKILL_PAINT_WIDTH = 60
 SEC_OFFSET_X = 105
@@ -455,7 +462,7 @@ class BaseChartPicGenerator(ABC):
 
     def initialize_ui(self):
         self.height = self.last_sec * SEC_HEIGHT + 2 * Y_MARGIN
-        self.width = (2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE)
+        self.width = LEFT_MARGIN + (2 * self.X_MARGIN + (self.lane_count - 1) * self.LANE_DISTANCE)
 
         self.chart_image_layout.setSpacing(0)
         self.chart_image_layout.setContentsMargins(0, 0, 0, 0)
@@ -547,9 +554,10 @@ class BaseChartPicGenerator(ABC):
                     self.painters[label_idx].setPen(horizontal_grid_light_pen)
                 y = self.get_y(sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT, label_idx)
                 self.painters[label_idx].drawLine(self.get_x(0), y, self.get_x(self.lane_count - 1), y)
+                tm = sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT
                 self.painters[label_idx].drawText(
-                    QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 50), Qt.AlignRight,
-                    str(sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT))
+                    QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 100), Qt.AlignRight,
+                    "{}:{:0>2}\n{}".format(tm // 60, tm % 60, self.notes[self.notes['sec'] <= tm].shape[0]))
 
     def draw_sync_lines(self, draw_label_idx: List[int]):
         if len(draw_label_idx) == 0:
@@ -948,7 +956,7 @@ class BaseChartPicGenerator(ABC):
         self.painters[label_idx].setBrush(group_line_brush)
 
     def get_x(self, lane: float) -> int:
-        return round(self.X_MARGIN + lane * self.LANE_DISTANCE)
+        return round(LEFT_MARGIN + self.X_MARGIN + lane * self.LANE_DISTANCE)
 
     def get_y(self, sec: float, label_idx: int) -> int:
         y = (label_idx + 1) * (MAX_LABEL_Y + 1) - Y_MARGIN - sec * SEC_HEIGHT
