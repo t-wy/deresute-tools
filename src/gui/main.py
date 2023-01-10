@@ -50,11 +50,10 @@ class CustomMainWindow(QMainWindow):
             logger.info("User data backed up")
             eventbus.eventbus.post(ShutdownTriggeredEvent())
             eventbus.eventbus.post(BackupFlagsEvent())
-            unit_storage.clean_all_units(grand=False)
             for r_idx in range(self.ui.unit_storage_view.widget.count()):
                 widget = self.ui.unit_storage_view.widget.itemWidget(self.ui.unit_storage_view.widget.item(r_idx))
                 if widget is not None:
-                    widget.post_update_unit()
+                    widget.update_unit()
             profile_manager.cleanup()
 
     def closeEvent(self, event):

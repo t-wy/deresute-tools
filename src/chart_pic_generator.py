@@ -808,6 +808,7 @@ class BaseChartPicGenerator(ABC):
             y_temp += IMAGE_HEIGHT - IMAGE_Y_MARGIN
             column += 1
         saved_image.save(str(path))
+        painter.end()
 
     def draw_chart(self, paint_skill: bool = False, draw_abuse: bool = False):
         self.begin_painters()
