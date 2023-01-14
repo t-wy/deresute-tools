@@ -209,6 +209,8 @@ class DraggableQScrollArea(QScrollArea):
 
     def __init__(self, *args):
         super().__init__(*args)
+        self.original_y = self.verticalScrollBar().value()
+        self.original_x = self.horizontalScrollBar().value()
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
