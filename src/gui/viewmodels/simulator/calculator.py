@@ -271,7 +271,7 @@ class CalculatorUnitWidgetWithExtraData(UnitWidget):
             if type(self.unit_view.widget) == DroppableCalculatorWidget and mimetext.startswith(UNIT_EDITOR_UNIT):
                 self.unit_view.widget.handle_lost_mime(mimetext)
 
-    def backup(self):
+    def backup(self) -> BackupUnit:
         return BackupUnit(self.card_ids, self.cards_internal, self.lock_unit, self.lock_chart, self.extended_cards_data,
                           self.song_name_label.text())
 
