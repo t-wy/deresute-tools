@@ -26,17 +26,17 @@ def get_cards(game_id):
     subprocess.call(list(map(str, [TOOL_EXE, "card", game_id, TEMP_PATH])))
     if not os.path.exists(TEMP_PATH):
         return
-    with open(TEMP_PATH) as fr:
+    with open(TEMP_PATH, encoding='utf-8') as fr:
         cards = fr.read().strip().split(",")
         return cards
 
 
 @remove_temp
 def get_top_build(live_detail_id):
-    subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, TEMP_PATH])))
+    subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, 1, TEMP_PATH])))
     if not os.path.exists(TEMP_PATH):
         return
-    with open(TEMP_PATH) as fr:
+    with open(TEMP_PATH, encoding='utf-8') as fr:
         build = literal_eval(fr.read())
         support = build['backmember_appeal']
         for idx, card in enumerate(build['member_list']):
