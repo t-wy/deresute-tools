@@ -4,8 +4,7 @@ from typing import Optional, List
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject
-from PyQt5.QtGui import QIntValidator
-from PyQt5.QtWidgets import QSizePolicy, QTabWidget
+from PyQt5.QtGui import QIntValidator, QFontMetrics
 from numpy import ndarray
 
 import customlogger as logger
@@ -72,7 +71,13 @@ class MainView:
         self.button_layout = QtWidgets.QGridLayout()
         self.big_button = QtWidgets.QPushButton("Run", self.widget)
         self.add_button = QtWidgets.QPushButton("Add Empty Unit", self.widget)
-        self.yoink_button = QtWidgets.QPushButton("Yoink #1 Unit", self.widget)
+        self.yoink_button = QtWidgets.QPushButton("Yoink", self.widget)
+        self.yoink_button.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Preferred)
+        self.yoink_label = QtWidgets.QLabel("#", self.widget)
+        self.yoink_text = QtWidgets.QLineEdit(self.widget)
+        self.yoink_text.setValidator(QIntValidator(1, 100, None))  # Only number allowed
+        self.yoink_text.setFixedWidth(QFontMetrics(self.yoink_text.font()).width("100") + 10)
+        self.yoink_text.setText("1")
         self.permute_button = QtWidgets.QPushButton("Permute Units", self.widget)
         self.times_text = QtWidgets.QLineEdit(self.widget)
         self.times_text.setValidator(QIntValidator(0, 1000, None))  # Only number allowed
@@ -82,16 +87,23 @@ class MainView:
         font = self.big_button.font()
         font.setPointSize(16)
         self.big_button.setFont(font)
-        self.big_button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+        self.big_button.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.MinimumExpanding)
 
         self.big_button.pressed.connect(lambda: self.simulate())
 
         self.button_layout.addWidget(self.big_button, 0, 0, 2, 2)
         self.button_layout.addWidget(self.times_text, 2, 0, 1, 1)
         self.button_layout.addWidget(self.times_label, 2, 1, 1, 1)
-        self.button_layout.addWidget(self.add_button, 0, 2, 1, 1)
+        self.button_layout.addWidget(self.add_button, 0, 2, 1, 3)
         self.button_layout.addWidget(self.yoink_button, 1, 2, 1, 1)
-        self.button_layout.addWidget(self.permute_button, 2, 2, 1, 1)
+        self.button_layout.addWidget(self.yoink_label, 1, 3, 1, 1)
+        self.button_layout.addWidget(self.yoink_text, 1, 4, 1, 1)
+        self.button_layout.addWidget(self.permute_button, 2, 2, 1, 3)
+        self.button_layout.setColumnStretch(0, 2)
+        self.button_layout.setColumnStretch(1, 2)
+        self.button_layout.setColumnStretch(2, 2)
+        self.button_layout.setColumnStretch(3, 1)
+        self.button_layout.setColumnStretch(4, 1)
         self.bottom_row_layout.addLayout(self.button_layout)
 
     def _setup_custom_settings(self):
@@ -126,7 +138,7 @@ class MainView:
             pass
         self.add_button.pressed.connect(
             lambda: eventbus.eventbus.post(AddEmptyUnitEvent(self.models[self.calculator_tabs.currentIndex()])))
-        self.yoink_button.pressed.connect(lambda: self.model.handle_yoink_button())
+        self.yoink_button.pressed.connect(lambda: self.model.handle_yoink_button(self.yoink_text.text()))
         self.permute_button.pressed.connect(lambda: self.views[1].permute_units())
 
     def _setup_custom_appeal_and_support_layout(self):
@@ -142,13 +154,13 @@ class MainView:
         self.custom_appeal_and_support_layout.addLayout(self.custom_bonus_view.layout)
 
     def _setup_custom_card_and_support(self):
-        self.custom_card_and_support_widget = QTabWidget(self.widget)
+        self.custom_card_and_support_widget = QtWidgets.QTabWidget(self.widget)
         self._setup_support()
         self._setup_custom_card()
         self._setup_unit_details()
-        self.custom_card_and_support_widget.addTab(self.support_view.widget, "Support Team")
         self.custom_card_and_support_widget.addTab(self.custom_card_view.widget, "Edit Card")
         self.custom_card_and_support_widget.addTab(self.unit_details_view.widget, "Unit Details")
+        self.custom_card_and_support_widget.addTab(self.support_view.widget, "Support Team")
         self.custom_appeal_and_support_layout.addWidget(self.custom_card_and_support_widget)
 
     def _setup_custom_card(self):
@@ -378,15 +390,18 @@ class MainModel(QObject):
                               deact_skills=custom_event.deact_skills, note_offsets=custom_event.note_offsets)
         eventbus.eventbus.post(CustomSimulationResultEvent(event.live, result))
 
-    def handle_yoink_button(self):
+    def handle_yoink_button(self, rank):
         _, _, live_detail_id, song_name, diff_name = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())
         if live_detail_id is None:
+            return
+        rank = int(rank)
+        if not 1 <= rank <= 100:
             return
 
         self.view.yoink_button.setEnabled(False)
         self.view.yoink_button.setText("Yoinking...")
-        eventbus.eventbus.post(InjectTextEvent("Yoinking the top team for {} - {}".format(song_name, diff_name)))
-        eventbus.eventbus.post(YoinkUnitEvent(live_detail_id), asynchronous=True)
+        eventbus.eventbus.post(InjectTextEvent("Yoinking rank {} team for {} - {}".format(rank, song_name, diff_name)))
+        eventbus.eventbus.post(YoinkUnitEvent(live_detail_id, rank), asynchronous=True)
 
     @pyqtSlot(YoinkResults)
     def _handle_yoink_done_signal(self, payload: YoinkResults):
@@ -397,13 +412,13 @@ class MainModel(QObject):
                 self.view.views[0].add_unit(payload.cards)
             eventbus.eventbus.post(PostYoinkEvent(payload.support))
             eventbus.eventbus.post(YoinkCustomCardEvent())
-        self.view.yoink_button.setText("Yoink #1 Unit")
+        self.view.yoink_button.setText("Yoink")
         self.view.yoink_button.setEnabled(True)
 
     @subscribe(YoinkUnitEvent)
     def _handle_yoink_signal(self, event: YoinkUnitEvent):
         try:
-            cards, support = get_top_build(event.live_detail_id)
+            cards, support = get_top_build(event.live_detail_id, event.rank)
             eventbus.eventbus.post(InjectTextEvent("Yoinked successfully", 2))
         except Exception:
             cards, support = None, None

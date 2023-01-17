@@ -32,8 +32,8 @@ def get_cards(game_id):
 
 
 @remove_temp
-def get_top_build(live_detail_id):
-    subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, 1, TEMP_PATH])))
+def get_top_build(live_detail_id, rank):
+    subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, rank, TEMP_PATH])))
     if not os.path.exists(TEMP_PATH):
         return
     with open(TEMP_PATH, encoding='utf-8') as fr:

@@ -65,8 +65,9 @@ class AddEmptyUnitEvent:
 
 
 class YoinkUnitEvent:
-    def __init__(self, live_detail_id: int):
+    def __init__(self, live_detail_id: int, rank: int):
         self.live_detail_id = live_detail_id
+        self.rank = rank
 
 
 class SetSupportCardsEvent:
