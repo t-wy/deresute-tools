@@ -41,7 +41,7 @@ SKILL_BASE = {
     40: {"id": 40, "name": "Refrain", "keywords": ["ref"], "color": (218, 126, 3)},
     41: {"id": 41, "name": "Magic", "keywords": ["mag"], "color": (255, 200, 255)},
     42: {"id": 42, "name": "Mutual", "keywords": ["mut"], "color": (191, 191, 191)},
-    43: {"id": 43, "name": "Overdrive", "keywords": ["ol"], "color": (238, 187, 221)}
+    43: {"id": 43, "name": "Overdrive", "keywords": ["od"], "color": (238, 187, 221)}
 }
 
 SKILL_COLOR_BY_NAME = {
