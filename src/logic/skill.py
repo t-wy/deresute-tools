@@ -135,12 +135,16 @@ class Skill:
         return self.skill_type == 42
 
     @property
+    def is_overdrive(self) -> bool:
+        return self.skill_type == 43
+
+    @property
     def have_score_bonus(self) -> bool:
         return self.skill_type in (1, 2, 14, 15, 21, 22, 23, 26, 27, 28, 29, 30, 35, 36, 37, 42)
 
     @property
     def have_combo_bonus(self) -> bool:
-        return self.skill_type in (4, 21, 22, 23, 24, 25, 26, 27, 31, 39)
+        return self.skill_type in (4, 21, 22, 23, 24, 25, 26, 27, 31, 39, 43)
 
     @classmethod
     def _fetch_skill_data_from_db(cls, skill_id: int) -> Dict[str, Any]:
@@ -223,7 +227,7 @@ class Skill:
         elif skill_type == 31:  # Tuning
             values[2] = skill_values[0]
             values[4] = 2
-        elif skill_type == 24:  # All-round
+        elif skill_type == 24 or skill_type == 43:  # All-round, Overdrive
             values[2] = skill_values[0]
             values[3] = skill_values[1]
         elif skill_type == 17:  # Healer
@@ -302,7 +306,7 @@ class Skill:
             return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100, self.values[2] - 100)
         elif self.skill_type in (21, 22, 23, 27, 28, 29, 30):
             return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100, self.values[1] - 100)
-        elif self.skill_type == 24:
+        elif self.skill_type in (24, 43):
             return SKILL_DESCRIPTION[self.skill_type].format(self.values[2] - 100, self.values[3])
         elif self.skill_type == 26:
             return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100, self.values[3], self.values[2] - 100)
