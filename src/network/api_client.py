@@ -92,7 +92,7 @@ def post_process(build):
 
 @remove_temp
 def _get_top_build(live_detail_id, rank=1, player_id=None):
-    if id is not None:
+    if player_id is not None:
         logger.info("Cannot get units by player_id due to the absence of tool.py.")
     subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, rank, TEMP_PATH])))
     if not os.path.exists(TEMP_PATH):
