@@ -181,7 +181,7 @@ class Skill:
         elif skill_type == 31:  # Tuning
             values[1] = skill_values[0]
             values[3] = 2
-        elif skill_type == 24:  # All-round
+        elif skill_type in (24, 43):  # All-round, Overdrive
             values[1] = skill_values[0]
             values[2] = skill_values[1]
         elif skill_type == 17:  # Healer
