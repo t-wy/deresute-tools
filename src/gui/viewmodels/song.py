@@ -19,7 +19,7 @@ from gui.viewmodels.utils import NumericalTableWidgetItem
 from static.color import Color
 from static.song_difficulty import Difficulty
 
-DATA_COLS = ["LDID", "LiveID", "DifficultyInt", "ID", "Name", "Color", "Difficulty", "Level", "Duration (s)",
+DATA_COLS = ["LDID", "LiveID", "DifficultyInt", "ID", "Name", "Color", "Difficulty", "Level", "Duration (s)", "BPM",
                      "Note Count", "Tap", "Long", "Flick", "Slide", "Tap %", "Long %", "Flick %", "Slide %",
                      "7h %", "9h %", "11h %", "12m %", "6m %", "7m %", "9m %", "11m %", "13h %"]
 
@@ -114,7 +114,7 @@ class SongView:
         self.widget.setSortingEnabled(True)
         for r_idx, card_data in enumerate(data):
             for c_idx, (key, value) in enumerate(card_data.items()):
-                if isinstance(value, int) and 21 >= c_idx >= 7 or c_idx == 1:
+                if isinstance(value, int) and 22 >= c_idx >= 7 or c_idx == 1:
                     item = NumericalTableWidgetItem(value)
                 elif value is None:
                     item = QTableWidgetItem("")
@@ -134,24 +134,24 @@ class SongView:
         if change:
             self.timers = not self.timers
         if self.timers:
-            for r_idx in range(18, 27):
+            for r_idx in range(19, 28):
                 self.widget.setColumnHidden(r_idx, False)
         else:
-            for r_idx in range(18, 27):
+            for r_idx in range(19, 28):
                 self.widget.setColumnHidden(r_idx, True)
 
     def toggle_percentage(self, change: bool = True):
         if change:
             self.percentage = not self.percentage
         if not self.percentage:
-            for r_idx in range(14, 18):
+            for r_idx in range(15, 19):
                 self.widget.setColumnHidden(r_idx, True)
-            for r_idx in range(10, 14):
+            for r_idx in range(11, 15):
                 self.widget.setColumnHidden(r_idx, False)
         else:
-            for r_idx in range(14, 18):
+            for r_idx in range(15, 19):
                 self.widget.setColumnHidden(r_idx, False)
-            for r_idx in range(10, 14):
+            for r_idx in range(11, 15):
                 self.widget.setColumnHidden(r_idx, True)
 
     def toggle_auto_resize(self, on: bool = False):
@@ -183,6 +183,7 @@ class SongModel:
                             ldc.difficulty as Difficulty,
                             ldc.level as Level,
                             ldc.duration as Duration,
+                            ldc.bpm as BPM,
                             CAST(ldc.Tap + ldc.Long + ldc.Flick + ldc.Slide AS INTEGER) as Notes,
                             ldc.Tap as Tap,
                             ldc.Long as Long,
@@ -207,6 +208,9 @@ class SongModel:
         checked_set = set()
         id_dict = dict()
         dupe_set = set()
+        for _ in data:
+            if _['BPM'].is_integer():
+                _['BPM'] = int(_['BPM'])
         for _ in data:
             if _['DifficultyInt'] != 5:
                 continue

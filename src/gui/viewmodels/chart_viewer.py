@@ -296,6 +296,8 @@ class ChartViewer:
             str(note_detail.cumulative_score))
 
     def _show_detail_note_bonus_info(self, widget_text: str, bonus: List[NoteDetailSkill]):
+        bonus.sort(key=lambda skill: skill.lane)
+
         widget_name = 'detail_note_score_general_{}-bonus'.format(widget_text)
         sum_bonus = 1 + sum([skill.value / 100 for skill in bonus])
         self.info_widget.subwidgets[widget_name].textbox[0].setText("{:.2f}".format(sum_bonus))

@@ -4,8 +4,7 @@ from typing import Optional, List
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject
-from PyQt5.QtGui import QIntValidator
-from PyQt5.QtWidgets import QSizePolicy, QTabWidget
+from PyQt5.QtGui import QIntValidator, QFontMetrics
 from numpy import ndarray
 
 import customlogger as logger
@@ -89,7 +88,7 @@ class MainView:
         font = self.big_button.font()
         font.setPointSize(16)
         self.big_button.setFont(font)
-        self.big_button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+        self.big_button.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.MinimumExpanding)
 
         self.big_button.pressed.connect(lambda: self.simulate())
 
@@ -152,13 +151,13 @@ class MainView:
         self.custom_appeal_and_support_layout.addLayout(self.custom_bonus_view.layout)
 
     def _setup_custom_card_and_support(self):
-        self.custom_card_and_support_widget = QTabWidget(self.widget)
+        self.custom_card_and_support_widget = QtWidgets.QTabWidget(self.widget)
         self._setup_support()
         self._setup_custom_card()
         self._setup_unit_details()
-        self.custom_card_and_support_widget.addTab(self.support_view.widget, "Support Team")
         self.custom_card_and_support_widget.addTab(self.custom_card_view.widget, "Edit Card")
         self.custom_card_and_support_widget.addTab(self.unit_details_view.widget, "Unit Details")
+        self.custom_card_and_support_widget.addTab(self.support_view.widget, "Support Team")
         self.custom_appeal_and_support_layout.addWidget(self.custom_card_and_support_widget)
 
     def _setup_custom_card(self):
@@ -397,6 +396,9 @@ class MainModel(QObject):
     def handle_yoink_button(self, rank=1, player_id=None):
         _, _, live_detail_id, song_name, diff_name = eventbus.eventbus.post_and_get_first(GetSongDetailsEvent())
         if live_detail_id is None:
+            return
+        rank = int(rank)
+        if not 1 <= rank <= 100:
             return
 
         self.view.yoink_button.setEnabled(False)

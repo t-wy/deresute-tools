@@ -454,7 +454,6 @@ class StateMachine:
     being_held: Dict[int, bool]
     lowest_life: int
     lowest_life_time: int
-    last_miss_time: int
 
     force_encore_amr_cache_to_encore_unit: bool
     force_encore_magic_to_encore_unit: bool
@@ -1018,7 +1017,7 @@ class StateMachine:
 
         return self.note_scores, len(list(filter(lambda x: x is Judgement.PERFECT, self.judgements))), \
             len(list(filter(lambda x: x is Judgement.MISS, self.judgements))), max(self.combos), \
-            self.lowest_life, self.lowest_life_time, self.full_roll_chance == 1, self.last_miss_time
+            self.lowest_life, self.lowest_life_time, self.full_roll_chance == 1
 
     def break_hold(self, skill_time):
         self.separate_magics_non_magics()

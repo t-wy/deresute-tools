@@ -41,6 +41,7 @@ SKILL_BASE = {
     40: {"id": 40, "name": "Refrain", "keywords": ["ref"], "color": (218, 126, 3)},
     41: {"id": 41, "name": "Magic", "keywords": ["mag"], "color": (255, 200, 255)},
     42: {"id": 42, "name": "Mutual", "keywords": ["mut"], "color": (191, 191, 191)},
+    43: {"id": 43, "name": "Overdrive", "keywords": ["od"], "color": (238, 187, 221)}
 }
 
 SKILL_COLOR_BY_NAME = {
@@ -124,7 +125,8 @@ SKILL_DESCRIPTION = {
     39: "{}% COMBO BONUS DOWN, apply the highest SCORE UP effect activated during LIVE {}% boosted.",
     40: "Apply the highest SCORE UP/COMBO BONUS UP effect activated during LIVE.",
     41: "Activates the effects of all idols in the unit and applies the highest effect.",
-    42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted."
+    42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted.",
+    43: "{}% COMBO BONUS UP, heals {} life on PERFECT and sustain combo only in PERFECT."
     }
 
 
