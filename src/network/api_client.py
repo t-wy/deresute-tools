@@ -26,7 +26,7 @@ def _get_cards(game_id):
     subprocess.call(list(map(str, [TOOL_EXE, "card", game_id, TEMP_PATH])))
     if not os.path.exists(TEMP_PATH):
         return
-    with open(TEMP_PATH) as fr:
+    with open(TEMP_PATH, encoding='utf-8') as fr:
         cards = fr.read().strip().split(",")
         return cards
 
@@ -92,14 +92,12 @@ def post_process(build):
 
 @remove_temp
 def _get_top_build(live_detail_id, rank=1, player_id=None):
-    if rank > 1:
-        logger.info("Cannot get units other than #1 due to the absence of tool.py.")
     if id is not None:
-        logger.info("Cannot get units other than #1 due to the absence of tool.py.")
-    subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, TEMP_PATH])))
+        logger.info("Cannot get units by player_id due to the absence of tool.py.")
+    subprocess.call(list(map(str, [TOOL_EXE, "build", live_detail_id, rank, TEMP_PATH])))
     if not os.path.exists(TEMP_PATH):
         return
-    with open(TEMP_PATH) as fr:
+    with open(TEMP_PATH, encoding='utf-8') as fr:
         build = literal_eval(fr.read())
         return post_process(build)
 

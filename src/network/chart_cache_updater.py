@@ -220,6 +220,7 @@ def initialize_score_db():
             difficulty INTEGER NOT NULL,
             level INTEGER NOT NULL,
             duration FLOAT NOT NULL,
+            bpm FLOAT NOT NULL,
             Tap INTEGER NOT NULL,
             Long INTEGER NOT NULL,
             Flick INTEGER NOT NULL,
@@ -250,34 +251,35 @@ def has_cached_live_details():
 def _insert_into_live_detail_cache(hashable):
     db.cachedb.execute("""
             INSERT OR IGNORE INTO live_detail_cache( live_detail_id, live_id, sort, color, performers, special_keys,
-             jp_name, name, difficulty, level, duration, Tap, Long, Flick, Slide,
+             jp_name, name, difficulty, level, duration, bpm, Tap, Long, Flick, Slide,
              Timer_7h, Timer_9h, Timer_11h, Timer_12m, Timer_6m, Timer_7m, Timer_9m, Timer_11m, Timer_13h)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, [
-        hashable["live_detail_id"],
-        hashable["live_id"],
-        hashable["sort"],
-        hashable["color"],
-        hashable["performers"],
-        hashable["special_keys"],
-        hashable["jp_name"],
-        hashable["name"],
-        hashable["difficulty"],
-        hashable["level"],
-        hashable["duration"],
-        hashable["Tap"],
-        hashable["Long"],
-        hashable["Flick"],
-        hashable["Slide"],
-        hashable["Timer_7h"],
-        hashable["Timer_9h"],
-        hashable["Timer_11h"],
-        hashable["Timer_12m"],
-        hashable["Timer_6m"],
-        hashable["Timer_7m"],
-        hashable["Timer_9m"],
-        hashable["Timer_11m"],
-        hashable["Timer_13h"]
+        hashable['live_detail_id'],
+        hashable['live_id'],
+        hashable['sort'],
+        hashable['color'],
+        hashable['performers'],
+        hashable['special_keys'],
+        hashable['jp_name'],
+        hashable['name'],
+        hashable['difficulty'],
+        hashable['level'],
+        hashable['duration'],
+        hashable['bpm'],
+        hashable['Tap'],
+        hashable['Long'],
+        hashable['Flick'],
+        hashable['Slide'],
+        hashable['Timer_7h'],
+        hashable['Timer_9h'],
+        hashable['Timer_11h'],
+        hashable['Timer_12m'],
+        hashable['Timer_6m'],
+        hashable['Timer_7m'],
+        hashable['Timer_9m'],
+        hashable['Timer_11m'],
+        hashable['Timer_13h']
     ])
 
 
@@ -287,7 +289,7 @@ def _overwrite_song_name(expanded_song_list):
                     UPDATE live_detail_cache
                     SET name = ?, special_keys = ?
                     WHERE live_detail_id = ?
-                """, [song_data["name"], song_data["special_keys"], live_detail_id])
+                """, [song_data['name'], song_data['special_keys'], live_detail_id])
     db.cachedb.commit()
 
 
@@ -307,21 +309,23 @@ def update_cache_scores():
     logger.debug("Uncached live detail IDs: {}".format(new_live_detail_ids))
     for ldid in new_live_detail_ids:
         live_data = expanded_song_list[ldid]
-        with db.CustomDB(MUSICSCORES_PATH / "musicscores_m{:03d}.db".format(live_data["live_id"])) as score_conn:
+        with db.CustomDB(MUSICSCORES_PATH / "musicscores_m{:03d}.db".format(live_data['live_id'])) as score_conn:
             try:
                 score = score_conn.execute_and_fetchone(
                     """
                     SELECT * FROM blobs WHERE name LIKE "musicscores/m{:03d}/{:d}_{:d}.csv"
-                    """.format(live_data["live_id"], live_data["live_id"], live_data["diff"])
+                    """.format(live_data['live_id'], live_data['live_id'], live_data['diff'])
                 )[1]
             except TypeError:
                 logger.debug("Cannot find chart for live detail ID {} difficulty {}".format(ldid, live_data["diff"]))
                 continue
         notes_data = pd.read_csv(StringIO(score.decode()))
-        live_data["duration"] = notes_data.iloc[-1]['sec']
-        if live_data["diff"] == 6:
-            notes_data = notes_data[(notes_data["type"] < 8) &
-                                    ((notes_data["visible"].isna()) | (notes_data["visible"] >= 0))
+        live_data['duration'] = notes_data.iloc[-1]['sec']
+        live_data['bpm'] = db.masterdb.execute_and_fetchall("SELECT bpm FROM music_data WHERE id = ?",
+                                                            [live_data['sort']])[0][0]
+        if live_data['diff'] == 6:
+            notes_data = notes_data[(notes_data['type'] < 8) &
+                                    ((notes_data['visible'].isna()) | (notes_data['visible'] >= 0))
                                     ].reset_index(drop=True)
         else:
             notes_data = notes_data[notes_data["type"] < 8].reset_index(drop=True)

@@ -216,6 +216,8 @@ class DraggableQScrollArea(QScrollArea):
 
     def __init__(self, *args):
         super().__init__(*args)
+        self.original_y = self.verticalScrollBar().value()
+        self.original_x = self.horizontalScrollBar().value()
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -816,6 +818,7 @@ class BaseChartPicGenerator(ABC):
             y_temp += IMAGE_HEIGHT - IMAGE_Y_MARGIN
             column += 1
         saved_image.save(str(path))
+        painter.end()
 
     def draw_chart(self, paint_skill: bool = False, draw_abuse: bool = False):
         self.begin_painters()
