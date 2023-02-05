@@ -65,7 +65,7 @@ Find the "Path" variable in the System variables list, then click Edit.
 Click New, then input `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 - (Please change it to the actual installation path of Python, where `User` refer to the user name, and `Python37` refer to the installed Python version)
 - Better add `C:\Users\User\AppData\Local\Programs\Python\Python37\Scripts` also.
-- If Python was installed for all users, the path would be something like `C:\Program Files\Python37\` instead of `C:\Users\User\AppData\Local\Programs\Python\Python37`.
+- (If Python was installed for all users, the path would be something like `C:\Program Files\Python37\` instead of `C:\Users\User\AppData\Local\Programs\Python\Python37`.)
 
 #### For Windows 7 or before (showing a textbox dialog) [^](#table-of-contents)
 
@@ -73,9 +73,9 @@ Click New, then input `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 
 If the value field does not end with a semicolon (`;`), add it to the end, followed by `C:\Users\User\AppData\Local\Programs\Python\Python37;`.
 - (Please change it to the actual installation path of Python, where `User` refer to the user name, and `Python37` refer to the installed Python version)
-- If Python was installed for all users, the path would be something like `C:\Program Files\Python37\` instead of `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 - (i.e. If the original Path value is `C:\WINDOWS\system32;C:\WINDOWS`, change it to `C:\WINDOWS\system32;C:\WINDOWS;C:\Users\User\AppData\Local\Programs\Python\Python37;`)
   - Notice that the original value is still there.
+- (If Python was installed for all users, the path would be something like `C:\Program Files\Python37\` instead of `C:\Users\User\AppData\Local\Programs\Python\Python37`.)
 
 After adding, press \[Win\]+R, and type `cmd` to start the Command Prompt.
 
