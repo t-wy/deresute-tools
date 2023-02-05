@@ -65,6 +65,7 @@ Find the "Path" variable in the System variables list, then click Edit.
 Click New, then input `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 - (Please change it to the actual installation path of Python, where `User` refer to the user name, and `Python37` refer to the installed Python version)
 - Better add `C:\Users\User\AppData\Local\Programs\Python\Python37\Scripts` also.
+- If Python was installed for all users, the path would be something like `C:\Program Files\Python37\` instead of `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 
 #### For Windows 7 or before (showing a textbox dialog) [^](#table-of-contents)
 
@@ -72,6 +73,7 @@ Click New, then input `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 
 If the value field does not end with a semicolon (`;`), add it to the end, followed by `C:\Users\User\AppData\Local\Programs\Python\Python37;`.
 - (Please change it to the actual installation path of Python, where `User` refer to the user name, and `Python37` refer to the installed Python version)
+- If Python was installed for all users, the path would be something like `C:\Program Files\Python37\` instead of `C:\Users\User\AppData\Local\Programs\Python\Python37`.
 - (i.e. If the original Path value is `C:\WINDOWS\system32;C:\WINDOWS`, change it to `C:\WINDOWS\system32;C:\WINDOWS;C:\Users\User\AppData\Local\Programs\Python\Python37;`)
   - Notice that the original value is still there.
 
@@ -101,7 +103,7 @@ If `pip` is not installed, you may need to install it via `python -m ensurepip -
 
 ### Install the required packages [^](#table-of-contents)
 
-*If you have other packages installed and may lead to conflicts, you may consider running the following steps via the (virtualenv)[https://docs.python.org/3/library/venv.html].*
+*If you have other packages installed and may lead to conflicts, you may consider running the following steps via the [virtualenv](https://docs.python.org/3/library/venv.html).*
 
 Type `cd C:\...\...` in the command prompt, where `C:\...\...` is where the download zip is extracted to (where `C:\...\...\requirements.txt` is located), then press \[Enter\].
 
