@@ -93,7 +93,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 在命令提示字元輸入 `pip`，然後按 \[Enter\] 檢查 `pip` 有否正常啟動。
 
-（如果你的裝置有安裝多餘一個 Python，你可以使用 `python -m pip`。（如果 `python` 啟動的不是預設的 python 版本，請將上述指令的 `python` 改成 python 的路徑））
+（如果你的裝置有安裝多於一個 Python，你可以使用 `python -m pip`。（如果 `python` 啟動的不是預設的 python 版本，請將上述指令的 `python` 改成 python 的路徑））
 
 如果 `pip` 未被安裝，你需要使用 `python -m ensurepip --upgrade` 安裝 `pip`。
 
@@ -101,7 +101,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 ### 安裝所需套件 [^](#目錄)
 
-*如果你已安裝其他或會構成衝突的套件，你可以考慮從 (virtualenv)[https://docs.python.org/3/library/venv.html] 執行下列步驟*
+*如果你已安裝其他或會構成衝突的套件，你可以考慮從 [virtualenv](https://docs.python.org/3/library/venv.html) 執行下列步驟*
 
 在命令提示字元輸入 `cd C:\...\...`（當中的 `C:\...\...` 指下載的壓縮檔解壓縮的位置，`C:\...\...\requirements.txt` 應該在該資料夾內），然後按 \[Enter\]，
 
