@@ -65,6 +65,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 按「新增」，然後輸入 `C:\Users\User\AppData\Local\Programs\Python\Python37`。
 - （請將其改為實際安裝 Python 的路徑，即把 `User` 改成用戶名稱，`Python37` 改成實際安裝的 Python 版本）
 - （最好把 `C:\Users\User\AppData\Local\Programs\Python\Python37\Scripts` 也加進去。）
+- (如果 Python 是為所有使用者安裝的，此路徑可能類似 `C:\Program Files\Python37\` 而不是 `C:\Users\User\AppData\Local\Programs\Python\Python37`。)
 
 #### Windows 7 或以前的使用者（編輯時顯示文字編輯方格的） [^](#目錄)
 
@@ -74,6 +75,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 - （請將其改為實際安裝 Python 的路徑，即把 `User` 改成用戶名稱，`Python37` 改成實際安裝的 Python 版本）
 - （例：如果本來 `Path` 的值為 `C:\WINDOWS\system32;C:\WINDOWS`，請將其改為 `C:\WINDOWS\system32;C:\WINDOWS;C:\Users\User\AppData\Local\Programs\Python\Python37;`）
   - 注意原有的值應該還在。
+- (如果 Python 是為所有使用者安裝的，此路徑可能類似 `C:\Program Files\Python37\` 而不是 `C:\Users\User\AppData\Local\Programs\Python\Python37`。)
 
 加入之後，用鍵盤按 \[Win\]+R，然後輸入 `cmd` 開啟命令提示字元。
 
