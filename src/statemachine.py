@@ -1249,14 +1249,14 @@ class StateMachine:
             self._handle_note_no_abuse()
 
     def _handle_note_no_abuse(self):
-        self.note_time_stack.pop(0)
+        note_time = self.note_time_stack.pop(0)
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
         note_detail = get_note_detail(self.note_details, note_idx + 1)
 
         score_bonus, score_great_bonus, combo_bonus, support_bonus, combo_support_bonus \
-            = self.evaluate_bonuses(self.special_note_types[note_idx])
+            = self.evaluate_bonuses(self.special_note_types[note_idx], note_time=note_time)
         self.score_bonuses.append(score_bonus)
         self.score_great_bonuses.append(score_great_bonus)
         self.combo_bonuses.append(combo_bonus)
@@ -1304,7 +1304,7 @@ class StateMachine:
         note_detail.life = int(self.life)
 
     def _handle_note_abuse(self):
-        self.note_time_stack.pop(0)
+        note_time = self.note_time_stack.pop(0)
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
@@ -1321,7 +1321,8 @@ class StateMachine:
 
         score_bonus, score_great_bonus, combo_bonus, _, _ = self.evaluate_bonuses(special_note_types,
                                                                                   skip_healing=is_abuse,
-                                                                                  fixed_life=cached_life)
+                                                                                  fixed_life=cached_life,
+                                                                                  note_time=note_time)
         self.judgements.append(
             self.evaluate_judgement(note_delta, note_type, special_note_types,
                                     abuse_check=True, is_checkpoint=is_checkpoint))
@@ -1437,7 +1438,7 @@ class StateMachine:
 
             return judgement
 
-    def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None) \
+    def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None, note_time=0) \
             -> Tuple[int, int, int, int, int]:
         if self.has_skill_change:
             self.separate_magics_non_magics()
@@ -1452,7 +1453,7 @@ class StateMachine:
             self.life = min(self.max_life, self.life)  # Cap life
         if not self.fail_simulate and not self.abuse:
             self.cache_hps.append(self.life)
-        self._helper_evaluate_ls(fixed_life)
+        self._helper_evaluate_ls(fixed_life, note_time=note_time)
         self._helper_evaluate_act(special_note_types)
         self._helper_evaluate_alt_mutual_ref(special_note_types)
         self._helper_normalize_score_combo_bonuses()
@@ -1494,7 +1495,7 @@ class StateMachine:
             self.life -= FLICK_DRAIN[self.difficulty] if is_flick else NONFLICK_DRAIN[self.difficulty]
         return False
 
-    def _helper_evaluate_ls(self, fixed_life=None):
+    def _helper_evaluate_ls(self, fixed_life=None, note_time=0):
         if fixed_life is not None:
             trimmed_life = fixed_life // 10
         else:
@@ -1503,11 +1504,13 @@ class StateMachine:
             for skill in skills:
                 if skill.is_sparkle:
                     if skill.values[0] == 1:
-                        skill.v2 = self._sparkle_bonus_ssr[trimmed_life] - 100
+                        skill.v2 = self._sparkle_bonus_ssr[trimmed_life]
                     else:
-                        skill.v2 = self._sparkle_bonus_sr[trimmed_life] - 100
+                        skill.v2 = self._sparkle_bonus_sr[trimmed_life]
                     if idx not in self.cache_ls or self.cache_ls[idx] != skill.v2:
                         self.has_skill_change = True
+                        self.unit_caches[skill.card_idx // 5].update(skill, round(note_time, -3) / 1E6)
+                    skill.v2 -= 100
                     self.cache_act[idx] = skill.v2
                     skill.v0 = 0
                     skill.v1 = 0
