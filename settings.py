@@ -2,7 +2,7 @@ import datetime
 
 from chihiro import ROOT_DIR
 
-UPDATE_DATE = datetime.date(2023, 1, 17)
+UPDATE_DATE = datetime.date(2023, 5, 29)
 
 LOGGER_NAME = "chihiro"
 LOG_DIR = ROOT_DIR / "logs"
