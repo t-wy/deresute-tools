@@ -135,7 +135,7 @@ class Skill:
         return self.skill_type == 42
 
     @property
-    def is_overdrive(self):
+    def is_overdrive(self) -> bool:
         return self.skill_type == 43
 
     @property
@@ -227,8 +227,7 @@ class Skill:
         elif skill_type == 31:  # Tuning
             values[2] = skill_values[0]
             values[4] = 2
-        elif (skill_type == 24  # All-round
-                or skill_type == 43):  # Overdrive
+        elif skill_type == 24 or skill_type == 43:  # All-round, Overdrive
             values[2] = skill_values[0]
             values[3] = skill_values[1]
         elif skill_type == 17:  # Healer
