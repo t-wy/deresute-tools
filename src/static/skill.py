@@ -41,7 +41,8 @@ SKILL_BASE = {
     40: {"id": 40, "name": "Refrain", "keywords": ["ref"], "color": (218, 126, 3)},
     41: {"id": 41, "name": "Magic", "keywords": ["mag"], "color": (255, 200, 255)},
     42: {"id": 42, "name": "Mutual", "keywords": ["mut"], "color": (191, 191, 191)},
-    43: {"id": 43, "name": "Overdrive", "keywords": ["od"], "color": (238, 187, 221)}
+    43: {"id": 43, "name": "Overdrive", "keywords": ["od"], "color": (238, 187, 221)},
+    44: {"id": 44, "name": "Tricolor Spike", "keywords": ["spk"], "color": (187, 126, 149)}
 }
 
 SKILL_COLOR_BY_NAME = {
@@ -126,7 +127,8 @@ SKILL_DESCRIPTION = {
     40: "Apply the highest SCORE UP/COMBO BONUS UP effect activated during LIVE.",
     41: "Activates the effects of all idols in the unit and applies the highest effect.",
     42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted.",
-    43: "{}% COMBO BONUS UP, heals {} life on PERFECT and sustain combo only in PERFECT."
+    43: "{}% COMBO BONUS UP, heals {} life on PERFECT and sustain combo only in PERFECT.",
+    44: "If song is ALL type and idols of all 3 types are in the unit, consume {} life, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
     }
 
 
@@ -141,6 +143,7 @@ class SkillInact(Enum):
     NO_COMBO_BONUS = 8
     NO_SCORE_COMBO = 9
     NO_MAGIC_SKILL = 10
+    NOT_ALL_SONG = 11
 
 
 SKILL_INACTIVATION_REASON = {
@@ -153,7 +156,8 @@ SKILL_INACTIVATION_REASON = {
     7: "No SCORE UP skill effects have been activated.",
     8: "No COMBO BONUS UP skill effects have been activated.",
     9: "No SCORE UP nor COMBO BONUS UP skill effects have been activated.",
-    10: "There are no skills that magic can activate."
+    10: "There are no skills that magic can activate.",
+    11: "Song is not ALL type."
     }
 
 

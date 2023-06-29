@@ -26,7 +26,7 @@ class Skill:
                  offset: int = 0, boost: bool = False, color_target: bool = False, act: NoteType = None,
                  bonus_skill: int = 2000, skill_type: int = 0,
                  min_requirements: Union[np.array, list] = None, max_requirements: Union[np.array, list] = None,
-                 life_requirement: int = 0, skill_level: int = 10):
+                 song_all_required: bool = False, life_requirement: int = 0, skill_level: int = 10):
         if values is None and v0 == v1 == v2 == v3 == v4 == 0:
             raise ValueError("Invalid skill values", values, v0, v1, v2, v3, v4)
 
@@ -56,6 +56,7 @@ class Skill:
         self.min_requirements = min_requirements
         self.max_requirements = max_requirements
         self.life_requirement = life_requirement
+        self.song_all_required = song_all_required
         self.skill_level = skill_level
         self.targets = self._generate_targets()
         self.normalized = False
@@ -137,6 +138,10 @@ class Skill:
     @property
     def is_overdrive(self) -> bool:
         return self.skill_type == 43
+
+    @property
+    def is_spike(self) -> bool:
+        return self.skill_type == 44
 
     @property
     def have_score_bonus(self) -> bool:
@@ -267,8 +272,12 @@ class Skill:
             min_requirements = np.array([0, 0, 0])
             max_requirements = np.array([0, 0, 0])
             max_requirements[skill_data['skill_trigger_value'] - 1] = 99
-        elif skill_data['skill_trigger_type'] == 3:
+        elif skill_data['skill_trigger_type'] in (3, 5):
             min_requirements = [1, 1, 1]
+
+        song_all_required = False
+        if skill_data['skill_trigger_type'] in (4, 5):
+            song_all_required = True
 
         is_boost = skill_data['skill_type'] in BOOST_TYPES
         if is_boost:
@@ -290,7 +299,8 @@ class Skill:
             skill_type=skill_data['skill_type'],
             min_requirements=min_requirements,
             max_requirements=max_requirements,
-            life_requirement=life_requirement
+            life_requirement=life_requirement,
+            song_all_required=song_all_required
         )
 
     def get_skill_description(self) -> str:

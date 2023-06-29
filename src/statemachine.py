@@ -830,8 +830,11 @@ class StateMachine:
                         skill_inact = SkillInact.NOT_CO_ONLY
                     elif skill.skill_type == 23:
                         skill_inact = SkillInact.NOT_PA_ONLY
-                    elif skill.skill_type in (26, 38):
+                    elif skill.skill_type in (26, 38, 44):
                         skill_inact = SkillInact.NOT_TRICOLOR
+
+                if skill.song_all_required and self.live.color != Color.ALL:
+                    skill_inact = SkillInact.NOT_ALL_SONG  # TODO : Shows inactivated in chart viewer but not actually disabled. (Same with other tricolor skills)
 
                 total_activation = int((self.notes_data.iloc[-1].sec - 3) // skill.interval)
                 skill_range = list(range(skill.offset + 1, total_activation + 1, self.unit_offset))
