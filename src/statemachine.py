@@ -834,7 +834,7 @@ class StateMachine:
                         skill_inact = SkillInact.NOT_TRICOLOR
 
                 if skill.song_all_required and self.live.color != Color.ALL:
-                    skill_inact = SkillInact.NOT_ALL_SONG  # TODO : Shows inactivated in chart viewer but not actually disabled. (Same with other tricolor skills)
+                    skill_inact = SkillInact.NOT_ALL_SONG
 
                 total_activation = int((self.notes_data.iloc[-1].sec - 3) // skill.interval)
                 skill_range = list(range(skill.offset + 1, total_activation + 1, self.unit_offset))
@@ -2154,9 +2154,10 @@ class StateMachine:
                 if copied_skill.is_refrain:
                     _cache_ref.append(copied_skill)
                     continue
+                if copied_skill.is_overload or copied_skill.is_spike:
+                    magic_bonus['overload'] += copied_skill.life_requirement
                 if copied_skill.is_overload:
                     magic_bonus['combo_support'] = max(magic_bonus['combo_support'], 2)
-                    magic_bonus['overload'] += copied_skill.life_requirement
                 if copied_skill.is_cc:
                     magic_bonus['concentration'] = True
                 iterating_order.append(copied_skill)
@@ -2309,7 +2310,7 @@ class StateMachine:
             # Else update taking skill index order into consideration
             update_last_activated_skill(replace=False, skill_time=self.skill_times[0])
 
-    def _handle_ol_drain(self, life_requirement) -> bool:
+    def _handle_life_drain(self, life_requirement) -> bool:
         if self.life > life_requirement:
             if not self._check_guard():
                 self.life -= life_requirement
@@ -2327,6 +2328,10 @@ class StateMachine:
             return not any(filter(lambda x: x is not Color.PASSION, card_colors))
         # Should not reach here
         raise ValueError("Reached invalid state of focus activation check: ", skill)
+
+    def _check_tricolor_activation(self, unit_idx) -> bool:
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards()]
+        return all(color in card_colors for color in (Color.CUTE, Color.COOL, Color.PASSION))
 
     def _can_activate(self) -> bool:
         """
@@ -2352,14 +2357,6 @@ class StateMachine:
             else:
                 unit_idx = skill.original_unit_idx
 
-            if skill.is_overload:
-                if not has_failed:
-                    has_failed = self._handle_ol_drain(skill.life_requirement)
-                if has_failed:
-                    to_be_removed.append(skill)
-                    if not is_magic:
-                        self.skill_details[idx][num].inact = SkillInact.LIFE_LOW
-                    continue
             if skill.is_encore:
                 # Encore should not be here, all encores should have already been replaced
                 to_be_removed.append(skill)
@@ -2398,6 +2395,20 @@ class StateMachine:
                     if skill.skill_type == 23:
                         if not is_magic:
                             self.skill_details[idx][num].inact = SkillInact.NOT_PA_ONLY
+                    continue
+            if skill.is_tricolor:
+                if not self._check_tricolor_activation(unit_idx=(self.skill_indices[0] - 1) // 5):
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = SkillInact.NOT_TRICOLOR
+                    continue
+            if skill.is_overload or skill.is_spike:
+                if not has_failed:
+                    has_failed = self._handle_life_drain(skill.life_requirement)
+                if has_failed:
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = SkillInact.LIFE_LOW
                     continue
             if is_magic:
                 if skill.have_score_bonus:

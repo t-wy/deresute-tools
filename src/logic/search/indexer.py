@@ -64,13 +64,13 @@ class IndexManager:
                         ELSE ""
                     END limited,
                     CASE
-                        WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117,118)
+                        WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117,118,128)
                         AND cdc.rarity > 6
                         THEN "fes"
                         ELSE ""
                     END fes,
                     CASE
-                        WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117)
+                        WHEN cdc.leader_skill_id IN (70,71,72,73,81,82,83,84,104,105,106,113,117,128)
                         AND cdc.rarity > 6
                         THEN "blanc"
                         ELSE ""
