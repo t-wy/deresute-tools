@@ -822,20 +822,6 @@ class StateMachine:
                 idx = unit_idx * 5 + card_idx
                 self.reference_skills[idx + 1] = skill
 
-                skill_inact = None
-                if self.probabilities[idx] == 0:
-                    if skill.skill_type == 21:
-                        skill_inact = SkillInact.NOT_CU_ONLY
-                    elif skill.skill_type == 22:
-                        skill_inact = SkillInact.NOT_CO_ONLY
-                    elif skill.skill_type == 23:
-                        skill_inact = SkillInact.NOT_PA_ONLY
-                    elif skill.skill_type in (26, 38, 44):
-                        skill_inact = SkillInact.NOT_TRICOLOR
-
-                if skill.song_all_required and self.live.color != Color.ALL:
-                    skill_inact = SkillInact.NOT_ALL_SONG
-
                 total_activation = int((self.notes_data.iloc[-1].sec - 3) // skill.interval)
                 skill_range = list(range(skill.offset + 1, total_activation + 1, self.unit_offset))
 
@@ -858,8 +844,6 @@ class StateMachine:
                     # To handle cases magic not having any skills to activate
                     if skill.skill_type == 41:
                         skill_detail.inact = SkillInact.NO_MAGIC_SKILL
-                    else:
-                        skill_detail.inact = skill_inact
 
                     if self.probabilities[idx] < 1 and self.fail_simulate:
                         if random() > self.probabilities[idx]:
@@ -2319,7 +2303,7 @@ class StateMachine:
             return True
 
     def _check_focus_activation(self, unit_idx, skill) -> bool:
-        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards()]
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)]
         if skill.skill_type == 21:
             return not any(filter(lambda x: x is not Color.CUTE, card_colors))
         if skill.skill_type == 22:
@@ -2395,6 +2379,12 @@ class StateMachine:
                     if skill.skill_type == 23:
                         if not is_magic:
                             self.skill_details[idx][num].inact = SkillInact.NOT_PA_ONLY
+                    continue
+            if skill.is_spike:
+                if self.live.color != Color.ALL:
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = SkillInact.NOT_ALL_SONG
                     continue
             if skill.is_tricolor:
                 if not self._check_tricolor_activation(unit_idx=(self.skill_indices[0] - 1) // 5):
