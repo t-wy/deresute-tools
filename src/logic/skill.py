@@ -272,7 +272,7 @@ class Skill:
                         4: 10, 5: 13, 6: 16, 8: 20, 10: 25, 12: 30, 13: 33, 14: 36, 15: 38, 16: 40, 17: 43, 18: 46}
             assert skill_data['condition'] in ol_life
             life_requirement = ol_life[skill_data['condition']] if skill_data['skill_type'] == 14 \
-                else spk_life[skill_data['condition']] if skill_data['skill_type'] == 14 else 0
+                else spk_life[skill_data['condition']] if skill_data['skill_type'] == 44 else 0
 
         min_requirements, max_requirements = None, None
         if skill_data['skill_trigger_type'] == 2:
