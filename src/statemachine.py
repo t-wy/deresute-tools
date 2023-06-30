@@ -2330,7 +2330,7 @@ class StateMachine:
         raise ValueError("Reached invalid state of focus activation check: ", skill)
 
     def _check_tricolor_activation(self, unit_idx) -> bool:
-        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards()]
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)]
         return all(color in card_colors for color in (Color.CUTE, Color.COOL, Color.PASSION))
 
     def _can_activate(self) -> bool:
