@@ -2368,7 +2368,7 @@ class StateMachine:
                     self.skill_details[idx][num].inact = SkillInact.NO_SCORE_COMBO
                 continue
             if skill.is_focus:
-                if not self._check_focus_activation(unit_idx=(self.skill_indices[0] - 1) // 5, skill=skill):
+                if not self._check_focus_activation(unit_idx=skill.original_unit_idx, skill=skill):
                     to_be_removed.append(skill)
                     if skill.skill_type == 21:
                         if not is_magic:
@@ -2387,7 +2387,7 @@ class StateMachine:
                         self.skill_details[idx][num].inact = SkillInact.NOT_ALL_SONG
                     continue
             if skill.is_tricolor:
-                if not self._check_tricolor_activation(unit_idx=(self.skill_indices[0] - 1) // 5):
+                if not self._check_tricolor_activation(unit_idx=skill.original_unit_idx):
                     to_be_removed.append(skill)
                     if not is_magic:
                         self.skill_details[idx][num].inact = SkillInact.NOT_TRICOLOR
