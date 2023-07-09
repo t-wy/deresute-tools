@@ -123,6 +123,8 @@ SKILL_BASE = {0: "",
               125: "Passion Duet Voice&Step",
               126: "Passion Duet Step&Make",
               127: "Passion Duet Make&Voice",
+              128: "Tricolor Unison",
+              129: "Tricolor Unison"
               }
 _ = list(SKILL_BASE.keys())
 for l in _:

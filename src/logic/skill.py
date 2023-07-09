@@ -26,7 +26,7 @@ class Skill:
                  offset: int = 0, boost: bool = False, color_target: bool = False, act: NoteType = None,
                  bonus_skill: int = 2000, skill_type: int = 0,
                  min_requirements: Union[np.array, list] = None, max_requirements: Union[np.array, list] = None,
-                 life_requirement: int = 0, skill_level: int = 10):
+                 song_all_required: bool = False, life_requirement: int = 0, skill_level: int = 10):
         if values is None and v0 == v1 == v2 == v3 == v4 == 0:
             raise ValueError("Invalid skill values", values, v0, v1, v2, v3, v4)
 
@@ -56,6 +56,7 @@ class Skill:
         self.min_requirements = min_requirements
         self.max_requirements = max_requirements
         self.life_requirement = life_requirement
+        self.song_all_required = song_all_required
         self.skill_level = skill_level
         self.targets = self._generate_targets()
         self.normalized = False
@@ -137,6 +138,14 @@ class Skill:
     @property
     def is_overdrive(self) -> bool:
         return self.skill_type == 43
+
+    @property
+    def is_spike(self) -> bool:
+        return self.skill_type == 44
+
+    @property
+    def is_tricolor(self) -> bool:
+        return all(req > 0 for req in self.min_requirements)
 
     @property
     def have_score_bonus(self) -> bool:
@@ -251,7 +260,7 @@ class Skill:
 
         if skill_id < 500000:
             skill_data = cls._fetch_skill_data_from_db(skill_id)
-            life_requirement = skill_data['skill_trigger_value'] if skill_data['skill_type'] == 14 else 0
+            life_requirement = skill_data['skill_trigger_value'] if skill_data['skill_type'] in (14, 44) else 0
         else:
             skill_data = cls._fetch_custom_skill_from_db(int(str(skill_id)[1:]))
             if skill_data is None:
@@ -259,16 +268,23 @@ class Skill:
             # Values for non-existing intervals were arbitrarily set
             ol_life = {4: 6, 6: 9, 7: 11, 9: 15,
                        5: 8, 8: 13, 10: 16, 11: 17, 12: 18, 13: 20, 14: 22, 15: 24, 16: 26, 17: 28, 18: 30}
+            spk_life = {7: 18, 9: 22, 11: 27,
+                        4: 10, 5: 13, 6: 16, 8: 20, 10: 25, 12: 30, 13: 33, 14: 36, 15: 38, 16: 40, 17: 43, 18: 46}
             assert skill_data['condition'] in ol_life
-            life_requirement = ol_life[skill_data['condition']] if skill_data['skill_type'] == 14 else 0
+            life_requirement = ol_life[skill_data['condition']] if skill_data['skill_type'] == 14 \
+                else spk_life[skill_data['condition']] if skill_data['skill_type'] == 44 else 0
 
         min_requirements, max_requirements = None, None
         if skill_data['skill_trigger_type'] == 2:
             min_requirements = np.array([0, 0, 0])
             max_requirements = np.array([0, 0, 0])
             max_requirements[skill_data['skill_trigger_value'] - 1] = 99
-        elif skill_data['skill_trigger_type'] == 3:
+        elif skill_data['skill_trigger_type'] in (3, 5):
             min_requirements = [1, 1, 1]
+
+        song_all_required = False
+        if skill_data['skill_trigger_type'] in (4, 5):
+            song_all_required = True
 
         is_boost = skill_data['skill_type'] in BOOST_TYPES
         if is_boost:
@@ -290,7 +306,8 @@ class Skill:
             skill_type=skill_data['skill_type'],
             min_requirements=min_requirements,
             max_requirements=max_requirements,
-            life_requirement=life_requirement
+            life_requirement=life_requirement,
+            song_all_required=song_all_required
         )
 
     def get_skill_description(self) -> str:
@@ -316,6 +333,9 @@ class Skill:
             return SKILL_DESCRIPTION[self.skill_type].format(100 - self.values[2], (self.values[0] - 1000) // 10)
         elif self.skill_type == 42:
             return SKILL_DESCRIPTION[self.skill_type].format(100 - self.values[0], (self.values[2] - 1000) // 10)
+        elif self.skill_type == 44:
+            return SKILL_DESCRIPTION[self.skill_type].format(self.life_requirement,
+                                                             self.values[0] - 100, self.values[2] - 100)
         elif self.skill_type in (20, 32, 33, 34, 38):
             return SKILL_DESCRIPTION[self.skill_type].format((self.values[0] - 1000) // 10)
 

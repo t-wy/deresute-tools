@@ -156,6 +156,8 @@ class Unit(BaseUnit):
                 # Unison and correct song color
                 if card.leader.unison and song_color == card.color:
                     bonuses_to_add = card.leader.song_bonuses
+                if card.leader.tricolor_unison and song_color == Color.ALL:
+                    bonuses_to_add = card.leader.song_bonuses
                 # Duet and wrong song color
                 if card.leader.duet and song_color != card.color:
                     bonuses_to_add = 0

@@ -822,17 +822,6 @@ class StateMachine:
                 idx = unit_idx * 5 + card_idx
                 self.reference_skills[idx + 1] = skill
 
-                skill_inact = None
-                if self.probabilities[idx] == 0:
-                    if skill.skill_type == 21:
-                        skill_inact = SkillInact.NOT_CU_ONLY
-                    elif skill.skill_type == 22:
-                        skill_inact = SkillInact.NOT_CO_ONLY
-                    elif skill.skill_type == 23:
-                        skill_inact = SkillInact.NOT_PA_ONLY
-                    elif skill.skill_type in (26, 38):
-                        skill_inact = SkillInact.NOT_TRICOLOR
-
                 total_activation = int((self.notes_data.iloc[-1].sec - 3) // skill.interval)
                 skill_range = list(range(skill.offset + 1, total_activation + 1, self.unit_offset))
 
@@ -855,8 +844,6 @@ class StateMachine:
                     # To handle cases magic not having any skills to activate
                     if skill.skill_type == 41:
                         skill_detail.inact = SkillInact.NO_MAGIC_SKILL
-                    else:
-                        skill_detail.inact = skill_inact
 
                     if self.probabilities[idx] < 1 and self.fail_simulate:
                         if random() > self.probabilities[idx]:
@@ -1249,14 +1236,14 @@ class StateMachine:
             self._handle_note_no_abuse()
 
     def _handle_note_no_abuse(self):
-        self.note_time_stack.pop(0)
+        note_time = self.note_time_stack.pop(0)
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
         note_detail = get_note_detail(self.note_details, note_idx + 1)
 
         score_bonus, score_great_bonus, combo_bonus, support_bonus, combo_support_bonus \
-            = self.evaluate_bonuses(self.special_note_types[note_idx])
+            = self.evaluate_bonuses(self.special_note_types[note_idx], note_time=note_time)
         self.score_bonuses.append(score_bonus)
         self.score_great_bonuses.append(score_great_bonus)
         self.combo_bonuses.append(combo_bonus)
@@ -1304,7 +1291,7 @@ class StateMachine:
         note_detail.life = int(self.life)
 
     def _handle_note_abuse(self):
-        self.note_time_stack.pop(0)
+        note_time = self.note_time_stack.pop(0)
         note_delta = self.note_time_deltas.pop(0)
         note_type = self.note_type_stack.pop(0)
         note_idx = self.note_idx_stack.pop(0)
@@ -1321,7 +1308,8 @@ class StateMachine:
 
         score_bonus, score_great_bonus, combo_bonus, _, _ = self.evaluate_bonuses(special_note_types,
                                                                                   skip_healing=is_abuse,
-                                                                                  fixed_life=cached_life)
+                                                                                  fixed_life=cached_life,
+                                                                                  note_time=note_time)
         self.judgements.append(
             self.evaluate_judgement(note_delta, note_type, special_note_types,
                                     abuse_check=True, is_checkpoint=is_checkpoint))
@@ -1437,7 +1425,7 @@ class StateMachine:
 
             return judgement
 
-    def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None) \
+    def evaluate_bonuses(self, special_note_types, skip_healing=False, fixed_life=None, note_time=0) \
             -> Tuple[int, int, int, int, int]:
         if self.has_skill_change:
             self.separate_magics_non_magics()
@@ -1452,7 +1440,7 @@ class StateMachine:
             self.life = min(self.max_life, self.life)  # Cap life
         if not self.fail_simulate and not self.abuse:
             self.cache_hps.append(self.life)
-        self._helper_evaluate_ls(fixed_life)
+        self._helper_evaluate_ls(fixed_life, note_time=note_time)
         self._helper_evaluate_act(special_note_types)
         self._helper_evaluate_alt_mutual_ref(special_note_types)
         self._helper_normalize_score_combo_bonuses()
@@ -1494,7 +1482,7 @@ class StateMachine:
             self.life -= FLICK_DRAIN[self.difficulty] if is_flick else NONFLICK_DRAIN[self.difficulty]
         return False
 
-    def _helper_evaluate_ls(self, fixed_life=None):
+    def _helper_evaluate_ls(self, fixed_life=None, note_time=0):
         if fixed_life is not None:
             trimmed_life = fixed_life // 10
         else:
@@ -1503,11 +1491,13 @@ class StateMachine:
             for skill in skills:
                 if skill.is_sparkle:
                     if skill.values[0] == 1:
-                        skill.v2 = self._sparkle_bonus_ssr[trimmed_life] - 100
+                        skill.v2 = self._sparkle_bonus_ssr[trimmed_life]
                     else:
-                        skill.v2 = self._sparkle_bonus_sr[trimmed_life] - 100
+                        skill.v2 = self._sparkle_bonus_sr[trimmed_life]
                     if idx not in self.cache_ls or self.cache_ls[idx] != skill.v2:
                         self.has_skill_change = True
+                        self.unit_caches[skill.card_idx // 5].update(skill, round(note_time, -3) / 1E6)
+                    skill.v2 -= 100
                     self.cache_act[idx] = skill.v2
                     skill.v0 = 0
                     skill.v1 = 0
@@ -2148,9 +2138,10 @@ class StateMachine:
                 if copied_skill.is_refrain:
                     _cache_ref.append(copied_skill)
                     continue
+                if copied_skill.is_overload or copied_skill.is_spike:
+                    magic_bonus['overload'] += copied_skill.life_requirement
                 if copied_skill.is_overload:
                     magic_bonus['combo_support'] = max(magic_bonus['combo_support'], 2)
-                    magic_bonus['overload'] += copied_skill.life_requirement
                 if copied_skill.is_cc:
                     magic_bonus['concentration'] = True
                 iterating_order.append(copied_skill)
@@ -2303,7 +2294,7 @@ class StateMachine:
             # Else update taking skill index order into consideration
             update_last_activated_skill(replace=False, skill_time=self.skill_times[0])
 
-    def _handle_ol_drain(self, life_requirement) -> bool:
+    def _handle_life_drain(self, life_requirement) -> bool:
         if self.life > life_requirement:
             if not self._check_guard():
                 self.life -= life_requirement
@@ -2312,7 +2303,7 @@ class StateMachine:
             return True
 
     def _check_focus_activation(self, unit_idx, skill) -> bool:
-        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards()]
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)]
         if skill.skill_type == 21:
             return not any(filter(lambda x: x is not Color.CUTE, card_colors))
         if skill.skill_type == 22:
@@ -2321,6 +2312,10 @@ class StateMachine:
             return not any(filter(lambda x: x is not Color.PASSION, card_colors))
         # Should not reach here
         raise ValueError("Reached invalid state of focus activation check: ", skill)
+
+    def _check_tricolor_activation(self, unit_idx) -> bool:
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)]
+        return all(color in card_colors for color in (Color.CUTE, Color.COOL, Color.PASSION))
 
     def _can_activate(self) -> bool:
         """
@@ -2346,14 +2341,6 @@ class StateMachine:
             else:
                 unit_idx = skill.original_unit_idx
 
-            if skill.is_overload:
-                if not has_failed:
-                    has_failed = self._handle_ol_drain(skill.life_requirement)
-                if has_failed:
-                    to_be_removed.append(skill)
-                    if not is_magic:
-                        self.skill_details[idx][num].inact = SkillInact.LIFE_LOW
-                    continue
             if skill.is_encore:
                 # Encore should not be here, all encores should have already been replaced
                 to_be_removed.append(skill)
@@ -2381,7 +2368,7 @@ class StateMachine:
                     self.skill_details[idx][num].inact = SkillInact.NO_SCORE_COMBO
                 continue
             if skill.is_focus:
-                if not self._check_focus_activation(unit_idx=(self.skill_indices[0] - 1) // 5, skill=skill):
+                if not self._check_focus_activation(unit_idx=skill.original_unit_idx, skill=skill):
                     to_be_removed.append(skill)
                     if skill.skill_type == 21:
                         if not is_magic:
@@ -2392,6 +2379,26 @@ class StateMachine:
                     if skill.skill_type == 23:
                         if not is_magic:
                             self.skill_details[idx][num].inact = SkillInact.NOT_PA_ONLY
+                    continue
+            if skill.is_spike:
+                if self.live.color != Color.ALL:
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = SkillInact.NOT_ALL_SONG
+                    continue
+            if skill.is_tricolor:
+                if not self._check_tricolor_activation(unit_idx=skill.original_unit_idx):
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = SkillInact.NOT_TRICOLOR
+                    continue
+            if skill.is_overload or skill.is_spike:
+                if not has_failed:
+                    has_failed = self._handle_life_drain(skill.life_requirement)
+                if has_failed:
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = SkillInact.LIFE_LOW
                     continue
             if is_magic:
                 if skill.have_score_bonus:
