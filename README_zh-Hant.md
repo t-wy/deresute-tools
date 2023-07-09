@@ -48,7 +48,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 下載 Windows 版的安裝器並根據指示安裝。
 - （請注意安裝器是第一行 **.exe** 副檔名的檔案，而非最後一行的檢查完整性用的 .asc 檔案（ GPG 簽署））
-- （如果有勾選 "Add <ins>P</ins>ython 3.\_ to PATH"（把 Python 3.\_ 加入環境變數）可以跳過下一步）(Check the , then you can skip the next part.)
+- （如果有勾選 "Add <ins>P</ins>ython 3.\_ to PATH"（把 Python 3.\_ 加入環境變數）可以跳過下一步）
 
 ### 把 Python 加入系統環境變數 [^](#目錄)
 
@@ -103,7 +103,7 @@ _當發布版本無法正常執行，或需要手動更改軟體功能時可參�
 
 ### 安裝所需套件 [^](#目錄)
 
-*如果你已安裝其他或會構成衝突的套件，你可以考慮從 [virtualenv](https://docs.python.org/3/library/venv.html) 執行下列步驟*
+*如果你已安裝其他或會構成衝突的套件，你可以考慮從 [virtualenv](https://docs.python.org/zh-tw/3/library/venv.html) 執行下列步驟*
 
 在命令提示字元輸入 `cd C:\...\...`（當中的 `C:\...\...` 指下載的壓縮檔解壓縮的位置，`C:\...\...\requirements.txt` 應該在該資料夾內），然後按 \[Enter\]，
 
