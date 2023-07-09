@@ -118,6 +118,10 @@ class Skill:
     def is_mutual(self):
         return self.skill_type == 42
 
+    @property
+    def is_overdrive(self):
+        return self.skill_type == 43
+
     @classmethod
     def _fetch_skill_data_from_db(cls, skill_id):
         if skill_id > 5000000:
