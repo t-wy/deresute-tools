@@ -822,7 +822,7 @@ class StateMachine:
                 idx = unit_idx * 5 + card_idx
                 self.reference_skills[idx + 1] = skill
 
-                total_activation = int((self.notes_data.iloc[-1].sec - 3) // skill.interval)
+                total_activation = int((self.notes_data.iloc[-1].sec - 1e-8 - 3) // skill.interval)
                 skill_range = list(range(skill.offset + 1, total_activation + 1, self.unit_offset))
 
                 not_active = 0
