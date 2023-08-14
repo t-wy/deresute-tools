@@ -1568,7 +1568,7 @@ class StateMachine:
                 if skill.is_refrain:
                     skill.v0 = self.unit_caches[unit_idx].ref_tap[skill.card_idx]
                     if NoteType.FLICK in special_note_types:
-                        skill.v0 = max(skill.v0, self.unit_caches[unit_idx].ref_tap[skill.card_idx])
+                        skill.v0 = max(skill.v0, self.unit_caches[unit_idx].ref_flick[skill.card_idx])
                     if NoteType.LONG in special_note_types:
                         skill.v0 = max(skill.v0, self.unit_caches[unit_idx].ref_long[skill.card_idx])
                     if NoteType.SLIDE in special_note_types:
