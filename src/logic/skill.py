@@ -156,18 +156,31 @@ class Skill:
         return self.skill_type in (4, 21, 22, 23, 24, 25, 26, 27, 31, 39, 43)
 
     @classmethod
-    def _fetch_skill_data_from_db(cls, skill_id: int) -> Dict[str, Any]:
-        return db.masterdb.execute_and_fetchone("""
-            SELECT skill_data.*,
-                card_data.attribute,
-                probability_type.probability_max,
-                available_time_type.available_time_max
-            FROM card_data, skill_data, probability_type, available_time_type
-            WHERE skill_data.id = ?
-                AND card_data.skill_id = ?
-                AND probability_type.probability_type = skill_data.probability_type
-                AND available_time_type.available_time_type = skill_data.available_time_type
-            """, params=[skill_id, skill_id], out_dict=True)
+    def _fetch_skill_data_from_db(cls, skill_id: int, attribute = None) -> Dict[str, Any]:
+        if attribute is None:
+            return db.masterdb.execute_and_fetchone("""
+                SELECT skill_data.*,
+                    card_data.attribute,
+                    probability_type.probability_max,
+                    available_time_type.available_time_max
+                FROM card_data, skill_data, probability_type, available_time_type
+                WHERE skill_data.id = ?
+                    AND card_data.skill_id = ?
+                    AND probability_type.probability_type = skill_data.probability_type
+                    AND available_time_type.available_time_type = skill_data.available_time_type
+                """, params=[skill_id, skill_id], out_dict=True)
+        else:
+            temp = db.masterdb.execute_and_fetchone("""
+                SELECT skill_data.*,
+                    probability_type.probability_max,
+                    available_time_type.available_time_max
+                FROM skill_data, probability_type, available_time_type
+                WHERE skill_data.id = ?
+                    AND probability_type.probability_type = skill_data.probability_type
+                    AND available_time_type.available_time_type = skill_data.available_time_type
+                """, params=[skill_id], out_dict=True)
+            temp["attribute"] = attribute
+            return temp
 
     @classmethod
     def _fetch_boost_value_from_db(cls, skill_value: int) -> List[int]:
@@ -191,7 +204,7 @@ class Skill:
         return values
 
     @classmethod
-    def _fetch_custom_skill_from_db(cls, custom_card_id: int) -> Optional[Dict[str, Any]]:
+    def _fetch_custom_skill_from_db(cls, custom_card_id: int, attribute = None) -> Optional[Dict[str, Any]]:
         values = db.cachedb.execute_and_fetchone("""
             SELECT  image_id,
                     skill_type,
@@ -205,8 +218,11 @@ class Skill:
             """, params=[custom_card_id], out_dict=True)
         if values['skill_type'] == 0:
             return
-        values['attribute'] = db.masterdb.execute_and_fetchone("SELECT attribute FROM card_data WHERE id = ?",
-                                                               [values['image_id']])[0]
+        if attribute is None:
+            values['attribute'] = db.masterdb.execute_and_fetchone("SELECT attribute FROM card_data WHERE id = ?",
+                                                                [values['image_id']])[0]
+        else:
+            values['attribute'] = attribute
         values['available_time_max'] = db.masterdb.execute_and_fetchone("""
             SELECT available_time_max FROM available_time_type WHERE available_time_type = ?
             """, [values['available_time_type']])[0]
@@ -254,15 +270,14 @@ class Skill:
         return values
 
     @classmethod
-    def from_id(cls, skill_id: int, bonus_skill: int = 2000) -> Skill:
+    def from_id(cls, skill_id: int, bonus_skill: int = 2000, attribute = None) -> Skill:
         if skill_id == 0:
             return cls(values=[0, 0, 0, 0, 0])  # Default skill that has 0 duration
-
-        if skill_id < 500000:
-            skill_data = cls._fetch_skill_data_from_db(skill_id)
+        if skill_id < 500000 or skill_id > 5000000:
+            skill_data = cls._fetch_skill_data_from_db(skill_id, attribute)
             life_requirement = skill_data['skill_trigger_value'] if skill_data['skill_type'] in (14, 44) else 0
         else:
-            skill_data = cls._fetch_custom_skill_from_db(int(str(skill_id)[1:]))
+            skill_data = cls._fetch_custom_skill_from_db(int(str(skill_id)[1:]), skill_data)
             if skill_data is None:
                 return cls(values=[0, 0, 0, 0, 0])
             # Values for non-existing intervals were arbitrarily set

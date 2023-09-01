@@ -167,7 +167,7 @@ class Simulator:
                  special_option: int = None, special_value: int = None, doublelife: bool = False,
                  perfect_only: bool = True, auto: bool = False, mirror: bool = False, time_offset: int = 0,
                  deact_skills: Dict[int, List[int]] = None, note_offsets: DefaultDict[int, int] = None,
-                 note_misses: List[int] = None) -> Union[SimulationResult, AutoSimulationResult]:
+                 note_misses: List[int] = None, *_, **__) -> Union[SimulationResult, AutoSimulationResult]:
         start = time.time()
         logger.debug("Unit: {}".format(self.live.unit))
         logger.debug("Song: {} - {} - Lv {}".format(self.live.music_name, self.live.difficulty, self.live.level))

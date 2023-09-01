@@ -50,7 +50,7 @@ class Card:
         return cls.from_id(card_id[0], *args, **kwargs)
 
     @classmethod
-    def from_id(cls, card_id: int, custom_pots=None) -> Optional[Card]:
+    def from_id(cls, card_id: int, custom_pots=None, custom_info=None) -> Optional[Card]:
         if card_id is None:
             return None
         if custom_pots:
@@ -77,6 +77,36 @@ class Card:
             owned = db.cachedb.execute_and_fetchall("SELECT number FROM owned_card WHERE card_id = ?", [card_id])[0][0]
             if owned == 0:
                 owned = 1
+        elif custom_info is not None:
+            card_data = db.masterdb.execute_and_fetchone("SELECT * FROM card_data WHERE id = ?",
+                                                         params=[card_id], out_dict=True)
+            if card_data is None:
+                return None
+            for params in ["vocal", "dance", "visual", "life"]:
+                value = custom_info["{}_pt".format(params)]
+                if value:
+                    growth_param = db.masterdb.execute_and_fetchone(
+                    """
+                    SELECT add_{} FROM {} where point = ?
+                    """.format(params, "card_data_custom_growth_param"),
+                    params=[value],
+                    out_dict=True)
+                    card_data["{}_max".format("hp" if params == "life" else params)] += growth_param["add_{}".format(params)]
+
+            vocal = card_data['vocal_max']
+            visual = card_data['visual_max']
+            dance = card_data['dance_max']
+            life = card_data['hp_max']
+
+            chara_id = custom_info["chara_id"]
+            attribute = card_data['attribute']
+            card_data["skill_id"] = custom_info["skill_id"]
+            card_data["leader_skill_id"] = custom_info["leader_skill_id"]
+
+            bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
+                       card_data['bonus_hp'], 0]
+
+            owned = 1
         else:
             card_data = db.cachedb.execute_and_fetchone("SELECT * FROM custom_card WHERE id = ?",
                                                         params=[custom_card_id], out_dict=True)
@@ -112,8 +142,11 @@ class Card:
                 SELECT value_rare_{} FROM potential_value_{} WHERE potential_level = ?
                 """.format(rarity, key), [potentials[idx]])[0]
 
-        skill_id = card_data['skill_id'] if not_custom else card_id
-        skill = Skill.from_id(skill_id, bonuses[4])
+        skill_id = card_data['skill_id'] if not_custom or custom_info is not None else card_id
+        if custom_info is not None:
+            skill = Skill.from_id(skill_id, bonuses[4], attribute)
+        else:
+            skill = Skill.from_id(skill_id, bonuses[4])
 
         return cls(vo=vocal + bonuses[0],
                    vi=visual + bonuses[1],
