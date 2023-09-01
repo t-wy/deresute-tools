@@ -427,7 +427,7 @@ class BaseChartPicGenerator(ABC):
             duration = skill.duration / 1.5 * (1 + (skill.skill_level - 1) / 18)
             lane = self.convert_index_to_lane(card_idx)
 
-            skill_total_activation = (self.last_sec_float - 3) // interval
+            skill_total_activation = (self.last_sec_float - 1e-8 - 3) // interval
             skill_current_activation = 0
 
             label_idx = 0
