@@ -934,7 +934,7 @@ class StateMachine:
         for note_detail in self.note_details:
             weight = 1.0
             if note_detail.combo > 0:
-                note_detail.weight = self.weights[note_detail.combo - 1]
+                weight = self.weights[note_detail.combo - 1]
             note_detail.weight = weight
             note_detail.score = int(self.note_scores[self.note_idx_stack_backup.index(note_detail.number - 1)])
 
