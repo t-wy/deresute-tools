@@ -307,6 +307,9 @@ class BaseLive(ABC):
         else:
             self.color_bonuses[:3, self.color.value] = 30  # Appeal
             self.color_bonuses[4, self.color.value] = 30  # Skill
+            if self.unit.dominant_added_bonus_color is not None:
+                self.color_bonuses[:3, self.unit.dominant_added_bonus_color.value] = 30  # Appeal
+                self.color_bonuses[4, self.unit.dominant_added_bonus_color.value] = 30  # Skill
         return self.color_bonuses
 
     def set_chara_bonus(self, chara_bonus_set: Optional[Set[int]], chara_bonus_value: Optional[int]):
@@ -387,9 +390,9 @@ class Live(BaseLive):
         bonuses = np.clip(bonuses, a_min=-100, a_max=5000)
         bonuses = (1 + bonuses / 100)[:, :4, :]
 
-        self.attributes = np.ceil(self.unit.base_attributes * bonuses).sum(axis=0)
+        self.attributes = np.ceil(self.unit.base_attributes * bonuses)
         self.attributes *= 1 - (self.extra_bonuses[:4, :] < -5000)
-        self.attributes = self.attributes.sum(axis=1)
+        self.attributes = np.sum(np.max(self.attributes, axis=2), axis=0)
         return self.attributes
 
     def reset_attributes(self, hard_reset: bool = True):

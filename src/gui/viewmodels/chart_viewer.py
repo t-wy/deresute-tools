@@ -843,11 +843,13 @@ class ChartViewerInfoWidget(QWidget):
         self.subwidgets['detail_note_score_skill_score'] = QTreeWidget()
         self.subwidgets['detail_note_score_skill_score'].header().setVisible(False)
         self.subwidgets['detail_note_score_skill_score'].setFixedHeight(70)
+        self.subwidgets['detail_note_score_skill_score'].setTextElideMode(Qt.ElideMiddle)
         self.sublayouts['detail_note_score_skill'].addWidget(self.subwidgets['detail_note_score_skill_score'])
 
         self.subwidgets['detail_note_score_skill_combo'] = QTreeWidget()
         self.subwidgets['detail_note_score_skill_combo'].header().setVisible(False)
         self.subwidgets['detail_note_score_skill_combo'].setFixedHeight(70)
+        self.subwidgets['detail_note_score_skill_combo'].setTextElideMode(Qt.ElideMiddle)
         self.sublayouts['detail_note_score_skill'].addWidget(self.subwidgets['detail_note_score_skill_combo'])
 
         resize_stacked_widget(self.subwidgets['detail_note_score'], 0)

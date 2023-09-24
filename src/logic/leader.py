@@ -14,7 +14,7 @@ class Leader:
     def __init__(self, bonuses: np.ndarray = np.zeros((5, 3)), song_bonuses: np.ndarray = None,
                  min_requirements: Union[list, np.array] = None, max_requirements: Union[list, np.array] = None,
                  resonance: bool = False, unison: bool = False, tricolor_unison: bool = False,
-                 bless: bool = False, duet: bool = False, fan: int = 0):
+                 bless: bool = False, duet: bool = False, dominant: bool = False, fan: int = 0):
         assert isinstance(bonuses, np.ndarray)
         assert bonuses.shape == (5, 3)
         if min_requirements is not None:
@@ -36,6 +36,7 @@ class Leader:
         self.unison = unison
         self.tricolor_unison = tricolor_unison
         self.duet = duet
+        self.dominant = dominant
         self.fan = fan
 
     @classmethod
@@ -103,6 +104,8 @@ class Leader:
             bonuses[0:3, :] = -100
             bonuses[leader_data['param_limit'] - 1] = 0
 
+        is_dominant = leader_data['type'] == 120
+
         requirements = [leader_data["need_cute"], leader_data["need_cool"], leader_data["need_passion"]]
         min_requirements, max_requirements = None, None
         for idx, requirement in enumerate(requirements):
@@ -124,5 +127,6 @@ class Leader:
             tricolor_unison=is_tricolor_unison,
             bless=is_bless,
             duet=is_duet,
+            dominant=is_dominant,
             fan=fan,
         )

@@ -934,7 +934,7 @@ class StateMachine:
         for note_detail in self.note_details:
             weight = 1.0
             if note_detail.combo > 0:
-                note_detail.weight = self.weights[note_detail.combo - 1]
+                weight = self.weights[note_detail.combo - 1]
             note_detail.weight = weight
             note_detail.score = int(self.note_scores[self.note_idx_stack_backup.index(note_detail.number - 1)])
 
@@ -1220,6 +1220,7 @@ class StateMachine:
             # By this point, all skills that can be activated should be in self.skill_queue
             self._evaluate_motif()
             self._evaluate_ls()
+            self._evaluate_harmony()
             self._cache_skill_data()
             self._cache_amr()
             self.skill_indices.pop(0)
@@ -1600,6 +1601,11 @@ class StateMachine:
                 for target in skill.targets:
                     for attr in range(5):
                         magic_boosts[target][attr] = max(magic_boosts[target][attr], skill.values[attr])
+                if skill.targets_harmony is not None:
+                    target = skill.targets_harmony
+                    magic_boosts[target[0]][0] = max(magic_boosts[target[0]][0], skill.values[0])
+                    magic_boosts[target[0]][1] = max(magic_boosts[target[0]][1], skill.values[1])
+                    magic_boosts[target[1]][2] = max(magic_boosts[target[1]][2], skill.values[2])
             # All skill interval should be magic's interval here
             num = int((self.skill_times[0] / 1E6 // skills[0].interval - 1) // self.unit_offset)
             magic_bonus = self.skill_details[magic_idx][num].magic_bonus
@@ -1661,6 +1667,14 @@ class StateMachine:
                             continue
                         update_boosts(non_magic_idx - 1, skill.skill_type if not skill.cache_encore else 16,
                                       target, attr, skill.values[attr])
+                if skill.targets_harmony is not None:
+                    target = skill.targets_harmony
+                    update_boosts(non_magic_idx - 1, skill.skill_type if not skill.cache_encore else 16,
+                                  target[0], 0, skill.values[0])
+                    update_boosts(non_magic_idx - 1, skill.skill_type if not skill.cache_encore else 16,
+                                  target[0], 1, skill.values[1])
+                    update_boosts(non_magic_idx - 1, skill.skill_type if not skill.cache_encore else 16,
+                                  target[1], 2, skill.values[2])
         for target in range(3):
             for attr in range(5):
                 if len(magics) > 0:
@@ -2213,6 +2227,15 @@ class StateMachine:
                 skill.v0 = 0
                 skill.v1 = 0
 
+    def _evaluate_harmony(self):
+        skills_to_check = self._helper_get_current_skills()
+        unit_idx = (self.skill_indices[0] - 1) // 5
+        for skill in skills_to_check:
+            if skill.is_harmony:
+                values = self.live.unit.all_units[unit_idx].convert_harmony(skill.targets_harmony[0],
+                                                                            skill.targets_harmony[1])
+                skill.values = (values[0], values[0], values[1], 0, 0)
+
     # noinspection PyTypeChecker
     def _cache_amr(self):
         skills_to_check = self._helper_get_current_skills()
@@ -2303,7 +2326,8 @@ class StateMachine:
             return True
 
     def _check_focus_activation(self, unit_idx, skill) -> bool:
-        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)]
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)] \
+            + [card.subcolor for card in self.live.unit.all_units[unit_idx].all_cards(guest=True) if card.subcolor]
         if skill.skill_type == 21:
             return not any(filter(lambda x: x is not Color.CUTE, card_colors))
         if skill.skill_type == 22:
@@ -2314,8 +2338,22 @@ class StateMachine:
         raise ValueError("Reached invalid state of focus activation check: ", skill)
 
     def _check_tricolor_activation(self, unit_idx) -> bool:
-        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)]
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)] \
+                      + [card.subcolor for card in self.live.unit.all_units[unit_idx].all_cards(guest=True) if
+                         card.subcolor]
         return all(color in card_colors for color in (Color.CUTE, Color.COOL, Color.PASSION))
+
+    def _check_harmony_activation(self, unit_idx, skill) -> bool:
+        card_colors = [card.color for card in self.live.unit.all_units[unit_idx].all_cards(guest=True)] \
+            + [card.subcolor for card in self.live.unit.all_units[unit_idx].all_cards(guest=True) if card.subcolor]
+        if skill.skill_type in (45, 47):
+            return not any(filter(lambda x: x not in (Color.CUTE, Color.COOL), card_colors))
+        if skill.skill_type in (46, 49):
+            return not any(filter(lambda x: x not in (Color.COOL, Color.PASSION), card_colors))
+        if skill.skill_type in (48, 50):
+            return not any(filter(lambda x: x not in (Color.COOL, Color.PASSION), card_colors))
+        # Should not reach here
+        raise ValueError("Reached invalid state of harmony activation check: ", skill)
 
     def _can_activate(self) -> bool:
         """
@@ -2380,17 +2418,32 @@ class StateMachine:
                         if not is_magic:
                             self.skill_details[idx][num].inact = SkillInact.NOT_PA_ONLY
                     continue
-            if skill.is_spike:
-                if self.live.color != Color.ALL:
-                    to_be_removed.append(skill)
-                    if not is_magic:
-                        self.skill_details[idx][num].inact = SkillInact.NOT_ALL_SONG
-                    continue
             if skill.is_tricolor:
                 if not self._check_tricolor_activation(unit_idx=skill.original_unit_idx):
                     to_be_removed.append(skill)
                     if not is_magic:
                         self.skill_details[idx][num].inact = SkillInact.NOT_TRICOLOR
+                    continue
+            if skill.is_harmony:
+                if not self._check_harmony_activation(unit_idx=skill.original_unit_idx, skill=skill):
+                    to_be_removed.append(skill)
+                    if skill.skill_type in (45, 47):
+                        if not is_magic:
+                            self.skill_details[idx][num].inact = SkillInact.NOT_CUCO_ONLY
+                    if skill.skill_type in (46, 49):
+                        if not is_magic:
+                            self.skill_details[idx][num].inact = SkillInact.NOT_CUPA_ONLY
+                    if skill.skill_type in (48, 50):
+                        if not is_magic:
+                            self.skill_details[idx][num].inact = SkillInact.NOT_COPA_ONLY
+                    continue
+            if skill.song_required is not None:
+                if self.live.color != skill.song_required:
+                    to_be_removed.append(skill)
+                    if not is_magic:
+                        self.skill_details[idx][num].inact = \
+                            (SkillInact.NOT_CU_SONG, SkillInact.NOT_CO_SONG, SkillInact.NOT_PA_SONG,
+                             SkillInact.NOT_ALL_SONG)[skill.song_required.value]
                     continue
             if skill.is_overload or skill.is_spike:
                 if not has_failed:
