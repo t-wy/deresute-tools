@@ -59,6 +59,7 @@ class Unit(BaseUnit):
     motif_visual_trimmed: int
     _motif_values_wide: Optional[List[int]]
     _motif_values_grand: Optional[List[int]]
+    dominant_added_bonus_color: Optional[Color]
 
     def __init__(self, c0: Card, c1: Card, c2: Card, c3: Card, c4: Card, cg: Card = None, resonance: bool = None):
         for _ in [c0, c1, c2, c3, c4]:
@@ -72,6 +73,7 @@ class Unit(BaseUnit):
             self.resonance = resonance
         else:
             self.resonance = self._resonance_check()
+        self.dominant_added_bonus_color = None
         self._skill_check()
 
     @classmethod
@@ -125,6 +127,8 @@ class Unit(BaseUnit):
             if card is None:
                 continue
             colors[card.color.value] += 1
+            if card.subcolor is not None:
+                colors[card.subcolor.value] += 1
             skills.add(card.skill.skill_type)
 
         bonuses = np.zeros((5, 3))  # Attributes x Colors
@@ -161,6 +165,12 @@ class Unit(BaseUnit):
                 # Duet and wrong song color
                 if card.leader.duet and song_color != card.color:
                     bonuses_to_add = 0
+                # Dominant
+                if card.leader.dominant:
+                    if song_color != card.subcolor:
+                        bonuses_to_add = 0
+                    else:
+                        self.dominant_added_bonus_color = card.color
                 bonuses = agg_func(bonuses, bonuses_to_add)
                 if get_fan_bonuses:
                     fan_bonuses_to_add = card.leader.fan
@@ -186,6 +196,8 @@ class Unit(BaseUnit):
             if card is None:
                 continue
             colors[card.color.value] += 1
+            if card.subcolor is not None:
+                colors[card.subcolor.value] += 1
 
         for card in self.all_cards(guest=False):
             if card is None:
@@ -265,6 +277,35 @@ class Unit(BaseUnit):
     def _get_motif_visual(self) -> int:
         return sum(card.visual for card in self._cards[:5])
 
+    def convert_harmony(self, score_target: int, combo_target: int) -> Tuple[int, int]:
+        member_count = len(self._cards)
+        if member_count not in (5, 6):
+            return 0, 0
+
+        colors = [0, 0, 0]
+        for card in self._cards:
+            if card is None:
+                continue
+            colors[card.color.value] += 1
+            if card.subcolor is not None:
+                colors[card.subcolor.value] += 1
+
+        score_boost = db.masterdb.execute_and_fetchone("""
+            SELECT first_efficacy_value_main_attribute
+            FROM skill_dual_type_balance
+            WHERE all_member_count_with_guest = ?
+            AND attribute_match_count = ?
+            """, params=[member_count, colors[score_target]])[0]
+
+        combo_boost = db.masterdb.execute_and_fetchone("""
+            SELECT second_efficacy_value_main_attribute
+            FROM skill_dual_type_balance
+            WHERE all_member_count_with_guest = ?
+            AND attribute_match_count = ?
+            """, params=[member_count, colors[combo_target]])[0]
+
+        return score_boost, combo_boost
+
     @property
     def base_attributes(self) -> np.ndarray:
         attributes = np.zeros((len(self._cards), 4, 3))  # Cards x Attributes x Colors
@@ -273,6 +314,11 @@ class Unit(BaseUnit):
             attributes[idx, 1, card.color.value] += card.visual
             attributes[idx, 2, card.color.value] += card.dance
             attributes[idx, 3, card.color.value] += card.life
+            if card.subcolor is not None:
+                attributes[idx, 0, card.subcolor.value] += card.vocal
+                attributes[idx, 1, card.subcolor.value] += card.visual
+                attributes[idx, 2, card.subcolor.value] += card.dance
+                attributes[idx, 3, card.subcolor.value] += card.life
         return attributes
 
     @property

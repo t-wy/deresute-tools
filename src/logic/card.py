@@ -14,7 +14,7 @@ pyximport.install(language_level=3)
 
 
 class Card:
-    def __init__(self, vo: int, da: int, vi: int, li: int, sk: Skill, le: Leader, color: Color,
+    def __init__(self, vo: int, da: int, vi: int, li: int, sk: Skill, le: Leader, color: Color, subcolor: Color = None,
                  ra: int = 8, card_id: int = None, chara_id: int = None,
                  vo_pots: int = 0, vi_pots: int = 0, da_pots: int = 0, li_pots: int = 0, sk_pots: int = 0,
                  star: int = 1, base_vo: int = 0, base_da: int = 0, base_vi: int = 0, base_li: int = 0):
@@ -37,6 +37,7 @@ class Card:
         self.sk_pots = sk_pots
         self.star = star
         self.color = color
+        self.subcolor = subcolor
         self.ra = ra
         self.card_id = card_id
         self.chara_id = chara_id
@@ -74,6 +75,11 @@ class Card:
             bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
                        card_data['bonus_hp'], 0]
 
+            subattr = db.masterdb.execute_and_fetchone("SELECT sub_attribute FROM card_subtype WHERE card_data_id = ?",
+                                                       params=[card_id])
+            if subattr is not None:
+                subattr = Color(subattr[0] - 1)
+
             owned = db.cachedb.execute_and_fetchall("SELECT number FROM owned_card WHERE card_id = ?", [card_id])[0][0]
             if owned == 0:
                 owned = 1
@@ -93,6 +99,8 @@ class Card:
                 """, [card_data['image_id']])
 
             bonuses = [0, 0, 0, 0, 0]
+
+            subattr = None
 
             owned = 1
 
@@ -133,6 +141,7 @@ class Card:
                    sk=skill,
                    le=Leader.from_id(card_data['leader_skill_id']),
                    color=Color(attribute - 1),
+                   subcolor=subattr,
                    card_id=card_id,
                    chara_id=chara_id)
 

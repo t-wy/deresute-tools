@@ -12,8 +12,9 @@ from static.skill import SKILL_BASE, SKILL_DESCRIPTION
 
 pyximport.install(language_level=3)
 
-BOOST_TYPES = {20, 32, 33, 34, 38}
-COLOR_TARGETS = {21, 22, 23, 32, 33, 34}
+BOOST_TYPES = {20, 32, 33, 34, 38, 45, 46, 47, 48, 49, 50}
+HARMONY_TYPES = {45, 46, 47, 48, 49, 50}
+COLOR_TARGETS = {21, 22, 23, 32, 33, 34, 45, 46, 47, 48, 49, 50}
 ACT_TYPES = {28: NoteType.LONG, 29: NoteType.FLICK, 30: NoteType.SLIDE}
 SUPPORT_TYPES = {5, 6, 7}
 COMMON_TIMERS = [(7, 4.5, 'h'), (9, 6, 'h'), (11, 7.5, 'h'), (12, 7.5, 'm'),
@@ -26,7 +27,7 @@ class Skill:
                  offset: int = 0, boost: bool = False, color_target: bool = False, act: NoteType = None,
                  bonus_skill: int = 2000, skill_type: int = 0,
                  min_requirements: Union[np.array, list] = None, max_requirements: Union[np.array, list] = None,
-                 song_all_required: bool = False, life_requirement: int = 0, skill_level: int = 10):
+                 song_required: Color = None, life_requirement: int = 0, skill_level: int = 10):
         if values is None and v0 == v1 == v2 == v3 == v4 == 0:
             raise ValueError("Invalid skill values", values, v0, v1, v2, v3, v4)
 
@@ -56,9 +57,10 @@ class Skill:
         self.min_requirements = min_requirements
         self.max_requirements = max_requirements
         self.life_requirement = life_requirement
-        self.song_all_required = song_all_required
+        self.song_required = song_required
         self.skill_level = skill_level
         self.targets = self._generate_targets()
+        self.targets_harmony = self._generate_targets_harmony()
         self.normalized = False
         self.original_unit_idx = None
         self.card_idx = None
@@ -77,7 +79,24 @@ class Skill:
             return [1]
         if self.skill_type == 23 or self.skill_type == 34:
             return [2]
+        if self.skill_type in (45, 46, 47, 48, 49, 50):
+            return []
         return [0, 1, 2]
+
+    def _generate_targets_harmony(self) -> Optional[List[int]]:
+        if self.skill_type == 45:
+            return [0, 1]
+        if self.skill_type == 46:
+            return [0, 2]
+        if self.skill_type == 47:
+            return [1, 0]
+        if self.skill_type == 48:
+            return [1, 2]
+        if self.skill_type == 49:
+            return [2, 0]
+        if self.skill_type == 50:
+            return [2, 1]
+        return None
 
     @property
     def is_combo_support(self) -> bool:
@@ -142,6 +161,10 @@ class Skill:
     @property
     def is_spike(self) -> bool:
         return self.skill_type == 44
+
+    @property
+    def is_harmony(self) -> bool:
+        return 45 <= self.skill_type <= 50
 
     @property
     def is_tricolor(self) -> bool:
@@ -281,14 +304,24 @@ class Skill:
             max_requirements[skill_data['skill_trigger_value'] - 1] = 99
         elif skill_data['skill_trigger_type'] in (3, 5):
             min_requirements = [1, 1, 1]
+        elif skill_data['skill_trigger_type'] in (12, 13, 21, 23, 31, 32):
+            min_requirements = np.array([0, 0, 0])
+            max_requirements = np.array([0, 0, 0])
+            for c in str(skill_data['skill_trigger_type']):
+                max_requirements[int(c) - 1] = 99
 
-        song_all_required = False
+        song_required = None
         if skill_data['skill_trigger_type'] in (4, 5):
-            song_all_required = True
+            song_required = Color.ALL
+        if skill_data['skill_trigger_type'] in (12, 13, 21, 23, 31, 32):
+            song_required = Color(skill_data['skill_trigger_type'] % 10)
 
         is_boost = skill_data['skill_type'] in BOOST_TYPES
         if is_boost:
-            values = cls._fetch_boost_value_from_db(skill_data['value'])
+            if skill_data['skill_type'] in HARMONY_TYPES:
+                values = [0, 0, 0, 0, 0]
+            else:
+                values = cls._fetch_boost_value_from_db(skill_data['value'])
         else:
             values = cls._handle_skill_type(skill_data['skill_type'],
                                             (skill_data['value'], skill_data['value_2'], skill_data['value_3']))
@@ -307,11 +340,11 @@ class Skill:
             min_requirements=min_requirements,
             max_requirements=max_requirements,
             life_requirement=life_requirement,
-            song_all_required=song_all_required
+            song_required=song_required
         )
 
     def get_skill_description(self) -> str:
-        if self.skill_type in (5, 6, 7, 9, 12, 16, 25, 35, 36, 37, 40, 41):
+        if self.skill_type in (5, 6, 7, 9, 12, 16, 25, 35, 36, 37, 40, 41, 45, 46, 47, 48, 49, 50):
             return SKILL_DESCRIPTION[self.skill_type]
         elif self.skill_type in (1, 2, 15):
             return SKILL_DESCRIPTION[self.skill_type].format(self.values[0] - 100)

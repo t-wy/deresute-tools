@@ -42,7 +42,13 @@ SKILL_BASE = {
     41: {"id": 41, "name": "Magic", "keywords": ["mag"], "color": (255, 200, 255)},
     42: {"id": 42, "name": "Mutual", "keywords": ["mut"], "color": (191, 191, 191)},
     43: {"id": 43, "name": "Overdrive", "keywords": ["od"], "color": (238, 187, 221)},
-    44: {"id": 44, "name": "Tricolor Spike", "keywords": ["spk"], "color": (234, 115, 67)}
+    44: {"id": 44, "name": "Tricolor Spike", "keywords": ["spk"], "color": (234, 115, 67)},
+    45: {"id": 45, "name": "Dominant Harmony (CutexCool)", "keywords": ["dom", "har"], "color": (151, 44, 161)},
+    46: {"id": 46, "name": "Dominant Harmony (CutexPassion)", "keywords": ["dom", "har"], "color": (244, 73, 62)},
+    47: {"id": 47, "name": "Dominant Harmony (CoolxCute)", "keywords": ["dom", "har"], "color": (106, 62, 193)},
+    48: {"id": 48, "name": "Dominant Harmony (CoolxPassion)", "keywords": ["dom", "har"], "color": (108, 128, 156)},
+    49: {"id": 49, "name": "Dominant Harmony (PassionxCute)", "keywords": ["dom", "har"], "color": (246, 105, 44)},
+    50: {"id": 50, "name": "Dominant Harmony (PassionxCool)", "keywords": ["dom", "har"], "color": (155, 142, 106)}
 }
 
 SKILL_COLOR_BY_NAME = {
@@ -129,6 +135,12 @@ SKILL_DESCRIPTION = {
     42: "{}% SCORE DOWN, apply the highest COMBO BONUS UP effect activated during LIVE {}% boosted.",
     43: "{}% COMBO BONUS UP, heals {} life on PERFECT and sustain combo only in PERFECT.",
     44: "If song is ALL type and idols of all 3 types are in the unit, consume {} life, {}% SCORE UP to PERFECT notes, {}% COMBO BONUS UP.",
+    45: "If song is COOL type and only CUTE or COOL idols are in the unit, boosts SCORE UP skill effect of other CUTE idols and COMBO BONUS UP skill effect of other COOL idols scaling with each type's number.",
+    46: "If song is PASSION type and only CUTE or PASSION idols are in the unit, boosts SCORE UP skill effect of other CUTE idols and COMBO BONUS UP skill effect of other PASSION idols scaling with each type's number.",
+    47: "If song is CUTE type and only COOL or CUTE idols are in the unit, boosts SCORE UP skill effect of other COOL idols and COMBO BONUS UP skill effect of other CUTE idols scaling with each type's number.",
+    48: "If song is PASSION type and only COOL or PASSION idols are in the unit, boosts SCORE UP skill effect of other COOL idols and COMBO BONUS UP skill effect of other PASSION idols scaling with each type's number.",
+    49: "If song is CUTE type and only PASSION or CUTE idols are in the unit, boosts SCORE UP skill effect of other PASSION idols and COMBO BONUS UP skill effect of other CUTE idols scaling with each type's number.",
+    50: "If song is COOL type and only PASSION or COOL idols are in the unit, boosts SCORE UP skill effect of other PASSION idols and COMBO BONUS UP skill effect of other COOL idols scaling with each type's number.",
     }
 
 
@@ -144,6 +156,12 @@ class SkillInact(Enum):
     NO_SCORE_COMBO = 9
     NO_MAGIC_SKILL = 10
     NOT_ALL_SONG = 11
+    NOT_CU_SONG = 12
+    NOT_CO_SONG = 13
+    NOT_PA_SONG = 14
+    NOT_CUCO_ONLY = 15
+    NOT_CUPA_ONLY = 16
+    NOT_COPA_ONLY = 17
 
 
 SKILL_INACTIVATION_REASON = {
@@ -157,7 +175,13 @@ SKILL_INACTIVATION_REASON = {
     8: "No COMBO BONUS UP skill effects have been activated.",
     9: "No SCORE UP nor COMBO BONUS UP skill effects have been activated.",
     10: "There are no skills that magic can activate.",
-    11: "Song is not ALL type."
+    11: "Song is not ALL type.",
+    12: "Song is not CUTE type.",
+    13: "Song is not COOL type.",
+    14: "Song is not PASSION type.",
+    15: "The unit does not consist of only CUTE or COOL idols.",
+    16: "The unit does not consist of only CUTE or PASSION idols.",
+    17: "The unit does not consist of only COOL or PASSION idols."
     }
 
 
