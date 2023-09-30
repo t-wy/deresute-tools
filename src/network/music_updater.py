@@ -33,7 +33,10 @@ def update_musicscores():
     with db.CustomDB(meta_updater.get_manifestdb_path()) as manifest_conn:
         all_musicscores = manifest_conn.execute_and_fetchall(
             """
-            SELECT name,hash FROM manifests WHERE (name LIKE "musicscores\_m___.bdb" ESCAPE '\\')
+            SELECT name,hash
+            FROM manifests
+            WHERE (name LIKE "musicscores\_m%.bdb" ESCAPE '\\')
+            AND CAST(SUBSTR(name, 14, LENGTH(name) - 17) AS INTEGER) < 2000
             """)
         all_musicscores = {_[0].split(".")[0]: _[1] for _ in all_musicscores}
 
