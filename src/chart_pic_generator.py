@@ -32,14 +32,14 @@ LANE_DISTANCE = 70
 SKILL_PAINT_WIDTH = 60
 SEC_OFFSET_X = 105
 SEC_OFFSET_Y = 17
-SEC_FONT = 36
+SEC_FONT = 33
 
 X_MARGIN_GRAND = 75
 LANE_DISTANCE_GRAND = 25
 SKILL_PAINT_WIDTH_GRAND = 22
 SEC_OFFSET_X_GRAND = 86
 SEC_OFFSET_Y_GRAND = 15
-SEC_FONT_GRAND = 32
+SEC_FONT_GRAND = 28
 
 SEC_HEIGHT = 500
 Y_MARGIN = 70
@@ -549,9 +549,10 @@ class BaseChartPicGenerator(ABC):
                     self.painters[label_idx].setPen(horizontal_grid_light_pen)
                 y = self.get_y(sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT, label_idx)
                 self.painters[label_idx].drawLine(self.get_x(0), y, self.get_x(self.lane_count - 1), y)
+                tm = sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT
                 self.painters[label_idx].drawText(
-                    QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 50), Qt.AlignRight,
-                    str(sec + MAX_LABEL_Y * label_idx // SEC_HEIGHT))
+                    QRect(self.get_x(0) - self.SEC_OFFSET_X, y - self.SEC_OFFSET_Y, 70, 100), Qt.AlignRight,
+                    "{}:{:0>2}\n{}".format(tm // 60, tm % 60, self.notes[self.notes['sec'] <= tm].shape[0]))
 
     def draw_sync_lines(self, draw_label_idx: List[int]):
         if len(draw_label_idx) == 0:
