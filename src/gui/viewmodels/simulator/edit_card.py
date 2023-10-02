@@ -10,7 +10,8 @@ from gui.viewmodels.utils import ValidatableNumericalTableWidgetItem
 from logic.card import Card
 from static.color import Color
 
-COLOR_KEY = "Color"
+COLOR_KEY = "Type"
+SUBCOLOR_KEY = "Dominant type"
 VOCAL_KEY = "Vocal"
 DANCE_KEY = "Dance"
 VISUAL_KEY = "Visual"
@@ -25,7 +26,7 @@ LIFE_POTENTIAL_KEY = "Life Potential"
 SKILL_POTENTIAL_KEY = "Skill Potential"
 STAR_RANK_KEY = "Star Rank"
 
-HEADERS = [COLOR_KEY,
+HEADERS = [COLOR_KEY, SUBCOLOR_KEY,
            VOCAL_KEY, DANCE_KEY, VISUAL_KEY, LIFE_KEY,
            SKILL_DURATION_KEY, SKILL_INTERVAL_KEY, SKILL_LEVEL_KEY,
            VOCAL_POTENTIAL_KEY, DANCE_POTENTIAL_KEY, VISUAL_POTENTIAL_KEY, LIFE_POTENTIAL_KEY, SKILL_POTENTIAL_KEY,
@@ -99,6 +100,7 @@ class EditCardModel:
             self.view.widget.setEditTriggers(QAbstractItemView.AllEditTriggers)
             self.view.set_values([
                 self.card.color.value,
+                self.card.subcolor.value if self.card.subcolor is not None else "-",
                 self.card.base_vo,
                 self.card.base_da,
                 self.card.base_vi,
@@ -113,7 +115,7 @@ class EditCardModel:
                 self.card.sk_pots,
                 self.card.star
             ])
-            for _ in range(7):
+            for _ in range(8):
                 item = self.view.widget.item(_, 0)
                 item.setFlags(item.flags() ^ Qt.ItemIsEditable)
 
@@ -123,29 +125,31 @@ class EditCardModel:
             self.card.color = Color(int(v))
             self.card.skill.color = Color(int(v))
         elif r_idx == 1:
-            self.card.base_vo = int(float(v))
+            self.card.subcolor = Color(int(v)) if v != "-" else None
         elif r_idx == 2:
-            self.card.base_da = int(float(v))
+            self.card.base_vo = int(float(v))
         elif r_idx == 3:
-            self.card.base_vi = int(float(v))
+            self.card.base_da = int(float(v))
         elif r_idx == 4:
-            self.card.base_li = int(float(v))
+            self.card.base_vi = int(float(v))
         elif r_idx == 5:
-            self.card.skill.duration = float(v)
+            self.card.base_li = int(float(v))
         elif r_idx == 6:
-            self.card.skill.interval = float(v)
+            self.card.skill.duration = float(v)
         elif r_idx == 7:
-            self.card.skill.skill_level = int(v)
+            self.card.skill.interval = float(v)
         elif r_idx == 8:
-            self.card.vo_pots = int(v)
+            self.card.skill.skill_level = int(v)
         elif r_idx == 9:
-            self.card.da_pots = int(v)
+            self.card.vo_pots = int(v)
         elif r_idx == 10:
-            self.card.vi_pots = int(v)
+            self.card.da_pots = int(v)
         elif r_idx == 11:
-            self.card.li_pots = int(v)
+            self.card.vi_pots = int(v)
         elif r_idx == 12:
-            self.card.sk_pots = int(v)
+            self.card.li_pots = int(v)
         elif r_idx == 13:
+            self.card.sk_pots = int(v)
+        elif r_idx == 14:
             self.card.star = int(v)
         self.card.refresh_values()

@@ -100,7 +100,10 @@ class Card:
 
             bonuses = [0, 0, 0, 0, 0]
 
-            subattr = None
+            subattr = db.masterdb.execute_and_fetchone("SELECT sub_attribute FROM card_subtype WHERE card_data_id = ?",
+                                                       params=[card_data['image_id']])
+            if subattr is not None:
+                subattr = Color(subattr[0] - 1)
 
             owned = 1
 
