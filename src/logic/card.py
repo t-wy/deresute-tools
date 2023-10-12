@@ -111,7 +111,7 @@ class Card:
 
             bonuses = [card_data['bonus_vocal'], card_data['bonus_visual'], card_data['bonus_dance'],
                        card_data['bonus_hp'], 0]
-
+            subattr = None
             owned = 1
         else:
             card_data = db.cachedb.execute_and_fetchone("SELECT * FROM custom_card WHERE id = ?",
