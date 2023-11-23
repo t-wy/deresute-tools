@@ -2349,7 +2349,7 @@ class StateMachine:
         if skill.skill_type in (45, 47):
             return not any(filter(lambda x: x not in (Color.CUTE, Color.COOL), card_colors))
         if skill.skill_type in (46, 49):
-            return not any(filter(lambda x: x not in (Color.COOL, Color.PASSION), card_colors))
+            return not any(filter(lambda x: x not in (Color.CUTE, Color.PASSION), card_colors))
         if skill.skill_type in (48, 50):
             return not any(filter(lambda x: x not in (Color.COOL, Color.PASSION), card_colors))
         # Should not reach here
