@@ -143,24 +143,7 @@ SKILL_BASE = {0: "",
               145: "Dominant Duet Make(Pa)&Voice(Co)",
               146: "Dominant Duet Step(Pa)&Make(Co)",
               147: "Dominant Duet Make(Pa)&Voice(Co)",
-              148: "Dominant Duet Voice(Cu)&Make(Co)",
-              149: "Dominant Duet Step(Cu)&Voice(Co)",
-              150: "Dominant Duet Make(Cu)&Step(Co)",
-              151: "Dominant Duet Voice(Cu)&Make(Pa)",
-              152: "Dominant Duet Step(Cu)&Voice(Pa)",
-              153: "Dominant Duet Make(Cu)&Step(Pa)",
-              154: "Dominant Duet Voice(Co)&Make(Cu)",
-              155: "Dominant Duet Step(Co)&Voice(Cu)",
-              156: "Dominant Duet Make(Co)&Step(Cu)",
-              157: "Dominant Duet Voice(Co)&Make(Pa)",
-              158: "Dominant Duet Step(Co)&Voice(Pa)",
-              159: "Dominant Duet Make(Co)&Step(Pa)",
-              160: "Dominant Duet Voice(Pa)&Make(Cu)",
-              161: "Dominant Duet Step(Pa)&Voice(Cu)",
-              162: "Dominant Duet Make(Pa)&Step(Cu)",
-              163: "Dominant Duet Make(Pa)&Make(Co)",
-              164: "Dominant Duet Step(Pa)&Voice(Co)",
-              165: "Dominant Duet Make(Pa)&Step(Co)"
+              148: "Cinderella Present"
               }
 _ = list(SKILL_BASE.keys())
 for l in _:

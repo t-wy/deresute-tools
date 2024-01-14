@@ -819,6 +819,9 @@ class StateMachine:
 
             for card_idx, card in iterating_order:
                 skill = copy.copy(card.skill)
+                if skill.interval == 0:
+                    continue
+
                 idx = unit_idx * 5 + card_idx
                 self.reference_skills[idx + 1] = skill
 

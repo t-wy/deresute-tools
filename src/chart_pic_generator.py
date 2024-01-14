@@ -417,6 +417,9 @@ class BaseChartPicGenerator(ABC):
 
             skill = card.sk
             interval = skill.interval
+            if interval == 0:
+                continue
+
             duration = skill.duration / 1.5 * (1 + (skill.skill_level - 1) / 18)
             lane = self.convert_index_to_lane(card_idx)
 
