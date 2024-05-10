@@ -48,7 +48,8 @@ SKILL_BASE = {
     47: {"id": 47, "name": "Dominant Harmony (CoolxCute)", "keywords": ["dom", "har"], "color": (106, 62, 193)},
     48: {"id": 48, "name": "Dominant Harmony (CoolxPassion)", "keywords": ["dom", "har"], "color": (108, 128, 156)},
     49: {"id": 49, "name": "Dominant Harmony (PassionxCute)", "keywords": ["dom", "har"], "color": (246, 105, 44)},
-    50: {"id": 50, "name": "Dominant Harmony (PassionxCool)", "keywords": ["dom", "har"], "color": (155, 142, 106)}
+    50: {"id": 50, "name": "Dominant Harmony (PassionxCool)", "keywords": ["dom", "har"], "color": (155, 142, 106)},
+    51: {"id": 51, "name": "Crystal Heel", "keywords": ["cry"], "color": (78, 243, 253)}
 }
 
 SKILL_COLOR_BY_NAME = {

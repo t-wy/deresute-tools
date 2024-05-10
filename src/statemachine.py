@@ -819,6 +819,9 @@ class StateMachine:
 
             for card_idx, card in iterating_order:
                 skill = copy.copy(card.skill)
+                if skill.interval == 0:
+                    continue
+
                 idx = unit_idx * 5 + card_idx
                 self.reference_skills[idx + 1] = skill
 
@@ -2349,7 +2352,7 @@ class StateMachine:
         if skill.skill_type in (45, 47):
             return not any(filter(lambda x: x not in (Color.CUTE, Color.COOL), card_colors))
         if skill.skill_type in (46, 49):
-            return not any(filter(lambda x: x not in (Color.COOL, Color.PASSION), card_colors))
+            return not any(filter(lambda x: x not in (Color.CUTE, Color.PASSION), card_colors))
         if skill.skill_type in (48, 50):
             return not any(filter(lambda x: x not in (Color.COOL, Color.PASSION), card_colors))
         # Should not reach here
