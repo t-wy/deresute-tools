@@ -143,7 +143,10 @@ SKILL_BASE = {0: "",
               145: "Dominant Duet Make(Pa)&Voice(Co)",
               146: "Dominant Duet Step(Pa)&Make(Co)",
               147: "Dominant Duet Make(Pa)&Voice(Co)",
-              148: "Cinderella Present"
+              148: "Cinderella Present",
+              149: "Starlight Charm (Cu)",
+              150: "Starlight Charm (Co)",
+              151: "Starlight Charm (Pa)"
               }
 _ = list(SKILL_BASE.keys())
 for l in _:
