@@ -12,7 +12,7 @@ from static.skill import SKILL_BASE, SKILL_DESCRIPTION
 
 pyximport.install(language_level=3)
 
-BOOST_TYPES = {20, 32, 33, 34, 38, 45, 46, 47, 48, 49, 50}
+BOOST_TYPES = {20, 32, 33, 34, 38, 45, 46, 47, 48, 49, 50, 52}
 HARMONY_TYPES = {45, 46, 47, 48, 49, 50}
 COLOR_TARGETS = {21, 22, 23, 32, 33, 34, 45, 46, 47, 48, 49, 50}
 ACT_TYPES = {28: NoteType.LONG, 29: NoteType.FLICK, 30: NoteType.SLIDE}
